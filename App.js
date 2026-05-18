@@ -51,7 +51,7 @@ const INITIAL_SCALE = FIT_SCALE * 0.97;
 const SPAWN = { r: 0, c: Math.floor(COLS / 2) };
 const GOAL = { r: ROWS - 1, c: Math.floor(COLS / 2) };
 
-const STARTING_GOLD = 100;
+const STARTING_GOLD = 175;
 const STARTING_LIVES = 25;
 const STONE_COST = 25;
 
@@ -253,9 +253,9 @@ function MenuScreen({ onStart }) {
         <Text style={styles.menuSubtitle}>D E F E N C E</Text>
       </View>
       <View style={styles.menuMid}>
-        <Text style={styles.menuRule}>Place stones. They become random gems each wave.</Text>
+        <Text style={styles.menuRule}>Place stones. They roll into random crystals each wave.</Text>
         <Text style={styles.menuRule}>Combine 5 of the same to upgrade.</Text>
-        <Text style={styles.menuRule}>5 different Perfect gems → Ultimate.</Text>
+        <Text style={styles.menuRule}>5 different Perfect crystals → Ultimate.</Text>
         <Text style={styles.menuRule}>Pinch to zoom · drag to pan.</Text>
         <Text style={styles.menuRule}>Survive 20 waves.</Text>
       </View>
@@ -521,7 +521,7 @@ function Game({ onEnd }) {
       if (pick.length === 4) break;
     }
     if (pick.length < 4) {
-      flash('Need 4 more different Perfect gems');
+      flash('Need 4 more different Perfect crystals');
       return;
     }
     const ids = new Set(pick.map((t) => t.id));
@@ -541,9 +541,24 @@ function Game({ onEnd }) {
 
   const startWave = () => {
     if (s.waveActive || s.wave >= WAVES.length) return;
+    // Roll any stones into random Chipped crystals BEFORE the wave begins,
+    // so the player has defenders during the wave they're about to play.
+    let rolled = 0;
+    for (const t of s.towers) {
+      if (t.kind === 'stone') {
+        t.kind = 'gem';
+        t.gemType = rollGemType();
+        t.tier = 1;
+        t.cooldown = 0;
+        rolled += 1;
+      }
+    }
+    if (rolled > 0) {
+      s.flash = { text: `Rolled ${rolled} crystal${rolled > 1 ? 's' : ''}!`, until: s.time + 1.8 };
+    }
     const w = WAVES[s.wave];
     const queue = [];
-    let t = s.time + 0.5;
+    let t = s.time + 1.2; // small delay so player can see the roll
     for (const [type, count, gap] of w.spawns) {
       for (let i = 0; i < count; i++) {
         t += gap;
@@ -860,7 +875,7 @@ function Game({ onEnd }) {
         <Text style={styles.tipText}>
           {s.waveActive
             ? 'Wave in progress. Pinch to zoom · drag to pan.'
-            : 'Tap empty cell = stone · Tap gem = inspect · Pinch · Drag'}
+            : 'Tap empty cell = stone · Tap crystal = inspect · Pinch · Drag'}
         </Text>
       </View>
 
@@ -964,7 +979,7 @@ function InspectContent({ tower, onSell, onCombine, onUltimate, onClose, boardTo
           ? 'Ultimate — maxed.'
           : tower.tier === 5
             ? canUltimate
-              ? `Can fuse with 4 different Perfect gems → Ultimate.`
+              ? `Can fuse with 4 different Perfect crystals → Ultimate.`
               : `Perfect. Combine with 4 OTHER Perfect types for Ultimate (have ${perfectsDifferent}/4).`
             : canCombine
               ? `Can combine — you have ${matches + 1} of these.`
@@ -1142,21 +1157,9 @@ function step(dt, s, onEnd) {
 
   if (s.waveActive && s.spawnQueue.length === 0 && s.enemies.length === 0) {
     s.waveActive = false;
-    let rolled = 0;
-    for (const t of s.towers) {
-      if (t.kind === 'stone') {
-        t.kind = 'gem';
-        t.gemType = rollGemType();
-        t.tier = 1;
-        t.cooldown = 0;
-        rolled += 1;
-      }
-    }
     s.gold += 20 + s.wave * 6;
     s.score += 100 + s.wave * 20;
-    if (rolled > 0) {
-      s.flash = { text: `Rolled ${rolled} gem${rolled > 1 ? 's' : ''}!`, until: s.time + 1.8 };
-    }
+    s.flash = { text: `Wave ${s.wave} cleared! +${20 + s.wave * 6}g`, until: s.time + 1.8 };
     if (s.wave >= WAVES.length) {
       onEnd(true, s.score);
     }
