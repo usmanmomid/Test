@@ -6,25 +6,38 @@ A mobile tower defense inspired by [**Gem TD**](https://www.dota2.com/) (the Dot
 
 1. **Place stones** (25g each). Stones don't attack — they're walls that shape the maze.
 2. **Start the wave.** Enemies always take the shortest path around your towers (BFS recomputed on every placement). If a placement would fully wall them off, the game rejects it.
-3. **When the wave ends, every stone rolls** into a random gem at the Chipped (I) tier — Diamond, Ruby, Emerald, Sapphire, Topaz, or Amethyst.
-4. **Combine 5 same-type same-tier** gems → 1 gem at the next tier:
+3. **When the wave ends, every stone rolls** into a random gem at Chipped (I).
+4. **Combine 5 same-type same-tier** → 1 gem at the next tier:
    `Chipped (I) → Flawed (II) → Normal (III) → Flawless (IV) → Perfect (V)`
-5. Survive **15 waves**.
+5. **Ultimate recipe:** 5 different-type Perfect (V) gems → 1 **Ultimate Crystal (★)**: every ability stacked, massive damage, max range.
+6. Survive **20 waves**.
 
-Tap a tower to inspect it, sell it, or combine it.
+Tap a tower to inspect, sell, combine, or upgrade to Ultimate.
+
+## Controls
+
+| Gesture | Effect |
+| --- | --- |
+| Tap empty cell | Place a stone |
+| Tap a tower | Inspect / sell / combine |
+| Drag with one finger | Pan the board |
+| Pinch with two fingers | Zoom in/out |
+| ⤢ button | Recenter and reset zoom |
 
 ## The gems
 
 | Gem | Color | Specialty |
 | --- | --- | --- |
-| 💎 Diamond | White | High single-target damage |
-| 🔴 Ruby | Red | Burn (damage over time) |
-| 💚 Emerald | Green | Splash damage |
-| 💙 Sapphire | Blue | Slows enemies |
-| 💛 Topaz | Yellow | Chain lightning (3 targets) |
-| 💜 Amethyst | Purple | Fires at 2 enemies at once |
+| Diamond | White | High single-target damage |
+| Ruby | Red | Burn DoT |
+| Emerald | Green | Splash damage |
+| Sapphire | Blue | Slow 50% |
+| Topaz | Yellow | Chain lightning (3 jumps) |
+| Amethyst | Purple | Fires at 2 enemies |
+| Aquamarine | Teal | Long-range sniper |
+| Opal | Pink | Frenzy — very fast attack |
 
-Each tier multiplies damage (1× → 1.8× → 3.2× → 5.8× → 10.5×) and extends range.
+Each tier multiplies damage (1× → 1.8× → 3.2× → 5.8× → 10.5× → 28×) and extends range.
 
 ## Play it from your phone — fastest
 
@@ -80,16 +93,15 @@ Apple commonly rejects games that feel like demos. Before submitting:
 ## Differences from the original Gem TD
 
 This is **inspired by** Gem TD, not a clone. Differences:
-- Phone-shaped portrait grid (8×12) instead of the original square map
-- 6 gem types instead of 8 (no Aquamarine or Opal)
-- No special "combo" recipes (5-of-different-type) yet — just tier upgrades
-- Simplified wave compositions
-- All names and stats are our own
+- Phone-shaped portrait grid (14×22) with pan + pinch zoom for navigation
+- Simplified wave compositions, 20 waves total
+- All names, stats, balance, and art are our own
 
 ## Tech
 
 - React Native 0.74 / Expo SDK 51
-- Pure JS — no native modules, runs in Expo Go
+- Pure JS — no extra native modules, runs in Expo Go
 - BFS pathfinder re-runs on every placement
 - Game loop via `requestAnimationFrame` at 60fps with `dt`-scaled physics
+- Pan + pinch zoom via built-in `PanResponder` (no `react-native-gesture-handler` dependency)
 - Single-file (`App.js`) — easy to fork into Expo Snack
