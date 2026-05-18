@@ -10,6 +10,7 @@ import {
   Pressable,
   PanResponder,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,14 +55,14 @@ const STARTING_GOLD = 175;
 const STARTING_LIVES = 25;
 const STONE_COST = 25;
 
-// ─── Gem tiers (matched to Roblox CMD: Rough → Ascendant) ───────────────────
+// ─── Gem tiers (canonical Crystal Maze purity: P1 Cracked → P6 Ascendant) ──
 const TIERS = [
-  { id: 1, name: 'Rough',     short: 'I',   dmgMul: 1.0,  rangeBonus: 0,   cdMul: 1.0,  sellMul: 0.5  },
-  { id: 2, name: 'Clouded',   short: 'II',  dmgMul: 2.5,  rangeBonus: 0.2, cdMul: 0.95, sellMul: 0.5  },
-  { id: 3, name: 'Polished',  short: 'III', dmgMul: 6.25, rangeBonus: 0.4, cdMul: 0.9,  sellMul: 0.55 },
-  { id: 4, name: 'Brilliant', short: 'IV',  dmgMul: 15.6, rangeBonus: 0.7, cdMul: 0.85, sellMul: 0.6  },
-  { id: 5, name: 'Pristine',  short: 'V',   dmgMul: 39,   rangeBonus: 1.1, cdMul: 0.75, sellMul: 0.65 },
-  { id: 6, name: 'Ascendant', short: 'VI',  dmgMul: 97,   rangeBonus: 2.0, cdMul: 0.6,  sellMul: 0.7  },
+  { id: 1, name: 'Cracked',   short: 'P1', dmgMul: 1.0,  rangeBonus: 0,   cdMul: 1.0,  sellMul: 0.5  },
+  { id: 2, name: 'Cut',       short: 'P2', dmgMul: 2.5,  rangeBonus: 0.2, cdMul: 0.95, sellMul: 0.5  },
+  { id: 3, name: 'Polished',  short: 'P3', dmgMul: 6.25, rangeBonus: 0.4, cdMul: 0.9,  sellMul: 0.55 },
+  { id: 4, name: 'Radiant',   short: 'P4', dmgMul: 15.6, rangeBonus: 0.7, cdMul: 0.85, sellMul: 0.6  },
+  { id: 5, name: 'Perfect',   short: 'P5', dmgMul: 39,   rangeBonus: 1.1, cdMul: 0.75, sellMul: 0.65 },
+  { id: 6, name: 'Ascendant', short: 'P6', dmgMul: 97,   rangeBonus: 2.0, cdMul: 0.6,  sellMul: 0.7  },
 ];
 const tier = (n) => TIERS[n - 1];
 const sellValue = (t) => Math.floor(STONE_COST * Math.pow(5, t - 1) * tier(t).sellMul);
@@ -138,6 +139,296 @@ function gemStats(gemId, t) {
     color: g.color,
     name: g.name,
   };
+}
+
+// ─── Special tower recipes (inspired by Roblox CMD recipes) ────────────────
+// Each special tower is a NAMED upgrade crafted from 3 specific gems. Crafting
+// transforms the anchor cell into the special tower and consumes the other two
+// from the board. Recipes don't stack — once crafted the result is a 'special'
+// kind, not a 'gem'.
+// All 18 canonical recipes from the Crystal Maze design doc. Internal IDs
+// follow the original Roblox project's stable IDs. Display names use the
+// latest canonical list. Ingredients are either gems ({gemType,tier}) or
+// other special towers ({specialId}).
+const SPECIAL_RECIPES = [
+  // ── P2 ────────────────────────────────────────────────────────────────
+  {
+    id: 'MoonsteelPrism', name: 'Moonsteel', tier: 'P2',
+    color: '#d8e1f2', accent: '#7eb6ff',
+    description: 'Single-target · armor break · light slow',
+    ingredients: [
+      { gemType: 'sapphire', tier: 2 },
+      { gemType: 'diamond',  tier: 2 },
+      { gemType: 'topaz',    tier: 2 },
+    ],
+    stats: {
+      damage: 80, range: 3.2, cooldown: 0.7, armorBreak: true,
+      effect: { type: 'slow', factor: 0.5, duration: 1.2 },
+    },
+  },
+  {
+    id: 'VerdantArcstone', name: 'Wildroot', tier: 'P2',
+    color: '#5cf28a', accent: '#88f088',
+    description: 'Poison aura · support · reveal',
+    ingredients: [
+      { gemType: 'emerald',    tier: 2 },
+      { gemType: 'opal',       tier: 2 },
+      { gemType: 'aquamarine', tier: 2 },
+    ],
+    stats: {
+      damage: 20, range: 3.0, cooldown: 0.55,
+      effect: { type: 'burn', dps: 35, duration: 4.0 },
+    },
+  },
+  {
+    id: 'EmberstarObelisk', name: 'Ember Obelisk', tier: 'P2',
+    color: '#ff8a4d', accent: '#ffd166',
+    description: 'Burning splash · area denial',
+    ingredients: [
+      { gemType: 'ruby',       tier: 2 },
+      { gemType: 'amethyst',   tier: 2 },
+      { gemType: 'aquamarine', tier: 2 },
+    ],
+    stats: {
+      damage: 45, range: 2.8, cooldown: 0.5, splash: 1.7,
+      effect: { type: 'burn', dps: 18, duration: 3.0 },
+    },
+  },
+  // ── P3 ────────────────────────────────────────────────────────────────
+  {
+    id: 'RoseglassFocus', name: 'Roseglass', tier: 'P3',
+    color: '#ff8aff', accent: '#ffd6ff',
+    description: 'Boss killer · high single-target damage',
+    ingredients: [
+      { gemType: 'diamond', tier: 3 },
+      { gemType: 'diamond', tier: 2 },
+      { gemType: 'topaz',   tier: 2 },
+    ],
+    stats: { damage: 180, range: 3.4, cooldown: 0.9, armorBreak: true },
+  },
+  {
+    id: 'JadeVeilLens', name: 'Jade Oracle', tier: 'P3',
+    color: '#5cf28a', accent: '#88f088',
+    description: 'Poison · slow · control',
+    ingredients: [
+      { gemType: 'emerald',  tier: 3 },
+      { gemType: 'opal',     tier: 2 },
+      { gemType: 'sapphire', tier: 2 },
+    ],
+    stats: {
+      damage: 40, range: 3.4, cooldown: 0.65,
+      effect: { type: 'slow', factor: 0.45, duration: 1.6 },
+    },
+  },
+  {
+    id: 'StormsplitReactor', name: 'Stormsplit', tier: 'P3',
+    color: '#ffd166', accent: '#fff7a8',
+    description: 'Rapid chain lightning · swarm shredder',
+    ingredients: [
+      { gemType: 'topaz',      tier: 3 },
+      { gemType: 'aquamarine', tier: 2 },
+      { gemType: 'sapphire',   tier: 2 },
+    ],
+    stats: { damage: 35, range: 3.4, cooldown: 0.3, chain: 5 },
+  },
+  {
+    id: 'GildedHexcore', name: 'Goldhex', tier: 'P3',
+    color: '#ffd166', accent: '#b08bff',
+    description: 'Armor shred · Greed Aura: 2× gold',
+    ingredients: [
+      { gemType: 'amethyst', tier: 3 },
+      { gemType: 'amethyst', tier: 2 },
+      { gemType: 'diamond',  tier: 2 },
+    ],
+    stats: { damage: 90, range: 3.0, cooldown: 0.7, armorBreak: true, goldAura: true },
+  },
+  // ── P4 ────────────────────────────────────────────────────────────────
+  {
+    id: 'MoonsteelWarden', name: 'Lunar Warden', tier: 'P4',
+    color: '#c0d8ff', accent: '#fff',
+    description: 'Slow / cleave · armored frontline',
+    ingredients: [
+      { specialId: 'MoonsteelPrism' },
+      { gemType: 'aquamarine', tier: 3 },
+      { gemType: 'ruby',       tier: 3 },
+    ],
+    stats: {
+      damage: 220, range: 3.6, cooldown: 0.6, armorBreak: true, splash: 1.4,
+      effect: { type: 'slow', factor: 0.5, duration: 1.5 },
+    },
+  },
+  {
+    id: 'VerdantCascade', name: 'Seraph', tier: 'P4',
+    color: '#88f088', accent: '#fff',
+    description: 'Poison surge · attack speed aura',
+    ingredients: [
+      { specialId: 'VerdantArcstone' },
+      { gemType: 'emerald', tier: 3 },
+      { gemType: 'topaz',   tier: 3 },
+    ],
+    stats: {
+      damage: 60, range: 3.4, cooldown: 0.3,
+      effect: { type: 'burn', dps: 90, duration: 4 },
+    },
+  },
+  {
+    id: 'ObsidianBreaker', name: 'Obsidian Breaker', tier: 'P4',
+    color: '#2a335f', accent: '#ff4d6d',
+    description: 'Corruption · armor shred · % damage',
+    ingredients: [
+      { specialId: 'GildedHexcore' },
+      { gemType: 'emerald',  tier: 3 },
+      { gemType: 'amethyst', tier: 3 },
+    ],
+    stats: { damage: 240, range: 3.2, cooldown: 0.65, armorBreak: true, goldAura: true },
+  },
+  {
+    id: 'SkyquartzSentinel', name: 'Skylar', tier: 'P4',
+    color: '#cfd5e6', accent: '#7be5d1',
+    description: 'Piercing shots · line damage · high range',
+    ingredients: [
+      { gemType: 'diamond',  tier: 4 },
+      { gemType: 'amethyst', tier: 3 },
+      { gemType: 'sapphire', tier: 3 },
+    ],
+    stats: { damage: 480, range: 4.2, cooldown: 0.85, armorBreak: true, chain: 3 },
+  },
+  // ── P5 ────────────────────────────────────────────────────────────────
+  {
+    id: 'RoyalRoseglass', name: 'Monarch', tier: 'P5',
+    color: '#ffafff', accent: '#fff',
+    description: 'Divine light · purifies · true damage',
+    ingredients: [
+      { specialId: 'RoseglassFocus' },
+      { specialId: 'MoonsteelWarden' },
+      { gemType: 'diamond', tier: 4 },
+    ],
+    stats: { damage: 900, range: 3.8, cooldown: 0.85, armorBreak: true, splash: 1.5 },
+  },
+  {
+    id: 'CrimsonThunderheart', name: 'Thunderheart', tier: 'P5',
+    color: '#ff4d6d', accent: '#ffd166',
+    description: 'Massive area damage · burning storm',
+    ingredients: [
+      { specialId: 'EmberstarObelisk' },
+      { gemType: 'ruby',       tier: 4 },
+      { gemType: 'aquamarine', tier: 4 },
+    ],
+    stats: {
+      damage: 220, range: 3.5, cooldown: 0.5, splash: 2.2, chain: 4,
+      effect: { type: 'burn', dps: 70, duration: 4 },
+    },
+  },
+  {
+    id: 'CoralResonance', name: 'Coral Choir', tier: 'P5',
+    color: '#7be5d1', accent: '#5cf28a',
+    description: 'Harmony · empowers · multi-target',
+    ingredients: [
+      { specialId: 'JadeVeilLens' },
+      { gemType: 'opal',       tier: 4 },
+      { gemType: 'aquamarine', tier: 4 },
+    ],
+    stats: {
+      damage: 180, range: 3.6, cooldown: 0.3, multi: 3,
+      effect: { type: 'slow', factor: 0.35, duration: 1.8 },
+    },
+  },
+  {
+    id: 'FrostsunEye', name: 'Frozen Sun', tier: 'P5',
+    color: '#a8e0ff', accent: '#ffd166',
+    description: 'Protector · chain · slow · all rounder',
+    ingredients: [
+      { specialId: 'StormsplitReactor' },
+      { gemType: 'sapphire', tier: 4 },
+      { gemType: 'ruby',     tier: 4 },
+    ],
+    stats: {
+      damage: 240, range: 3.8, cooldown: 0.4, chain: 6,
+      effect: { type: 'slow', factor: 0.5, duration: 2 },
+    },
+  },
+  // ── P6 Mythic ────────────────────────────────────────────────────────
+  {
+    id: 'SovereignDiamondLens', name: 'Diamond Sovereign', tier: 'P6',
+    color: '#fff', accent: '#ffd166',
+    description: 'MYTHIC · timeless guardian · time control · true damage',
+    ingredients: [
+      { specialId: 'RoyalRoseglass' },
+      { gemType: 'diamond',  tier: 6 },
+      { gemType: 'amethyst', tier: 5 },
+    ],
+    stats: {
+      damage: 2400, range: 4.0, cooldown: 0.7, armorBreak: true, splash: 1.8,
+      effect: { type: 'slow', factor: 0.3, duration: 2 },
+    },
+  },
+  {
+    id: 'PrismaticWorldcore', name: 'Core of the World', tier: 'P6',
+    color: '#b08bff', accent: '#7be5d1',
+    description: 'MYTHIC · global · void explosions · all stats',
+    ingredients: [
+      { specialId: 'CoralResonance' },
+      { gemType: 'opal',       tier: 6 },
+      { gemType: 'aquamarine', tier: 5 },
+      { gemType: 'topaz',      tier: 5 },
+    ],
+    stats: { damage: 800, range: 4.4, cooldown: 0.3, multi: 5, splash: 2.0 },
+  },
+  {
+    id: 'AbyssbreakerMonolith', name: 'Luna', tier: 'P6',
+    color: '#1a0033', accent: '#b08bff',
+    description: 'MYTHIC · divine execution · judgement beam',
+    ingredients: [
+      { specialId: 'CrimsonThunderheart' },
+      { specialId: 'ObsidianBreaker' },
+      { gemType: 'ruby', tier: 6 },
+    ],
+    stats: {
+      damage: 1800, range: 4.6, cooldown: 0.55, armorBreak: true, splash: 2.4,
+      effect: { type: 'burn', dps: 600, duration: 5 },
+    },
+  },
+];
+
+const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
+
+// Does this tower match the given ingredient spec?
+function matchesIngredient(tower, ing) {
+  if (ing.specialId) {
+    return tower.kind === 'special' && tower.specialId === ing.specialId;
+  }
+  return (
+    tower.kind === 'gem' &&
+    tower.gemType === ing.gemType &&
+    tower.tier === ing.tier
+  );
+}
+
+// Returns the array of OTHER tower instances that complete the recipe (anchor
+// excluded), or null if the recipe can't be assembled around this anchor.
+function findRecipeMatch(anchor, allTowers, recipe) {
+  if (anchor.kind !== 'gem' && anchor.kind !== 'special') return null;
+  const remaining = recipe.ingredients.slice();
+  const anchorIdx = remaining.findIndex((ing) => matchesIngredient(anchor, ing));
+  if (anchorIdx === -1) return null;
+  remaining.splice(anchorIdx, 1);
+  const usedIds = new Set([anchor.id]);
+  const matched = [];
+  for (const ing of remaining) {
+    const m = allTowers.find(
+      (t) => !usedIds.has(t.id) && matchesIngredient(t, ing)
+    );
+    if (!m) return null;
+    usedIds.add(m.id);
+    matched.push(m);
+  }
+  return matched;
+}
+
+// Format an ingredient for display: "Diamond P3" or "Moonsteel"
+function ingredientLabel(ing) {
+  if (ing.specialId) return SPECIAL_BY_ID[ing.specialId]?.name || ing.specialId;
+  return `${GEMS[ing.gemType].name} ${tier(ing.tier).short}`;
 }
 
 // ─── Enemies & waves ─────────────────────────────────────────────────────────
@@ -257,6 +548,7 @@ export default function App() {
 
 // ─── Lobby (mobile home screen) ──────────────────────────────────────────────
 function LobbyScreen({ stats, onStartSolo }) {
+  const [recipeBookOpen, setRecipeBookOpen] = useState(false);
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
@@ -319,15 +611,80 @@ function LobbyScreen({ stats, onStartSolo }) {
           <Text style={styles.footerIcon}>⚙</Text>
           <Text style={styles.footerLabel}>SETTINGS</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.footerBtn} activeOpacity={0.7}>
-          <Text style={styles.footerIcon}>?</Text>
-          <Text style={styles.footerLabel}>HOW TO PLAY</Text>
+        <TouchableOpacity
+          style={styles.footerBtn}
+          activeOpacity={0.7}
+          onPress={() => setRecipeBookOpen(true)}
+        >
+          <Text style={styles.footerIcon}>📖</Text>
+          <Text style={styles.footerLabel}>RECIPES</Text>
         </TouchableOpacity>
         <View style={styles.footerBtn}>
-          <Text style={styles.footerVersion}>v0.3</Text>
+          <Text style={styles.footerVersion}>v0.4</Text>
         </View>
       </View>
+
+      <RecipeBookModal
+        visible={recipeBookOpen}
+        onClose={() => setRecipeBookOpen(false)}
+      />
     </SafeAreaView>
+  );
+}
+
+function RecipeBookModal({ visible, onClose }) {
+  const tiers = ['P2', 'P3', 'P4', 'P5', 'P6'];
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.recipeBookCard} onPress={() => {}}>
+          <View style={styles.recipeBookHeader}>
+            <Text style={styles.recipeBookTitle}>📖 Recipe Book</Text>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            >
+              <Text style={styles.modalCloseXText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.recipeBookList}>
+            <Text style={[styles.recipeRowDesc, { padding: 6, marginBottom: 8 }]}>
+              Each wave's end rolls your stones into random gems. Collect the right
+              gems to craft 18 named special towers. Higher tiers require lower
+              specials as ingredients.
+            </Text>
+            {tiers.map((p) => {
+              const recipes = SPECIAL_RECIPES.filter((r) => r.tier === p);
+              if (recipes.length === 0) return null;
+              const label = p === 'P6' ? `${p} · MYTHIC` : p;
+              return (
+                <View key={p}>
+                  <Text style={styles.recipeBookSection}>{label}</Text>
+                  {recipes.map((r) => (
+                    <View
+                      key={r.id}
+                      style={[styles.recipeRow, { borderColor: r.accent }]}
+                    >
+                      <View style={[styles.craftIcon, { backgroundColor: r.color, borderColor: r.accent }]}>
+                        <Text style={styles.specialIconStar}>{p === 'P6' ? '✦' : '★'}</Text>
+                      </View>
+                      <View style={styles.recipeRowText}>
+                        <Text style={styles.recipeRowName}>{r.name}</Text>
+                        <Text style={styles.recipeRowDesc}>{r.description}</Text>
+                        <Text style={styles.recipeRowIngredients}>
+                          {r.ingredients.map(ingredientLabel).join(' + ')}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+            <View style={{ height: 20 }} />
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -547,6 +904,13 @@ function Game({ onEnd }) {
     const t = s.towers[idx];
     if (t.kind === 'stone') {
       s.gold += Math.floor(STONE_COST * 0.5);
+    } else if (t.kind === 'special') {
+      // Refund roughly the cost of ingredients
+      const recipe = SPECIAL_RECIPES.find((r) => r.id === t.specialId);
+      const ingredientValue = recipe
+        ? recipe.ingredients.reduce((sum, ing) => sum + sellValue(ing.tier), 0)
+        : STONE_COST * 3;
+      s.gold += Math.floor(ingredientValue * 0.6);
     } else {
       s.gold += sellValue(t.tier);
     }
@@ -558,6 +922,33 @@ function Game({ onEnd }) {
       e.pathIdx = 0;
     }
     s.inspect = null;
+    force();
+  };
+
+  const tryCraft = (anchorId, recipeId) => {
+    const anchor = s.towers.find((t) => t.id === anchorId);
+    const recipe = SPECIAL_RECIPES.find((r) => r.id === recipeId);
+    if (!anchor || !recipe) return;
+    const others = findRecipeMatch(anchor, s.towers, recipe);
+    if (!others) {
+      flash('Missing ingredients');
+      return;
+    }
+    const ids = new Set(others.map((t) => t.id));
+    for (const t of others) s.grid[t.r][t.c] = false;
+    s.towers = s.towers.filter((t) => !ids.has(t.id));
+    anchor.kind = 'special';
+    anchor.specialId = recipe.id;
+    anchor.cooldown = 0;
+    delete anchor.gemType;
+    delete anchor.tier;
+    s.path = bfs(s.grid, SPAWN, GOAL);
+    for (const e of s.enemies) {
+      e.subPath = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
+      e.pathIdx = 0;
+    }
+    s.inspect = null;
+    flash(`${recipe.name}!`);
     force();
   };
 
@@ -767,6 +1158,81 @@ function Game({ onEnd }) {
                     borderColor: '#7c84a8',
                   }}
                 />
+              );
+            }
+            if (t.kind === 'special') {
+              const recipe = SPECIAL_BY_ID[t.specialId];
+              if (!recipe) return null;
+              const tierLevel = parseInt(recipe.tier.slice(1), 10); // P2 → 2
+              return (
+                <View
+                  key={`tw${t.id}`}
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    left: t.c * TILE,
+                    top: t.r * TILE,
+                    width: TILE,
+                    height: TILE,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {/* big halo for specials */}
+                  <View
+                    style={{
+                      position: 'absolute',
+                      width: TILE * (1.0 + tierLevel * 0.05),
+                      height: TILE * (1.0 + tierLevel * 0.05),
+                      borderRadius: TILE,
+                      backgroundColor: recipe.accent,
+                      opacity: 0.18 + tierLevel * 0.04,
+                    }}
+                  />
+                  {/* outer ring */}
+                  <View
+                    style={{
+                      width: TILE * 0.85,
+                      height: TILE * 0.85,
+                      borderRadius: TILE * 0.42,
+                      backgroundColor: recipe.color,
+                      borderWidth: 2,
+                      borderColor: recipe.accent,
+                      shadowColor: recipe.accent,
+                      shadowOpacity: 1,
+                      shadowRadius: 6 + tierLevel,
+                      shadowOffset: { width: 0, height: 0 },
+                      elevation: 4 + tierLevel,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {/* inner core */}
+                    <View
+                      style={{
+                        width: TILE * 0.5,
+                        height: TILE * 0.5,
+                        backgroundColor: recipe.accent,
+                        transform: [{ rotate: '45deg' }],
+                        borderRadius: 4,
+                      }}
+                    />
+                  </View>
+                  {/* star icon overlay */}
+                  <Text
+                    style={{
+                      position: 'absolute',
+                      color: '#fff',
+                      fontSize: TILE * 0.32,
+                      fontWeight: '900',
+                      textShadowColor: '#000a',
+                      textShadowOffset: { width: 0, height: 1 },
+                      textShadowRadius: 2,
+                    }}
+                  >
+                    {tierLevel >= 6 ? '✦' : '★'}
+                  </Text>
+                </View>
               );
             }
             const g = GEMS[t.gemType];
@@ -994,6 +1460,7 @@ function Game({ onEnd }) {
                 tower={inspectTower}
                 onSell={() => sellTower(inspectTower.id)}
                 onCombine={() => tryCombine(inspectTower.id)}
+                onCraft={(recipeId) => tryCraft(inspectTower.id, recipeId)}
                 onClose={() => { s.inspect = null; force(); }}
                 boardTowers={s.towers}
               />
@@ -1005,16 +1472,16 @@ function Game({ onEnd }) {
   );
 }
 
-function InspectContent({ tower, onSell, onCombine, onClose, boardTowers }) {
+function InspectContent({ tower, onSell, onCombine, onCraft, onClose, boardTowers }) {
   if (tower.kind === 'stone') {
     return (
       <>
         <Text style={styles.modalTitle}>Stone</Text>
         <Text style={styles.modalSub}>Awaiting the next roll.</Text>
         <View style={styles.modalRow}>
-          <ModalStat label="Damage" value="—" />
-          <ModalStat label="Range" value="—" />
-          <ModalStat label="Sell" value={`${Math.floor(STONE_COST * 0.5)}g`} />
+          <ModalStat label="DAMAGE" value="—" />
+          <ModalStat label="RANGE" value="—" />
+          <ModalStat label="SELL" value={`${Math.floor(STONE_COST * 0.5)}g`} />
         </View>
         <TouchableOpacity style={[styles.modalBtn, styles.modalBtnFull, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
           <Text style={styles.modalBtnText}>SELL</Text>
@@ -1022,6 +1489,72 @@ function InspectContent({ tower, onSell, onCombine, onClose, boardTowers }) {
       </>
     );
   }
+  if (tower.kind === 'special') {
+    const recipe = SPECIAL_BY_ID[tower.specialId];
+    if (!recipe) {
+      return <Text style={styles.modalSub}>Unknown special tower</Text>;
+    }
+    const refund = Math.floor(
+      recipe.ingredients.reduce((s, ing) => {
+        if (ing.specialId) {
+          const sub = SPECIAL_BY_ID[ing.specialId];
+          return s + (sub ? sub.ingredients.reduce((x, i2) => x + (i2.tier ? sellValue(i2.tier) : 0), 0) : 0);
+        }
+        return s + sellValue(ing.tier);
+      }, 0) * 0.5
+    );
+    const craftableRecipes = SPECIAL_RECIPES.filter(
+      (r) => findRecipeMatch(tower, boardTowers, r) !== null
+    );
+    return (
+      <>
+        <View style={styles.modalHeaderRow}>
+          <View style={[styles.specialIcon, { backgroundColor: recipe.color, borderColor: recipe.accent }]}>
+            <Text style={styles.specialIconStar}>★</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modalTitle}>
+              {recipe.name} <Text style={{ color: '#ffd166' }}>{recipe.tier}</Text>
+            </Text>
+            <Text style={styles.modalSub}>Special · {recipe.description}</Text>
+          </View>
+        </View>
+        <View style={styles.modalRow}>
+          <ModalStat label="DAMAGE" value={recipe.stats.damage} />
+          <ModalStat label="RANGE" value={recipe.stats.range.toFixed(1)} />
+          <ModalStat label="RATE" value={`${recipe.stats.cooldown.toFixed(2)}s`} />
+          <ModalStat label="SELL" value={`${refund}g`} />
+        </View>
+        <TouchableOpacity style={[styles.modalBtn, styles.modalBtnFull, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
+          <Text style={styles.modalBtnText}>SELL</Text>
+        </TouchableOpacity>
+
+        {craftableRecipes.length > 0 && (
+          <View style={styles.craftSection}>
+            <Text style={styles.craftSectionLabel}>UPGRADE RECIPES READY</Text>
+            {craftableRecipes.map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={[styles.craftBtn, { borderColor: r.accent }]}
+                onPress={() => onCraft(r.id)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.craftIcon, { backgroundColor: r.color, borderColor: r.accent }]}>
+                  <Text style={styles.specialIconStar}>★</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.craftBtnName}>{r.name} <Text style={{ color: '#ffd166' }}>{r.tier}</Text></Text>
+                  <Text style={styles.craftBtnDesc}>{r.description}</Text>
+                </View>
+                <Text style={styles.craftBtnArrow}>▶</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </>
+    );
+  }
+  // Gem
   const g = GEMS[tower.gemType];
   const t = tier(tower.tier);
   const stats = gemStats(tower.gemType, tower.tier);
@@ -1030,6 +1563,9 @@ function InspectContent({ tower, onSell, onCombine, onClose, boardTowers }) {
   ).length;
   const canCombine = tower.tier < 6 && matches >= 4;
   const nextTierName = tower.tier < 6 ? tier(tower.tier + 1).name : null;
+  const craftableRecipes = SPECIAL_RECIPES.filter(
+    (r) => findRecipeMatch(tower, boardTowers, r) !== null
+  );
   return (
     <>
       <View style={styles.modalHeaderRow}>
@@ -1080,6 +1616,29 @@ function InspectContent({ tower, onSell, onCombine, onClose, boardTowers }) {
           <Text style={styles.modalBtnText}>SELL</Text>
         </TouchableOpacity>
       </View>
+
+      {craftableRecipes.length > 0 && (
+        <View style={styles.craftSection}>
+          <Text style={styles.craftSectionLabel}>SPECIAL TOWER RECIPES READY</Text>
+          {craftableRecipes.map((r) => (
+            <TouchableOpacity
+              key={r.id}
+              style={[styles.craftBtn, { borderColor: r.accent }]}
+              onPress={() => onCraft(r.id)}
+              activeOpacity={0.85}
+            >
+              <View style={[styles.craftIcon, { backgroundColor: r.color, borderColor: r.accent }]}>
+                <Text style={styles.specialIconStar}>★</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.craftBtnName}>{r.name}</Text>
+                <Text style={styles.craftBtnDesc}>{r.description}</Text>
+              </View>
+              <Text style={styles.craftBtnArrow}>▶</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </>
   );
 }
@@ -1148,10 +1707,19 @@ function step(dt, s, onEnd) {
   }
 
   for (const t of s.towers) {
-    if (t.kind !== 'gem') continue;
+    if (t.kind === 'stone') continue;
     t.cooldown = Math.max(0, t.cooldown - dt);
     if (t.cooldown > 0) continue;
-    const stats = gemStats(t.gemType, t.tier);
+    let stats;
+    if (t.kind === 'gem') {
+      stats = gemStats(t.gemType, t.tier);
+    } else if (t.kind === 'special') {
+      const recipe = SPECIAL_RECIPES.find((r) => r.id === t.specialId);
+      if (!recipe) continue;
+      stats = { ...recipe.stats, color: recipe.accent || recipe.color, name: recipe.name };
+    } else {
+      continue;
+    }
     const inRange = [];
     for (const e of s.enemies) {
       if (e.hp <= 0) continue;
@@ -1213,12 +1781,20 @@ function step(dt, s, onEnd) {
 
   s.projectiles = s.projectiles.filter((p) => p.until > s.time);
 
+  // Greed Aura: any active special tower with goldAura doubles kill gold.
+  const goldAuraActive = s.towers.some((t) => {
+    if (t.kind !== 'special') return false;
+    const r = SPECIAL_RECIPES.find((x) => x.id === t.specialId);
+    return r && r.stats.goldAura;
+  });
+  const goldMul = goldAuraActive ? 2 : 1;
+
   const alive = [];
   for (const e of s.enemies) {
     if (e.hp <= 0) {
       if (e.subPath && e.pathIdx < e.subPath.length) {
         const def = ENEMIES[e.type];
-        s.gold += def.gold;
+        s.gold += def.gold * goldMul;
         s.score += def.gold * 2;
       }
     } else {
@@ -1594,4 +2170,123 @@ const styles = StyleSheet.create({
   },
   modalBtnFull: { flex: 0, marginHorizontal: 0 },
   modalBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 1 },
+
+  // Special towers
+  specialIcon: {
+    width: 36, height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  specialIconStar: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    textShadowColor: '#000a',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+
+  craftSection: {
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#2a335f',
+  },
+  craftSectionLabel: {
+    color: '#ffd166',
+    fontSize: 12,
+    letterSpacing: 1.5,
+    fontWeight: '800',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  craftBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f1530',
+    padding: 10,
+    paddingRight: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1.5,
+  },
+  craftIcon: {
+    width: 32, height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  craftBtnName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  craftBtnDesc: {
+    color: '#9aa3c7',
+    fontSize: 12,
+    marginTop: 1,
+  },
+  craftBtnArrow: {
+    color: '#ffd166',
+    fontSize: 18,
+    fontWeight: '900',
+    marginLeft: 6,
+  },
+
+  // Recipe Book
+  recipeBookCard: {
+    backgroundColor: '#161c33',
+    borderRadius: 18,
+    padding: 0,
+    width: '100%',
+    maxWidth: 480,
+    maxHeight: '85%',
+    borderWidth: 1,
+    borderColor: '#2a335f',
+    overflow: 'hidden',
+  },
+  recipeBookHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a335f',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recipeBookTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 1,
+    flex: 1,
+  },
+  recipeBookList: { paddingHorizontal: 14, paddingVertical: 10 },
+  recipeBookSection: {
+    color: '#ffd166',
+    fontSize: 13,
+    letterSpacing: 2,
+    fontWeight: '800',
+    marginTop: 10,
+    marginBottom: 6,
+    paddingHorizontal: 6,
+  },
+  recipeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f1530',
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+  },
+  recipeRowText: { flex: 1, marginLeft: 10 },
+  recipeRowName: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  recipeRowDesc: { color: '#9aa3c7', fontSize: 11, marginTop: 2 },
+  recipeRowIngredients: { color: '#7c84a8', fontSize: 11, marginTop: 4, fontStyle: 'italic' },
 });
