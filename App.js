@@ -6,20 +6,27 @@ import {
   TouchableOpacity,
   Dimensions,
   SafeAreaView,
+  Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Crystal Maze Defence
+// Crystal Maze Defence — inspired by Gem TD
 //
-// Open-grid tower defense. Enemies spawn at the top, must reach the bottom.
-// You place crystal towers on empty cells — they block movement, so your
-// placements *form the maze*. Enemies always take the shortest path; if your
-// placement would fully wall them off, the placement is rejected.
+// Core loop:
+//   1. Place stones on the grid (25g each). Stones don't attack — they're
+//      walls that shape the enemy maze.
+//   2. Start the wave. Enemies BFS toward the goal, snaking around your towers.
+//   3. When the wave ends, every stone *rolls* into a random Chipped gem of
+//      one of 6 types. Each gem auto-attacks with its own ability.
+//   4. Combine 5 same-type same-tier gems → 1 of the next tier.
+//      Chipped → Flawed → Normal → Flawless → Perfect.
+//
+// Survive all 15 waves. The maze you build matters as much as your rolls.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const COLS = 9;
-const ROWS = 13;
+const COLS = 8;
+const ROWS = 12;
 const SCREEN = Dimensions.get('window');
 const BOARD_MARGIN = 8;
 const TILE = Math.floor((SCREEN.width - BOARD_MARGIN * 2) / COLS);
@@ -30,86 +37,126 @@ const SPAWN = { r: 0, c: Math.floor(COLS / 2) };
 const GOAL = { r: ROWS - 1, c: Math.floor(COLS / 2) };
 
 const STARTING_GOLD = 80;
-const STARTING_LIVES = 15;
+const STARTING_LIVES = 20;
+const STONE_COST = 25;
 
-// ─── Tower types ─────────────────────────────────────────────────────────────
-const TOWERS = {
+// ─── Gem tiers ───────────────────────────────────────────────────────────────
+const TIERS = [
+  { id: 1, name: 'Chipped',  short: 'I',   dmgMul: 1.0,  rangeBonus: 0,   cdMul: 1.0,  sellMul: 0.5 },
+  { id: 2, name: 'Flawed',   short: 'II',  dmgMul: 1.8,  rangeBonus: 0.2, cdMul: 0.95, sellMul: 0.5 },
+  { id: 3, name: 'Normal',   short: 'III', dmgMul: 3.2,  rangeBonus: 0.4, cdMul: 0.9,  sellMul: 0.55 },
+  { id: 4, name: 'Flawless', short: 'IV',  dmgMul: 5.8,  rangeBonus: 0.6, cdMul: 0.85, sellMul: 0.6 },
+  { id: 5, name: 'Perfect',  short: 'V',   dmgMul: 10.5, rangeBonus: 1.0, cdMul: 0.75, sellMul: 0.65 },
+];
+
+const tier = (n) => TIERS[n - 1];
+
+// Sell value at tier = STONE_COST * (5^(tier-1)) * sellMul
+const sellValue = (t) => Math.floor(STONE_COST * Math.pow(5, t - 1) * tier(t).sellMul);
+
+// ─── Gem types ───────────────────────────────────────────────────────────────
+const GEMS = {
+  diamond: {
+    id: 'diamond',
+    name: 'Diamond',
+    color: '#e6f1ff',
+    base: { damage: 5, range: 2.5, cooldown: 1.0 },
+    effect: null,
+    ability: 'High single-target damage',
+  },
   ruby: {
     id: 'ruby',
     name: 'Ruby',
-    glyph: '◆',
     color: '#ff4d6d',
-    cost: 25,
-    damage: 4,
-    range: 2.6,
-    cooldown: 0.7, // seconds between shots
-    effect: null,
-    description: 'Solid damage. Reliable.',
+    base: { damage: 2, range: 2.4, cooldown: 0.6 },
+    effect: { type: 'burn', dps: 3, duration: 2.0 },
+    ability: 'Burn DoT (3 dps, 2s)',
   },
   sapphire: {
     id: 'sapphire',
     name: 'Sapphire',
-    glyph: '◆',
     color: '#4cc9ff',
-    cost: 40,
-    damage: 2,
-    range: 3.2,
-    cooldown: 0.9,
+    base: { damage: 1, range: 3.0, cooldown: 0.8 },
     effect: { type: 'slow', factor: 0.5, duration: 1.4 },
-    description: 'Slows enemies for 1.4s.',
+    ability: 'Slow 50% for 1.4s',
   },
   emerald: {
     id: 'emerald',
     name: 'Emerald',
-    glyph: '◆',
     color: '#5cf28a',
-    cost: 50,
-    damage: 1,
-    range: 2.4,
-    cooldown: 0.4,
-    effect: { type: 'poison', dps: 3, duration: 2.5 },
-    description: 'Fast. Poisons over time.',
+    base: { damage: 3, range: 2.3, cooldown: 0.9 },
+    splash: 1.0,
+    effect: null,
+    ability: 'Splash damage (1.0 radius)',
   },
   topaz: {
     id: 'topaz',
     name: 'Topaz',
-    glyph: '◆',
     color: '#ffd166',
-    cost: 75,
-    damage: 6,
-    range: 2.2,
-    cooldown: 1.1,
-    splash: 1.0, // splash radius in tiles
+    base: { damage: 2, range: 3.0, cooldown: 0.7 },
+    chain: 3,
     effect: null,
-    description: 'Splash damage. Expensive.',
+    ability: 'Chain to 3 targets',
+  },
+  amethyst: {
+    id: 'amethyst',
+    name: 'Amethyst',
+    color: '#b08bff',
+    base: { damage: 1.5, range: 2.5, cooldown: 0.5 },
+    multi: 2,
+    effect: null,
+    ability: 'Fires at 2 nearest enemies',
   },
 };
 
+const GEM_IDS = Object.keys(GEMS);
+
+// Compute scaled stats for a gem at a given tier.
+function gemStats(gemId, t) {
+  const g = GEMS[gemId];
+  const ti = tier(t);
+  return {
+    damage: g.base.damage * ti.dmgMul,
+    range: g.base.range + ti.rangeBonus,
+    cooldown: g.base.cooldown * ti.cdMul,
+    splash: g.splash || 0,
+    chain: g.chain || 0,
+    multi: g.multi || 0,
+    effect: g.effect ? { ...g.effect, dps: g.effect.dps ? g.effect.dps * ti.dmgMul : undefined } : null,
+    color: g.color,
+    name: g.name,
+  };
+}
+
 // ─── Enemy types ─────────────────────────────────────────────────────────────
 const ENEMIES = {
-  grunt:  { hp: 14, speed: 1.6, gold: 4,  color: '#c4b9ff', size: 0.55 },
-  runner: { hp: 8,  speed: 3.2, gold: 5,  color: '#ffd166', size: 0.45 },
-  tank:   { hp: 60, speed: 0.9, gold: 14, color: '#7d8aa8', size: 0.7  },
-  swarm:  { hp: 4,  speed: 2.4, gold: 2,  color: '#ff8fab', size: 0.35 },
+  grunt:  { hp: 18,  speed: 1.6, gold: 4,  color: '#c4b9ff', size: 0.55 },
+  runner: { hp: 10,  speed: 3.2, gold: 5,  color: '#ffd166', size: 0.45 },
+  tank:   { hp: 80,  speed: 0.9, gold: 14, color: '#7d8aa8', size: 0.7  },
+  swarm:  { hp: 6,   speed: 2.4, gold: 2,  color: '#ff8fab', size: 0.35 },
+  boss:   { hp: 380, speed: 1.0, gold: 50, color: '#ff4d6d', size: 0.8  },
 };
 
 // ─── Wave plan ───────────────────────────────────────────────────────────────
 const WAVES = [
-  { spawns: [['grunt', 8, 0.6]] },
-  { spawns: [['grunt', 12, 0.5]] },
-  { spawns: [['grunt', 8, 0.5], ['runner', 5, 0.4]] },
-  { spawns: [['grunt', 14, 0.45], ['runner', 6, 0.4]] },
-  { spawns: [['runner', 14, 0.3]] },
-  { spawns: [['grunt', 10, 0.4], ['tank', 2, 1.5]] },
-  { spawns: [['swarm', 24, 0.18]] },
-  { spawns: [['grunt', 10, 0.35], ['runner', 8, 0.3], ['tank', 3, 1.2]] },
-  { spawns: [['tank', 6, 1.0], ['runner', 12, 0.3]] },
-  { spawns: [['grunt', 18, 0.3], ['tank', 4, 1.0], ['swarm', 30, 0.15]] },
+  { spawns: [['grunt', 6, 0.7]] },
+  { spawns: [['grunt', 10, 0.55]] },
+  { spawns: [['grunt', 8, 0.5], ['runner', 4, 0.5]] },
+  { spawns: [['runner', 12, 0.4]] },
+  { spawns: [['grunt', 8, 0.4], ['tank', 1, 1.0]], boss: false },
+  { spawns: [['swarm', 20, 0.18]] },
+  { spawns: [['grunt', 12, 0.4], ['runner', 6, 0.35]] },
+  { spawns: [['tank', 3, 1.2], ['grunt', 10, 0.45]] },
+  { spawns: [['runner', 16, 0.3], ['swarm', 12, 0.2]] },
+  { spawns: [['boss', 1, 0.5]], boss: true },
+  { spawns: [['grunt', 14, 0.35], ['runner', 10, 0.3]] },
+  { spawns: [['tank', 5, 1.0], ['swarm', 30, 0.15]] },
+  { spawns: [['runner', 24, 0.2]] },
+  { spawns: [['grunt', 16, 0.3], ['tank', 4, 1.0], ['runner', 12, 0.3]] },
+  { spawns: [['boss', 2, 4.0], ['grunt', 20, 0.35], ['swarm', 30, 0.15]], boss: true },
 ];
 
 // ─── BFS pathfinder ──────────────────────────────────────────────────────────
-// grid[r][c] === true means blocked (tower present).
-// Returns array of {r,c} from start to goal inclusive, or null if no path.
 function bfs(grid, start, goal) {
   const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
   const queue = [start];
@@ -121,8 +168,7 @@ function bfs(grid, start, goal) {
       let p = cur;
       while (p.r !== -1) {
         path.push({ r: p.r, c: p.c });
-        const prev = visited[p.r][p.c];
-        p = prev;
+        p = visited[p.r][p.c];
       }
       path.reverse();
       return path;
@@ -147,17 +193,15 @@ function bfs(grid, start, goal) {
 const emptyGrid = () =>
   Array.from({ length: ROWS }, () => Array(COLS).fill(false));
 
+const rollGemType = () => GEM_IDS[Math.floor(Math.random() * GEM_IDS.length)];
+
 // ─── Main App ────────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen, setScreen] = useState('menu'); // menu | game | win | lose
+  const [screen, setScreen] = useState('menu');
   const [finalScore, setFinalScore] = useState(0);
 
   if (screen === 'menu') {
-    return (
-      <MenuScreen
-        onStart={() => setScreen('game')}
-      />
-    );
+    return <MenuScreen onStart={() => setScreen('game')} />;
   }
   if (screen === 'win' || screen === 'lose') {
     return (
@@ -178,20 +222,24 @@ export default function App() {
   );
 }
 
-// ─── Menu ────────────────────────────────────────────────────────────────────
 function MenuScreen({ onStart }) {
   return (
     <SafeAreaView style={styles.menuRoot}>
       <StatusBar style="light" />
       <View style={styles.menuTop}>
-        <Text style={styles.menuCrystal}>◆</Text>
+        <View style={styles.menuCrystalRow}>
+          <Text style={[styles.menuCrystal, { color: '#ff4d6d' }]}>◆</Text>
+          <Text style={[styles.menuCrystal, { color: '#4cc9ff' }]}>◆</Text>
+          <Text style={[styles.menuCrystal, { color: '#5cf28a' }]}>◆</Text>
+        </View>
         <Text style={styles.menuTitle}>Crystal Maze</Text>
         <Text style={styles.menuSubtitle}>D E F E N C E</Text>
       </View>
       <View style={styles.menuMid}>
-        <Text style={styles.menuRule}>Place crystal towers to shape the maze.</Text>
-        <Text style={styles.menuRule}>Enemies always take the shortest path.</Text>
-        <Text style={styles.menuRule}>Survive 10 waves.</Text>
+        <Text style={styles.menuRule}>Place stones to build a maze.</Text>
+        <Text style={styles.menuRule}>Each wave's end rolls them into random gems.</Text>
+        <Text style={styles.menuRule}>Combine 5 of a kind to upgrade.</Text>
+        <Text style={styles.menuRule}>Survive 15 waves.</Text>
       </View>
       <TouchableOpacity style={styles.bigButton} onPress={onStart}>
         <Text style={styles.bigButtonText}>BEGIN</Text>
@@ -227,19 +275,18 @@ function EndScreen({ won, score, onBack }) {
 
 // ─── Game ────────────────────────────────────────────────────────────────────
 function Game({ onEnd }) {
-  // Persistent (across renders) game state lives in a ref so the loop reads
-  // fresh values without re-binding the interval.
   const stateRef = useRef(null);
   if (!stateRef.current) {
     stateRef.current = {
       grid: emptyGrid(),
-      towers: [], // {id,r,c,type, cooldown}
-      enemies: [], // {id,r,c (float), hp, maxHp, type, pathIdx, effects:[{type,factor?,dps?,until}]}
-      projectiles: [], // {id, fromX, fromY, toX, toY, color, until}
+      // tower kinds: 'stone' (no stats yet) | 'gem' (gemType + tier)
+      towers: [], // {id,r,c,kind,gemType?,tier?,cooldown}
+      enemies: [],
+      projectiles: [],
       path: bfs(emptyGrid(), SPAWN, GOAL),
       wave: 0,
       waveActive: false,
-      spawnQueue: [], // {type, atTime}
+      spawnQueue: [],
       time: 0,
       nextEnemyId: 1,
       nextProjectileId: 1,
@@ -248,14 +295,13 @@ function Game({ onEnd }) {
       lives: STARTING_LIVES,
       score: 0,
       speed: 1,
-      selectedTower: 'ruby',
-      pendingPlacement: null, // {r,c} preview
+      inspect: null, // towerId being inspected
+      flash: null, // { text, until }
     };
   }
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
   const force = useCallback(() => setTick((t) => (t + 1) % 1e9), []);
 
-  // Game loop
   useEffect(() => {
     let raf;
     let lastTs = Date.now();
@@ -273,54 +319,108 @@ function Game({ onEnd }) {
 
   const s = stateRef.current;
 
-  const tryPlaceTower = (r, c) => {
-    if (s.grid[r][c]) return; // already a tower
+  const flash = (text) => {
+    s.flash = { text, until: s.time + 1.5 };
+  };
+
+  const tryPlaceStone = (r, c) => {
+    if (s.grid[r][c]) return;
     if ((r === SPAWN.r && c === SPAWN.c) || (r === GOAL.r && c === GOAL.c)) return;
-    // can't place under a live enemy
     for (const e of s.enemies) {
       if (Math.round(e.r) === r && Math.round(e.c) === c) return;
     }
-    const def = TOWERS[s.selectedTower];
-    if (s.gold < def.cost) return;
-    // tentatively place
+    if (s.gold < STONE_COST) {
+      flash('Not enough gold');
+      return;
+    }
     s.grid[r][c] = true;
     const newPath = bfs(s.grid, SPAWN, GOAL);
     if (!newPath) {
       s.grid[r][c] = false;
-      return; // would fully block
+      flash('Would block the path');
+      return;
     }
-    // check each enemy can still reach goal from its current cell
     for (const e of s.enemies) {
       const ep = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
       if (!ep) {
         s.grid[r][c] = false;
+        flash('Would trap an enemy');
         return;
       }
     }
-    s.gold -= def.cost;
+    s.gold -= STONE_COST;
     s.towers.push({
       id: s.nextTowerId++,
       r,
       c,
-      type: s.selectedTower,
+      kind: 'stone',
       cooldown: 0,
     });
     s.path = newPath;
-    // reassign enemy paths
     for (const e of s.enemies) {
-      const ep = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
-      e.subPath = ep;
+      e.subPath = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
       e.pathIdx = 0;
     }
     force();
   };
 
+  const sellTower = (towerId) => {
+    const idx = s.towers.findIndex((t) => t.id === towerId);
+    if (idx < 0) return;
+    const t = s.towers[idx];
+    if (t.kind === 'stone') {
+      s.gold += Math.floor(STONE_COST * 0.5);
+    } else {
+      s.gold += sellValue(t.tier);
+    }
+    s.towers.splice(idx, 1);
+    s.grid[t.r][t.c] = false;
+    s.path = bfs(s.grid, SPAWN, GOAL);
+    for (const e of s.enemies) {
+      e.subPath = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
+      e.pathIdx = 0;
+    }
+    s.inspect = null;
+    force();
+  };
+
+  const tryCombine = (towerId) => {
+    const anchor = s.towers.find((t) => t.id === towerId);
+    if (!anchor || anchor.kind !== 'gem') return;
+    if (anchor.tier >= 5) {
+      flash('Already Perfect');
+      return;
+    }
+    const matches = s.towers.filter(
+      (t) => t.id !== anchor.id && t.kind === 'gem' && t.gemType === anchor.gemType && t.tier === anchor.tier
+    );
+    if (matches.length < 4) {
+      flash(`Need 4 more ${GEMS[anchor.gemType].name} ${tier(anchor.tier).short}`);
+      return;
+    }
+    const consume = matches.slice(0, 4);
+    const ids = new Set(consume.map((t) => t.id));
+    // free cells
+    for (const t of consume) {
+      s.grid[t.r][t.c] = false;
+    }
+    s.towers = s.towers.filter((t) => !ids.has(t.id));
+    anchor.tier += 1;
+    s.path = bfs(s.grid, SPAWN, GOAL);
+    for (const e of s.enemies) {
+      e.subPath = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
+      e.pathIdx = 0;
+    }
+    s.inspect = null;
+    flash(`${GEMS[anchor.gemType].name} ${tier(anchor.tier).short}!`);
+    force();
+  };
+
   const startWave = () => {
-    if (s.waveActive) return;
-    if (s.wave >= WAVES.length) return;
+    if (s.waveActive || s.wave >= WAVES.length) return;
     const w = WAVES[s.wave];
     const queue = [];
-    let t = s.time;
+    let t = s.time + 0.5;
     for (const [type, count, gap] of w.spawns) {
       for (let i = 0; i < count; i++) {
         t += gap;
@@ -333,22 +433,6 @@ function Game({ onEnd }) {
     force();
   };
 
-  const sellTower = (towerId) => {
-    const idx = s.towers.findIndex((t) => t.id === towerId);
-    if (idx < 0) return;
-    const t = s.towers[idx];
-    const def = TOWERS[t.type];
-    s.gold += Math.floor(def.cost * 0.6);
-    s.towers.splice(idx, 1);
-    s.grid[t.r][t.c] = false;
-    s.path = bfs(s.grid, SPAWN, GOAL);
-    for (const e of s.enemies) {
-      e.subPath = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
-      e.pathIdx = 0;
-    }
-    force();
-  };
-
   const toggleSpeed = () => {
     s.speed = s.speed === 1 ? 2 : s.speed === 2 ? 3 : 1;
     force();
@@ -357,13 +441,16 @@ function Game({ onEnd }) {
   const onCellPress = (r, c) => {
     const existing = s.towers.find((t) => t.r === r && t.c === c);
     if (existing) {
-      sellTower(existing.id);
+      s.inspect = existing.id;
+      force();
     } else {
-      tryPlaceTower(r, c);
+      tryPlaceStone(r, c);
     }
   };
 
+  const inspectTower = s.inspect ? s.towers.find((t) => t.id === s.inspect) : null;
   const canStart = !s.waveActive && s.wave < WAVES.length;
+  const flashing = s.flash && s.flash.until > s.time ? s.flash.text : null;
 
   return (
     <SafeAreaView style={styles.gameRoot}>
@@ -390,7 +477,6 @@ function Game({ onEnd }) {
           alignSelf: 'center',
         }}
       >
-        {/* path tint */}
         {s.path && s.path.map((p, i) => (
           <View
             key={`p${i}`}
@@ -405,7 +491,6 @@ function Game({ onEnd }) {
           />
         ))}
 
-        {/* spawn & goal markers */}
         <View
           style={[
             styles.marker,
@@ -423,7 +508,6 @@ function Game({ onEnd }) {
           <Text style={styles.markerText}>◇</Text>
         </View>
 
-        {/* tap layer: invisible touchables per cell (flattened) */}
         {Array.from({ length: ROWS * COLS }).map((_, i) => {
           const r = Math.floor(i / COLS);
           const c = i % COLS;
@@ -443,9 +527,28 @@ function Game({ onEnd }) {
           );
         })}
 
-        {/* towers */}
         {s.towers.map((t) => {
-          const def = TOWERS[t.type];
+          if (t.kind === 'stone') {
+            return (
+              <View
+                key={`tw${t.id}`}
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: t.c * TILE + TILE * 0.15,
+                  top: t.r * TILE + TILE * 0.15,
+                  width: TILE * 0.7,
+                  height: TILE * 0.7,
+                  backgroundColor: '#5a627f',
+                  borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: '#7c84a8',
+                }}
+              />
+            );
+          }
+          const g = GEMS[t.gemType];
+          const tBlock = tier(t.tier);
           return (
             <View
               key={`tw${t.id}`}
@@ -456,26 +559,44 @@ function Game({ onEnd }) {
                 top: t.r * TILE + TILE * 0.1,
                 width: TILE * 0.8,
                 height: TILE * 0.8,
-                backgroundColor: def.color,
-                borderRadius: 6,
-                transform: [{ rotate: '45deg' }],
-                shadowColor: def.color,
-                shadowOpacity: 0.6,
-                shadowRadius: 6,
-                elevation: 4,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
-            />
+            >
+              <View
+                style={{
+                  width: TILE * 0.7,
+                  height: TILE * 0.7,
+                  backgroundColor: g.color,
+                  borderRadius: 4,
+                  transform: [{ rotate: '45deg' }],
+                  shadowColor: g.color,
+                  shadowOpacity: 0.7 + t.tier * 0.05,
+                  shadowRadius: 4 + t.tier,
+                  elevation: 3 + t.tier,
+                  borderWidth: t.tier >= 4 ? 2 : 0,
+                  borderColor: t.tier >= 5 ? '#fff' : '#ffd166',
+                }}
+              />
+              <Text
+                style={{
+                  position: 'absolute',
+                  color: t.tier >= 3 ? '#0b1020' : '#fff',
+                  fontSize: TILE * 0.28,
+                  fontWeight: '900',
+                }}
+              >
+                {tBlock.short}
+              </Text>
+            </View>
           );
         })}
 
-        {/* enemies */}
         {s.enemies.map((e) => {
           const def = ENEMIES[e.type];
           const size = TILE * def.size;
           const slowed = e.effects.some((ef) => ef.type === 'slow');
-          const poisoned = e.effects.some((ef) => ef.type === 'poison');
+          const burning = e.effects.some((ef) => ef.type === 'burn');
           return (
             <View
               key={`e${e.id}`}
@@ -493,7 +614,7 @@ function Game({ onEnd }) {
                   width: size,
                   height: size,
                   borderRadius: size / 2,
-                  backgroundColor: poisoned ? '#5cf28a' : def.color,
+                  backgroundColor: burning ? '#ff8a4d' : def.color,
                   borderWidth: slowed ? 2 : 0,
                   borderColor: '#4cc9ff',
                 }}
@@ -522,7 +643,6 @@ function Game({ onEnd }) {
           );
         })}
 
-        {/* projectiles — center-pivoted beams (RN <0.75 has no transformOrigin) */}
         {s.projectiles.map((p) => {
           const len = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
           const angle = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
@@ -545,40 +665,33 @@ function Game({ onEnd }) {
             />
           );
         })}
+
+        {flashing && (
+          <View pointerEvents="none" style={styles.flashWrap}>
+            <Text style={styles.flashText}>{flashing}</Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.bottomBar}>
-        <View style={styles.towerRow}>
-          {Object.values(TOWERS).map((t) => {
-            const sel = s.selectedTower === t.id;
-            const afford = s.gold >= t.cost;
-            return (
-              <TouchableOpacity
-                key={t.id}
-                onPress={() => {
-                  s.selectedTower = t.id;
-                  force();
-                }}
-                style={[
-                  styles.towerBtn,
-                  sel && styles.towerBtnSel,
-                  !afford && { opacity: 0.4 },
-                ]}
-              >
-                <Text style={[styles.towerGlyph, { color: t.color }]}>◆</Text>
-                <Text style={styles.towerCost}>{t.cost}g</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
         <View style={styles.actionRow}>
+          <View style={styles.stoneInfo}>
+            <View style={styles.stoneIcon} />
+            <View>
+              <Text style={styles.stoneLabel}>STONE</Text>
+              <Text style={styles.stoneCost}>{STONE_COST}g · tap a cell</Text>
+            </View>
+          </View>
           <TouchableOpacity
             style={[styles.actionBtn, !canStart && { opacity: 0.35 }]}
             onPress={canStart ? startWave : undefined}
           >
             <Text style={styles.actionBtnText}>
-              {s.wave >= WAVES.length ? 'DONE' : s.waveActive ? 'IN PROGRESS' : 'NEXT WAVE'}
+              {s.wave >= WAVES.length
+                ? 'DONE'
+                : s.waveActive
+                  ? 'IN PROGRESS'
+                  : `WAVE ${s.wave + 1}`}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.speedBtn} onPress={toggleSpeed}>
@@ -587,14 +700,130 @@ function Game({ onEnd }) {
         </View>
 
         <Text style={styles.tipText}>
-          Tap a cell to place {TOWERS[s.selectedTower].name}. Tap a tower to sell.
+          {s.waveActive
+            ? 'Wave in progress. Place stones to extend the maze.'
+            : 'Tap empty cells to place stones. They roll into gems after each wave.'}
         </Text>
       </View>
+
+      <Modal
+        visible={!!inspectTower}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          s.inspect = null;
+          force();
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            {inspectTower && <InspectContent
+              tower={inspectTower}
+              onSell={() => sellTower(inspectTower.id)}
+              onCombine={() => tryCombine(inspectTower.id)}
+              onClose={() => {
+                s.inspect = null;
+                force();
+              }}
+              boardTowers={s.towers}
+            />}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-// ─── Game step ───────────────────────────────────────────────────────────────
+function InspectContent({ tower, onSell, onCombine, onClose, boardTowers }) {
+  if (tower.kind === 'stone') {
+    return (
+      <>
+        <Text style={styles.modalTitle}>Stone</Text>
+        <Text style={styles.modalSub}>Awaiting the next roll.</Text>
+        <View style={styles.modalRow}>
+          <ModalStat label="Damage" value="—" />
+          <ModalStat label="Range" value="—" />
+          <ModalStat label="Sell" value={`${Math.floor(STONE_COST * 0.5)}g`} />
+        </View>
+        <View style={styles.modalBtnRow}>
+          <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
+            <Text style={styles.modalBtnText}>SELL</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#2a335f' }]} onPress={onClose}>
+            <Text style={styles.modalBtnText}>CLOSE</Text>
+          </TouchableOpacity>
+        </View>
+      </>
+    );
+  }
+  const g = GEMS[tower.gemType];
+  const t = tier(tower.tier);
+  const stats = gemStats(tower.gemType, tower.tier);
+  const matches = boardTowers.filter(
+    (x) => x.id !== tower.id && x.kind === 'gem' && x.gemType === tower.gemType && x.tier === tower.tier
+  ).length;
+  const canCombine = tower.tier < 5 && matches >= 4;
+  return (
+    <>
+      <View style={styles.modalHeaderRow}>
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            backgroundColor: g.color,
+            transform: [{ rotate: '45deg' }],
+            borderRadius: 3,
+            marginRight: 12,
+          }}
+        />
+        <View>
+          <Text style={styles.modalTitle}>
+            {g.name} <Text style={{ color: '#ffd166' }}>{t.short}</Text>
+          </Text>
+          <Text style={styles.modalSub}>{t.name} · {g.ability}</Text>
+        </View>
+      </View>
+      <View style={styles.modalRow}>
+        <ModalStat label="Damage" value={stats.damage.toFixed(1)} />
+        <ModalStat label="Range" value={stats.range.toFixed(1)} />
+        <ModalStat label="CD" value={`${stats.cooldown.toFixed(2)}s`} />
+        <ModalStat label="Sell" value={`${sellValue(tower.tier)}g`} />
+      </View>
+      <Text style={styles.combineHint}>
+        {tower.tier >= 5
+          ? 'Maxed.'
+          : canCombine
+            ? `Can combine — you have ${matches + 1} of these.`
+            : `Need 4 more ${g.name} ${t.short} on the board (you have ${matches}).`}
+      </Text>
+      <View style={styles.modalBtnRow}>
+        <TouchableOpacity
+          style={[styles.modalBtn, { backgroundColor: canCombine ? '#5cf28a' : '#2a335f' }, !canCombine && { opacity: 0.6 }]}
+          onPress={canCombine ? onCombine : undefined}
+        >
+          <Text style={[styles.modalBtnText, canCombine && { color: '#0b1020' }]}>COMBINE</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
+          <Text style={styles.modalBtnText}>SELL</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#2a335f' }]} onPress={onClose}>
+          <Text style={styles.modalBtnText}>CLOSE</Text>
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+}
+
+function ModalStat({ label, value }) {
+  return (
+    <View style={styles.modalStat}>
+      <Text style={styles.modalStatLabel}>{label}</Text>
+      <Text style={styles.modalStatValue}>{value}</Text>
+    </View>
+  );
+}
+
+// ─── Step (game logic) ───────────────────────────────────────────────────────
 function step(dt, s, onEnd) {
   s.time += dt;
 
@@ -620,24 +849,20 @@ function step(dt, s, onEnd) {
   for (const e of s.enemies) {
     if (e.hp <= 0) continue;
     const def = ENEMIES[e.type];
-    // expire effects
     e.effects = e.effects.filter((ef) => ef.until > s.time);
     let speedMul = 1;
     for (const ef of e.effects) {
       if (ef.type === 'slow') speedMul = Math.min(speedMul, ef.factor);
-      if (ef.type === 'poison') e.hp -= ef.dps * dt;
+      if (ef.type === 'burn') e.hp -= ef.dps * dt;
     }
     if (e.hp <= 0) continue;
 
-    // Ensure subPath valid & current
     if (!e.subPath || e.pathIdx >= e.subPath.length) {
       const fresh = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
       if (fresh) {
         e.subPath = fresh;
         e.pathIdx = 0;
-      } else {
-        continue;
-      }
+      } else continue;
     }
     const target = e.subPath[e.pathIdx];
     const dr = target.r - e.r;
@@ -649,7 +874,6 @@ function step(dt, s, onEnd) {
       e.c = target.c;
       e.pathIdx += 1;
       if (e.pathIdx >= e.subPath.length) {
-        // reached goal
         e.hp = -1;
         s.lives -= 1;
       }
@@ -659,54 +883,76 @@ function step(dt, s, onEnd) {
     }
   }
 
-  // Towers fire
-  // Tower center → enemy center, in tile coords; convert to px for projectile.
+  // Towers fire (gems only — stones don't attack)
   for (const t of s.towers) {
+    if (t.kind !== 'gem') continue;
     t.cooldown = Math.max(0, t.cooldown - dt);
     if (t.cooldown > 0) continue;
-    const def = TOWERS[t.type];
-    // Find nearest enemy in range
-    let best = null;
-    let bestDist = Infinity;
+    const stats = gemStats(t.gemType, t.tier);
+    const inRange = [];
     for (const e of s.enemies) {
       if (e.hp <= 0) continue;
       const d = Math.hypot(e.r - t.r, e.c - t.c);
-      if (d <= def.range && d < bestDist) {
-        bestDist = d;
-        best = e;
+      if (d <= stats.range) inRange.push({ e, d });
+    }
+    if (inRange.length === 0) continue;
+    inRange.sort((a, b) => a.d - b.d);
+    t.cooldown = stats.cooldown;
+
+    if (stats.multi) {
+      const targets = inRange.slice(0, stats.multi);
+      for (const { e } of targets) {
+        applyDamage(e, stats, s);
+        s.projectiles.push(makeProjectile(t, e, stats.color, s));
+      }
+    } else if (stats.chain) {
+      let prev = inRange[0].e;
+      applyDamage(prev, stats, s);
+      s.projectiles.push(makeProjectile(t, prev, stats.color, s));
+      let remaining = stats.chain - 1;
+      const hit = new Set([prev.id]);
+      while (remaining > 0) {
+        let best = null;
+        let bestD = Infinity;
+        for (const e of s.enemies) {
+          if (hit.has(e.id) || e.hp <= 0) continue;
+          const d = Math.hypot(e.r - prev.r, e.c - prev.c);
+          if (d <= stats.range && d < bestD) { best = e; bestD = d; }
+        }
+        if (!best) break;
+        applyDamage(best, { ...stats, damage: stats.damage * 0.7 }, s);
+        s.projectiles.push({
+          id: s.nextProjectileId++,
+          fromX: prev.c * TILE + TILE / 2,
+          fromY: prev.r * TILE + TILE / 2,
+          toX: best.c * TILE + TILE / 2,
+          toY: best.r * TILE + TILE / 2,
+          color: stats.color,
+          until: s.time + 0.08,
+        });
+        hit.add(best.id);
+        prev = best;
+        remaining -= 1;
+      }
+    } else {
+      const target = inRange[0].e;
+      applyDamage(target, stats, s);
+      s.projectiles.push(makeProjectile(t, target, stats.color, s));
+      if (stats.splash) {
+        for (const e of s.enemies) {
+          if (e === target || e.hp <= 0) continue;
+          const d = Math.hypot(e.r - target.r, e.c - target.c);
+          if (d <= stats.splash) applyDamage(e, { ...stats, splash: 0, damage: stats.damage * 0.6 }, s);
+        }
       }
     }
-    if (!best) continue;
-    // fire
-    t.cooldown = def.cooldown;
-    applyDamage(best, def, s);
-    if (def.splash) {
-      for (const e of s.enemies) {
-        if (e === best || e.hp <= 0) continue;
-        const d = Math.hypot(e.r - best.r, e.c - best.c);
-        if (d <= def.splash) applyDamage(e, { ...def, splash: 0, damage: def.damage * 0.6 }, s);
-      }
-    }
-    s.projectiles.push({
-      id: s.nextProjectileId++,
-      fromX: t.c * TILE + TILE / 2,
-      fromY: t.r * TILE + TILE / 2,
-      toX: best.c * TILE + TILE / 2,
-      toY: best.r * TILE + TILE / 2,
-      color: def.color,
-      until: s.time + 0.08,
-    });
   }
 
-  // Cull projectiles
   s.projectiles = s.projectiles.filter((p) => p.until > s.time);
 
-  // Resolve deaths & rewards
   const alive = [];
   for (const e of s.enemies) {
     if (e.hp <= 0) {
-      // if reached goal, we already decremented lives and didn't pay gold
-      // distinguish by checking pathIdx
       if (e.subPath && e.pathIdx < e.subPath.length) {
         const def = ENEMIES[e.type];
         s.gold += def.gold;
@@ -718,35 +964,57 @@ function step(dt, s, onEnd) {
   }
   s.enemies = alive;
 
-  // Wave end?
   if (s.waveActive && s.spawnQueue.length === 0 && s.enemies.length === 0) {
     s.waveActive = false;
-    s.gold += 20 + s.wave * 5; // wave bonus
+    // Roll all stones into gems
+    let rolled = 0;
+    for (const t of s.towers) {
+      if (t.kind === 'stone') {
+        t.kind = 'gem';
+        t.gemType = rollGemType();
+        t.tier = 1;
+        t.cooldown = 0;
+        rolled += 1;
+      }
+    }
+    s.gold += 15 + s.wave * 5;
     s.score += 100 + s.wave * 20;
+    if (rolled > 0) {
+      s.flash = { text: `Rolled ${rolled} gem${rolled > 1 ? 's' : ''}!`, until: s.time + 1.8 };
+    }
     if (s.wave >= WAVES.length) {
       onEnd(true, s.score);
     }
   }
 
-  // Lose?
   if (s.lives <= 0) {
     onEnd(false, s.score);
   }
 }
 
-function applyDamage(enemy, towerDef, s) {
-  enemy.hp -= towerDef.damage;
-  if (towerDef.effect) {
-    // refresh effect of same type
-    enemy.effects = enemy.effects.filter((ef) => ef.type !== towerDef.effect.type);
+function makeProjectile(tower, enemy, color, s) {
+  return {
+    id: s.nextProjectileId++,
+    fromX: tower.c * TILE + TILE / 2,
+    fromY: tower.r * TILE + TILE / 2,
+    toX: enemy.c * TILE + TILE / 2,
+    toY: enemy.r * TILE + TILE / 2,
+    color,
+    until: s.time + 0.08,
+  };
+}
+
+function applyDamage(enemy, stats, s) {
+  enemy.hp -= stats.damage;
+  if (stats.effect) {
+    enemy.effects = enemy.effects.filter((ef) => ef.type !== stats.effect.type);
     enemy.effects.push({
-      ...towerDef.effect,
-      until: s.time + towerDef.effect.duration,
+      ...stats.effect,
+      until: s.time + stats.effect.duration,
     });
   }
 }
 
-// ─── HUD bits ────────────────────────────────────────────────────────────────
 function HudStat({ label, value, color }) {
   return (
     <View style={styles.hudStat}>
@@ -756,7 +1024,6 @@ function HudStat({ label, value, color }) {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   menuRoot: {
     flex: 1,
@@ -766,11 +1033,12 @@ const styles = StyleSheet.create({
     paddingTop: 24,
   },
   menuTop: { alignItems: 'center', marginTop: 60 },
-  menuCrystal: { color: '#4cc9ff', fontSize: 96, marginBottom: 8 },
+  menuCrystalRow: { flexDirection: 'row', marginBottom: 8 },
+  menuCrystal: { fontSize: 72, marginHorizontal: 4 },
   menuTitle: { color: '#fff', fontSize: 38, fontWeight: '800', letterSpacing: 1 },
   menuSubtitle: { color: '#9aa3c7', fontSize: 16, letterSpacing: 6, marginTop: 4 },
   menuMid: { alignItems: 'center', paddingHorizontal: 32 },
-  menuRule: { color: '#9aa3c7', fontSize: 14, marginVertical: 4, textAlign: 'center' },
+  menuRule: { color: '#9aa3c7', fontSize: 14, marginVertical: 3, textAlign: 'center' },
   bigButton: {
     backgroundColor: '#4cc9ff',
     paddingHorizontal: 64,
@@ -778,12 +1046,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     marginBottom: 32,
   },
-  bigButtonText: {
-    color: '#0b1020',
-    fontWeight: '800',
-    fontSize: 18,
-    letterSpacing: 4,
-  },
+  bigButtonText: { color: '#0b1020', fontWeight: '800', fontSize: 18, letterSpacing: 4 },
 
   gameRoot: { flex: 1, backgroundColor: '#0b1020' },
   hud: {
@@ -791,7 +1054,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     paddingVertical: 8,
     paddingHorizontal: 8,
-    backgroundColor: '#0b1020',
   },
   hudStat: { alignItems: 'center', minWidth: 60 },
   hudLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 1.5 },
@@ -810,32 +1072,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
   },
-  towerRow: {
+  stoneInfo: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 8,
-  },
-  towerBtn: {
+    alignItems: 'center',
     backgroundColor: '#161c33',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 8,
     borderRadius: 10,
-    alignItems: 'center',
-    minWidth: 60,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    marginRight: 8,
   },
-  towerBtnSel: {
-    borderColor: '#ffd166',
-    backgroundColor: '#1f2750',
+  stoneIcon: {
+    width: 22,
+    height: 22,
+    backgroundColor: '#5a627f',
+    borderRadius: 3,
+    borderWidth: 1,
+    borderColor: '#7c84a8',
+    marginRight: 8,
   },
-  towerGlyph: { fontSize: 22 },
-  towerCost: { color: '#fff', fontSize: 12, marginTop: 2 },
+  stoneLabel: { color: '#fff', fontWeight: '700', fontSize: 12, letterSpacing: 1 },
+  stoneCost: { color: '#9aa3c7', fontSize: 10 },
 
   actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
+    alignItems: 'center',
     marginVertical: 6,
   },
   actionBtn: {
@@ -846,25 +1107,73 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 8,
   },
-  actionBtnText: {
-    color: '#0b1020',
-    fontWeight: '800',
-    fontSize: 14,
-    letterSpacing: 2,
-  },
+  actionBtnText: { color: '#0b1020', fontWeight: '800', fontSize: 13, letterSpacing: 1.5 },
   speedBtn: {
     backgroundColor: '#2a335f',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
   speedBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  tipText: {
-    color: '#7c84a8',
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 4,
+  tipText: { color: '#7c84a8', fontSize: 11, textAlign: 'center', marginTop: 4 },
+
+  flashWrap: {
+    position: 'absolute',
+    top: BOARD_H / 2 - 24,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
+  flashText: {
+    color: '#fff',
+    backgroundColor: '#000b',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 6,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: '#000a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: '#161c33',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderColor: '#2a335f',
+  },
+  modalHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  modalTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  modalSub: { color: '#9aa3c7', fontSize: 12, marginTop: 2 },
+  modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 12,
+    backgroundColor: '#0f1530',
+    borderRadius: 10,
+    paddingVertical: 10,
+  },
+  modalStat: { alignItems: 'center' },
+  modalStatLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 1 },
+  modalStatValue: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  combineHint: { color: '#9aa3c7', fontSize: 12, textAlign: 'center', marginBottom: 12 },
+  modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    marginHorizontal: 4,
+  },
+  modalBtnText: { color: '#fff', fontWeight: '800', fontSize: 12, letterSpacing: 1 },
 });
