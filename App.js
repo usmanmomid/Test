@@ -18,12 +18,11 @@ import {
 //   • Place stones on a large tile grid (25g each). Stones are walls that
 //     shape the enemy maze. They don't attack.
 //   • Start a wave; enemies BFS toward the goal.
-//   • When the wave ends, every stone rolls into a random Chipped (I) gem of
-//     one of 8 types.
+//   • When a wave starts, every stone rolls into a random Rough (I) gem of
+//     one of 8 types (Sapphire, Diamond, Opal, Emerald, Amethyst, Aquamarine,
+//     Ruby, Topaz).
 //   • Combine 5 same-type same-tier gems → 1 of the next tier.
-//     Chipped → Flawed → Normal → Flawless → Perfect.
-//   • Ultimate recipe: 5 different-type Perfect (V) gems → 1 Ultimate Crystal
-//     (massive damage, every ability, max range).
+//     Rough → Clouded → Polished → Brilliant → Pristine → Ascendant.
 //   • The board is larger than the screen — pan with one finger, pinch to zoom.
 //
 // 20 waves with bosses on 10, 15, and 20.
@@ -55,102 +54,100 @@ const STARTING_GOLD = 175;
 const STARTING_LIVES = 25;
 const STONE_COST = 25;
 
-// ─── Gem tiers ───────────────────────────────────────────────────────────────
+// ─── Gem tiers (matched to Roblox CMD: Rough → Ascendant) ───────────────────
 const TIERS = [
-  { id: 1, name: 'Chipped',   short: 'I',   dmgMul: 1.0,  rangeBonus: 0,   cdMul: 1.0,  sellMul: 0.5  },
-  { id: 2, name: 'Flawed',    short: 'II',  dmgMul: 1.8,  rangeBonus: 0.2, cdMul: 0.95, sellMul: 0.5  },
-  { id: 3, name: 'Normal',    short: 'III', dmgMul: 3.2,  rangeBonus: 0.4, cdMul: 0.9,  sellMul: 0.55 },
-  { id: 4, name: 'Flawless',  short: 'IV',  dmgMul: 5.8,  rangeBonus: 0.6, cdMul: 0.85, sellMul: 0.6  },
-  { id: 5, name: 'Perfect',   short: 'V',   dmgMul: 10.5, rangeBonus: 1.0, cdMul: 0.75, sellMul: 0.65 },
-  { id: 6, name: 'Ultimate',  short: '★',   dmgMul: 28,   rangeBonus: 2.0, cdMul: 0.55, sellMul: 0.7  },
+  { id: 1, name: 'Rough',     short: 'I',   dmgMul: 1.0,  rangeBonus: 0,   cdMul: 1.0,  sellMul: 0.5  },
+  { id: 2, name: 'Clouded',   short: 'II',  dmgMul: 2.5,  rangeBonus: 0.2, cdMul: 0.95, sellMul: 0.5  },
+  { id: 3, name: 'Polished',  short: 'III', dmgMul: 6.25, rangeBonus: 0.4, cdMul: 0.9,  sellMul: 0.55 },
+  { id: 4, name: 'Brilliant', short: 'IV',  dmgMul: 15.6, rangeBonus: 0.7, cdMul: 0.85, sellMul: 0.6  },
+  { id: 5, name: 'Pristine',  short: 'V',   dmgMul: 39,   rangeBonus: 1.1, cdMul: 0.75, sellMul: 0.65 },
+  { id: 6, name: 'Ascendant', short: 'VI',  dmgMul: 97,   rangeBonus: 2.0, cdMul: 0.6,  sellMul: 0.7  },
 ];
 const tier = (n) => TIERS[n - 1];
 const sellValue = (t) => Math.floor(STONE_COST * Math.pow(5, t - 1) * tier(t).sellMul);
 
-// ─── Gem types ───────────────────────────────────────────────────────────────
+// ─── Gem types (roles match Roblox CMD) ──────────────────────────────────────
+// P6 Ascendant target stats from Roblox reference:
+//   Sapphire 36 · Diamond 460 · Opal 6 · Emerald 12 · Amethyst 70 ·
+//   Aquamarine 80 · Ruby 150 · Topaz 200
+// Bases are tuned so base × 97 (T6 dmgMul) lands near these.
 const GEMS = {
-  diamond: {
-    id: 'diamond', name: 'Diamond', color: '#e6f1ff',
-    base: { damage: 5, range: 2.6, cooldown: 1.0 },
-    ability: 'High single-target damage',
-  },
-  ruby: {
-    id: 'ruby', name: 'Ruby', color: '#ff4d6d',
-    base: { damage: 2, range: 2.4, cooldown: 0.6 },
-    effect: { type: 'burn', dps: 3, duration: 2.0 },
-    ability: 'Burn DoT (3 dps · 2s)',
-  },
   sapphire: {
     id: 'sapphire', name: 'Sapphire', color: '#4cc9ff',
-    base: { damage: 1, range: 3.0, cooldown: 0.8 },
-    effect: { type: 'slow', factor: 0.5, duration: 1.4 },
-    ability: 'Slow 50% (1.4s)',
+    base: { damage: 0.4, range: 3.2, cooldown: 0.6 },
+    effect: { type: 'slow', factor: 0.35, duration: 1.6 }, // 65% slow
+    ability: 'Slow 65% / control',
   },
-  emerald: {
-    id: 'emerald', name: 'Emerald', color: '#5cf28a',
-    base: { damage: 3, range: 2.3, cooldown: 0.9 },
-    splash: 1.0,
-    ability: 'Splash 1.0 radius',
-  },
-  topaz: {
-    id: 'topaz', name: 'Topaz', color: '#ffd166',
-    base: { damage: 2, range: 3.0, cooldown: 0.7 },
-    chain: 3,
-    ability: 'Chain lightning (3 jumps)',
-  },
-  amethyst: {
-    id: 'amethyst', name: 'Amethyst', color: '#b08bff',
-    base: { damage: 1.5, range: 2.5, cooldown: 0.5 },
-    multi: 2,
-    ability: 'Fires at 2 enemies',
-  },
-  aquamarine: {
-    id: 'aquamarine', name: 'Aquamarine', color: '#7be5d1',
-    base: { damage: 4, range: 3.5, cooldown: 1.1 },
-    ability: 'Long range sniper',
+  diamond: {
+    id: 'diamond', name: 'Diamond', color: '#e6f1ff',
+    base: { damage: 5, range: 2.6, cooldown: 0.7 },
+    ability: 'High raw damage (single target)',
   },
   opal: {
     id: 'opal', name: 'Opal', color: '#ffd4f0',
-    base: { damage: 0.8, range: 2.2, cooldown: 0.22 },
-    ability: 'Frenzy: 4–5 shots/s',
+    base: { damage: 0.1, range: 3.0, cooldown: 1.0 },
+    multi: 2,
+    ability: 'Support · multi-shot · wide range',
+  },
+  emerald: {
+    id: 'emerald', name: 'Emerald', color: '#5cf28a',
+    base: { damage: 0.15, range: 2.4, cooldown: 1.0 },
+    effect: { type: 'burn', dps: 1.3, duration: 5.0 }, // poison DoT
+    ability: 'Poison DoT (5s)',
+  },
+  amethyst: {
+    id: 'amethyst', name: 'Amethyst', color: '#b08bff',
+    base: { damage: 0.7, range: 2.5, cooldown: 0.6 },
+    armorBreak: true, // doubles damage to enemies with armor (tank, boss, mega)
+    ability: 'Armor break · 2× vs tanky',
+  },
+  aquamarine: {
+    id: 'aquamarine', name: 'Aquamarine', color: '#7be5d1',
+    base: { damage: 0.85, range: 2.8, cooldown: 0.3 }, // FAST attacks
+    ability: 'Fast attacks (0.3s rate)',
+  },
+  ruby: {
+    id: 'ruby', name: 'Ruby', color: '#ff4d6d',
+    base: { damage: 1.5, range: 2.6, cooldown: 1.0 },
+    splash: 1.2,
+    ability: 'Splash damage (radius 1.2)',
+  },
+  topaz: {
+    id: 'topaz', name: 'Topaz', color: '#ffd166',
+    base: { damage: 2.0, range: 4.0, cooldown: 0.6 },
+    multi: 3,
+    ability: 'Split-shot (3 targets, long range)',
   },
 };
 const GEM_IDS = Object.keys(GEMS);
 
-function gemStats(gemId, t, ultimate = false) {
+function gemStats(gemId, t) {
   const g = GEMS[gemId];
   const ti = tier(t);
-  const stats = {
+  return {
     damage: g.base.damage * ti.dmgMul,
     range: g.base.range + ti.rangeBonus,
     cooldown: g.base.cooldown * ti.cdMul,
     splash: g.splash || 0,
     chain: g.chain || 0,
     multi: g.multi || 0,
+    armorBreak: g.armorBreak || false,
     effect: g.effect
       ? { ...g.effect, dps: g.effect.dps ? g.effect.dps * ti.dmgMul : undefined }
       : null,
     color: g.color,
     name: g.name,
   };
-  if (ultimate) {
-    // Ultimate Crystal: every ability stacked on top of base stats
-    stats.splash = Math.max(stats.splash, 1.2);
-    stats.chain = Math.max(stats.chain, 4);
-    stats.multi = Math.max(stats.multi, 3);
-    stats.effect = { type: 'burn', dps: 12 * ti.dmgMul, duration: 3.0 };
-  }
-  return stats;
 }
 
 // ─── Enemies & waves ─────────────────────────────────────────────────────────
 const ENEMIES = {
-  grunt:  { hp: 18,   speed: 1.6, gold: 4,  color: '#c4b9ff', size: 0.55 },
-  runner: { hp: 10,   speed: 3.2, gold: 5,  color: '#ffd166', size: 0.45 },
-  tank:   { hp: 90,   speed: 0.9, gold: 16, color: '#7d8aa8', size: 0.7  },
-  swarm:  { hp: 6,    speed: 2.4, gold: 2,  color: '#ff8fab', size: 0.35 },
-  boss:   { hp: 480,  speed: 1.0, gold: 70, color: '#ff4d6d', size: 0.9  },
-  mega:   { hp: 1500, speed: 1.1, gold: 200, color: '#ff2244', size: 1.1 },
+  grunt:  { hp: 18,   speed: 1.6, gold: 4,  color: '#c4b9ff', size: 0.55, armored: false },
+  runner: { hp: 10,   speed: 3.2, gold: 5,  color: '#ffd166', size: 0.45, armored: false },
+  tank:   { hp: 90,   speed: 0.9, gold: 16, color: '#7d8aa8', size: 0.7,  armored: true  },
+  swarm:  { hp: 6,    speed: 2.4, gold: 2,  color: '#ff8fab', size: 0.35, armored: false },
+  boss:   { hp: 480,  speed: 1.0, gold: 70, color: '#ff4d6d', size: 0.9,  armored: true  },
+  mega:   { hp: 1500, speed: 1.1, gold: 200, color: '#ff2244', size: 1.1, armored: true  },
 };
 
 const WAVES = [
@@ -216,76 +213,170 @@ const emptyGrid = () =>
 const rollGemType = () => GEM_IDS[Math.floor(Math.random() * GEM_IDS.length)];
 
 // ─── App ─────────────────────────────────────────────────────────────────────
+// Top-level shell: holds match stats and routes between Lobby / Game / End.
+// Stats live in React state — persisted across runs of the same session, but
+// NOT across app restarts. AsyncStorage persistence is a planned add-on.
 export default function App() {
-  const [screen, setScreen] = useState('menu');
-  const [finalScore, setFinalScore] = useState(0);
+  const [screen, setScreen] = useState('lobby');
+  const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0 });
+  const [stats, setStats] = useState({
+    bestScore: 0,
+    bestWave: 0,
+    gamesPlayed: 0,
+    wins: 0,
+  });
 
-  if (screen === 'menu') return <MenuScreen onStart={() => setScreen('game')} />;
-  if (screen === 'win' || screen === 'lose')
+  const recordResult = (won, score, waveReached) => {
+    setLastResult({ won, score, waveReached });
+    setStats((prev) => ({
+      bestScore: Math.max(prev.bestScore, score),
+      bestWave: Math.max(prev.bestWave, waveReached),
+      gamesPlayed: prev.gamesPlayed + 1,
+      wins: prev.wins + (won ? 1 : 0),
+    }));
+    setScreen(won ? 'win' : 'lose');
+  };
+
+  if (screen === 'lobby') {
+    return <LobbyScreen stats={stats} onStartSolo={() => setScreen('game')} />;
+  }
+  if (screen === 'win' || screen === 'lose') {
     return (
       <EndScreen
         won={screen === 'win'}
-        score={finalScore}
-        onBack={() => setScreen('menu')}
+        score={lastResult.score}
+        waveReached={lastResult.waveReached}
+        stats={stats}
+        onPlayAgain={() => setScreen('game')}
+        onLobby={() => setScreen('lobby')}
       />
     );
-  return (
-    <Game
-      onEnd={(won, score) => {
-        setFinalScore(score);
-        setScreen(won ? 'win' : 'lose');
-      }}
-    />
-  );
+  }
+  return <Game onEnd={recordResult} />;
 }
 
-function MenuScreen({ onStart }) {
+// ─── Lobby (mobile home screen) ──────────────────────────────────────────────
+function LobbyScreen({ stats, onStartSolo }) {
   return (
-    <SafeAreaView style={styles.menuRoot}>
+    <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.menuTop}>
-        <View style={styles.menuCrystalRow}>
-          <Text style={[styles.menuCrystal, { color: '#ff4d6d' }]}>◆</Text>
-          <Text style={[styles.menuCrystal, { color: '#4cc9ff' }]}>◆</Text>
-          <Text style={[styles.menuCrystal, { color: '#5cf28a' }]}>◆</Text>
+
+      <View style={styles.lobbyHeader}>
+        <View style={styles.lobbyCrystalRow}>
+          <Text style={[styles.lobbyCrystal, { color: '#ff4d6d' }]}>◆</Text>
+          <Text style={[styles.lobbyCrystal, { color: '#4cc9ff' }]}>◆</Text>
+          <Text style={[styles.lobbyCrystal, { color: '#5cf28a' }]}>◆</Text>
         </View>
-        <Text style={styles.menuTitle}>Crystal Maze</Text>
-        <Text style={styles.menuSubtitle}>D E F E N C E</Text>
+        <Text style={styles.lobbyTitle}>Crystal Maze</Text>
+        <Text style={styles.lobbySubtitle}>D E F E N C E</Text>
       </View>
-      <View style={styles.menuMid}>
-        <Text style={styles.menuRule}>Place stones. They roll into random crystals each wave.</Text>
-        <Text style={styles.menuRule}>Combine 5 of the same to upgrade.</Text>
-        <Text style={styles.menuRule}>5 different Perfect crystals → Ultimate.</Text>
-        <Text style={styles.menuRule}>Pinch to zoom · drag to pan.</Text>
-        <Text style={styles.menuRule}>Survive 20 waves.</Text>
+
+      <View style={styles.statsCard}>
+        <Text style={styles.statsCardLabel}>YOUR STATS</Text>
+        <View style={styles.statsRow}>
+          <StatTile label="BEST SCORE" value={stats.bestScore} color="#ffd166" />
+          <StatTile label="HIGHEST WAVE" value={`${stats.bestWave}/20`} color="#4cc9ff" />
+        </View>
+        <View style={styles.statsRow}>
+          <StatTile label="GAMES" value={stats.gamesPlayed} color="#fff" />
+          <StatTile label="WINS" value={stats.wins} color="#5cf28a" />
+        </View>
+        {stats.gamesPlayed === 0 && (
+          <Text style={styles.statsHint}>
+            No games yet. Tap SOLO to play your first match.
+          </Text>
+        )}
       </View>
-      <TouchableOpacity style={styles.bigButton} onPress={onStart}>
-        <Text style={styles.bigButtonText}>BEGIN</Text>
-      </TouchableOpacity>
-      <View style={{ height: 24 }} />
+
+      <View style={styles.modeList}>
+        <TouchableOpacity style={styles.modeBtnPrimary} onPress={onStartSolo} activeOpacity={0.85}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modeBtnTitlePrimary}>SOLO</Text>
+            <Text style={styles.modeBtnSubPrimary}>Defend 20 waves on your own</Text>
+          </View>
+          <Text style={styles.modeBtnArrow}>▶</Text>
+        </TouchableOpacity>
+
+        <View style={styles.modeBtnLocked}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modeBtnTitleLocked}>QUICK MATCH</Text>
+            <Text style={styles.modeBtnSubLocked}>1v1 race · matchmaking · coming soon</Text>
+          </View>
+          <Text style={styles.modeBtnLock}>🔒</Text>
+        </View>
+
+        <View style={styles.modeBtnLocked}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modeBtnTitleLocked}>CO-OP (2–4)</Text>
+            <Text style={styles.modeBtnSubLocked}>Defend with friends · coming soon</Text>
+          </View>
+          <Text style={styles.modeBtnLock}>🔒</Text>
+        </View>
+      </View>
+
+      <View style={styles.lobbyFooter}>
+        <TouchableOpacity style={styles.footerBtn} activeOpacity={0.7}>
+          <Text style={styles.footerIcon}>⚙</Text>
+          <Text style={styles.footerLabel}>SETTINGS</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerBtn} activeOpacity={0.7}>
+          <Text style={styles.footerIcon}>?</Text>
+          <Text style={styles.footerLabel}>HOW TO PLAY</Text>
+        </TouchableOpacity>
+        <View style={styles.footerBtn}>
+          <Text style={styles.footerVersion}>v0.3</Text>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
-function EndScreen({ won, score, onBack }) {
+function StatTile({ label, value, color }) {
   return (
-    <SafeAreaView style={styles.menuRoot}>
+    <View style={styles.statTile}>
+      <Text style={styles.statTileLabel}>{label}</Text>
+      <Text style={[styles.statTileValue, { color }]}>{value}</Text>
+    </View>
+  );
+}
+
+function EndScreen({ won, score, waveReached, stats, onPlayAgain, onLobby }) {
+  const newBest = score > 0 && score === stats.bestScore;
+  return (
+    <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.menuTop}>
-        <Text style={[styles.menuCrystal, won ? { color: '#5cf28a' } : { color: '#ff4d6d' }]}>
+      <View style={styles.lobbyHeader}>
+        <Text style={[styles.lobbyCrystal, won ? { color: '#5cf28a' } : { color: '#ff4d6d' }]}>
           {won ? '★' : '✦'}
         </Text>
-        <Text style={styles.menuTitle}>{won ? 'Victory' : 'Defeated'}</Text>
-        <Text style={styles.menuSubtitle}>SCORE  {score}</Text>
-      </View>
-      <View style={styles.menuMid}>
-        <Text style={styles.menuRule}>
-          {won ? 'The crystals shine on.' : 'The maze has fallen.'}
+        <Text style={styles.lobbyTitle}>{won ? 'Victory' : 'Defeated'}</Text>
+        <Text style={styles.lobbySubtitle}>
+          {won ? 'The crystals shine on' : `Fell on wave ${waveReached}`}
         </Text>
       </View>
-      <TouchableOpacity style={styles.bigButton} onPress={onBack}>
-        <Text style={styles.bigButtonText}>RETURN</Text>
-      </TouchableOpacity>
+
+      <View style={styles.statsCard}>
+        <Text style={styles.statsCardLabel}>THIS RUN</Text>
+        <View style={styles.statsRow}>
+          <StatTile label="SCORE" value={score} color="#ffd166" />
+          <StatTile label="WAVE REACHED" value={`${waveReached}/20`} color="#4cc9ff" />
+        </View>
+        {newBest && <Text style={styles.newBestText}>★ NEW BEST SCORE ★</Text>}
+      </View>
+
+      <View style={styles.modeList}>
+        <TouchableOpacity style={styles.modeBtnPrimary} onPress={onPlayAgain} activeOpacity={0.85}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modeBtnTitlePrimary}>PLAY AGAIN</Text>
+            <Text style={styles.modeBtnSubPrimary}>Another round of 20 waves</Text>
+          </View>
+          <Text style={styles.modeBtnArrow}>▶</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.modeBtnSecondary} onPress={onLobby} activeOpacity={0.85}>
+          <Text style={styles.modeBtnTitleSecondary}>BACK TO LOBBY</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={{ height: 24 }} />
     </SafeAreaView>
   );
@@ -474,7 +565,7 @@ function Game({ onEnd }) {
     const anchor = s.towers.find((t) => t.id === towerId);
     if (!anchor || anchor.kind !== 'gem') return;
     if (anchor.tier >= 6) {
-      flash('Already Ultimate');
+      flash('Already Ascendant');
       return;
     }
     const matches = s.towers.filter(
@@ -482,8 +573,7 @@ function Game({ onEnd }) {
         t.id !== anchor.id &&
         t.kind === 'gem' &&
         t.gemType === anchor.gemType &&
-        t.tier === anchor.tier &&
-        !t.ultimate
+        t.tier === anchor.tier
     );
     if (matches.length < 4) {
       flash(`Need 4 more ${GEMS[anchor.gemType].name} ${tier(anchor.tier).short}`);
@@ -500,42 +590,11 @@ function Game({ onEnd }) {
       e.pathIdx = 0;
     }
     s.inspect = null;
-    flash(`${GEMS[anchor.gemType].name} ${tier(anchor.tier).short}!`);
-    force();
-  };
-
-  const tryUltimate = (towerId) => {
-    const anchor = s.towers.find((t) => t.id === towerId);
-    if (!anchor || anchor.kind !== 'gem' || anchor.tier !== 5 || anchor.ultimate) return;
-    // need 4 more Perfect gems of 4 different types (none matching anchor)
-    const perfects = s.towers.filter(
-      (t) => t.id !== anchor.id && t.kind === 'gem' && t.tier === 5 && !t.ultimate
-    );
-    const distinctTypes = new Set();
-    const pick = [];
-    for (const p of perfects) {
-      if (p.gemType === anchor.gemType) continue;
-      if (distinctTypes.has(p.gemType)) continue;
-      distinctTypes.add(p.gemType);
-      pick.push(p);
-      if (pick.length === 4) break;
+    if (anchor.tier === 6) {
+      flash(`${GEMS[anchor.gemType].name} ASCENDANT!`);
+    } else {
+      flash(`${GEMS[anchor.gemType].name} ${tier(anchor.tier).short}!`);
     }
-    if (pick.length < 4) {
-      flash('Need 4 more different Perfect crystals');
-      return;
-    }
-    const ids = new Set(pick.map((t) => t.id));
-    for (const t of pick) s.grid[t.r][t.c] = false;
-    s.towers = s.towers.filter((t) => !ids.has(t.id));
-    anchor.tier = 6;
-    anchor.ultimate = true;
-    s.path = bfs(s.grid, SPAWN, GOAL);
-    for (const e of s.enemies) {
-      e.subPath = bfs(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL);
-      e.pathIdx = 0;
-    }
-    s.inspect = null;
-    flash('ULTIMATE CRYSTAL!');
     force();
   };
 
@@ -712,41 +771,74 @@ function Game({ onEnd }) {
             }
             const g = GEMS[t.gemType];
             const tBlock = tier(t.tier);
+            const isAscendant = t.tier === 6;
             return (
               <View
                 key={`tw${t.id}`}
                 pointerEvents="none"
                 style={{
                   position: 'absolute',
-                  left: t.c * TILE + TILE * 0.1,
-                  top: t.r * TILE + TILE * 0.1,
-                  width: TILE * 0.8,
-                  height: TILE * 0.8,
+                  left: t.c * TILE,
+                  top: t.r * TILE,
+                  width: TILE,
+                  height: TILE,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
+                {/* outer halo (visible from tier 3+) */}
+                {t.tier >= 3 && (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      width: TILE * (0.85 + t.tier * 0.04),
+                      height: TILE * (0.85 + t.tier * 0.04),
+                      borderRadius: TILE,
+                      backgroundColor: g.color,
+                      opacity: 0.15 + t.tier * 0.05,
+                    }}
+                  />
+                )}
+                {/* gem body */}
                 <View
                   style={{
                     width: TILE * 0.7,
                     height: TILE * 0.7,
-                    backgroundColor: t.ultimate ? '#fff' : g.color,
-                    borderRadius: 4,
+                    backgroundColor: g.color,
+                    borderRadius: 5,
                     transform: [{ rotate: '45deg' }],
-                    shadowColor: t.ultimate ? '#fff' : g.color,
-                    shadowOpacity: 0.7 + t.tier * 0.05,
+                    shadowColor: g.color,
+                    shadowOpacity: 0.9,
                     shadowRadius: 4 + t.tier,
+                    shadowOffset: { width: 0, height: 0 },
                     elevation: 3 + t.tier,
-                    borderWidth: t.tier >= 4 ? 2 : 0,
-                    borderColor: t.ultimate ? '#ffd166' : t.tier >= 5 ? '#fff' : '#ffd166',
+                    borderWidth: isAscendant ? 2 : t.tier >= 4 ? 1.5 : 0,
+                    borderColor: isAscendant ? '#ffd166' : '#fff',
                   }}
                 />
+                {/* inner highlight */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    width: TILE * 0.18,
+                    height: TILE * 0.18,
+                    borderRadius: TILE,
+                    backgroundColor: '#fff',
+                    opacity: 0.55,
+                    top: TILE * 0.22,
+                    left: TILE * 0.22,
+                  }}
+                />
+                {/* tier label */}
                 <Text
                   style={{
                     position: 'absolute',
-                    color: t.ultimate ? '#0b1020' : t.tier >= 3 ? '#0b1020' : '#fff',
-                    fontSize: TILE * 0.28,
+                    color: t.tier >= 3 ? '#0b1020' : '#fff',
+                    fontSize: TILE * 0.26,
                     fontWeight: '900',
+                    textShadowColor: '#fff8',
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 1,
                   }}
                 >
                   {tBlock.short}
@@ -890,12 +982,18 @@ function Game({ onEnd }) {
           onPress={() => { s.inspect = null; force(); }}
         >
           <Pressable style={styles.modalCard} onPress={() => {}}>
+            <TouchableOpacity
+              style={styles.modalCloseX}
+              onPress={() => { s.inspect = null; force(); }}
+              hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            >
+              <Text style={styles.modalCloseXText}>✕</Text>
+            </TouchableOpacity>
             {inspectTower && (
               <InspectContent
                 tower={inspectTower}
                 onSell={() => sellTower(inspectTower.id)}
                 onCombine={() => tryCombine(inspectTower.id)}
-                onUltimate={() => tryUltimate(inspectTower.id)}
                 onClose={() => { s.inspect = null; force(); }}
                 boardTowers={s.towers}
               />
@@ -907,7 +1005,7 @@ function Game({ onEnd }) {
   );
 }
 
-function InspectContent({ tower, onSell, onCombine, onUltimate, onClose, boardTowers }) {
+function InspectContent({ tower, onSell, onCombine, onClose, boardTowers }) {
   if (tower.kind === 'stone') {
     return (
       <>
@@ -918,94 +1016,68 @@ function InspectContent({ tower, onSell, onCombine, onUltimate, onClose, boardTo
           <ModalStat label="Range" value="—" />
           <ModalStat label="Sell" value={`${Math.floor(STONE_COST * 0.5)}g`} />
         </View>
-        <View style={styles.modalBtnRow}>
-          <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
-            <Text style={styles.modalBtnText}>SELL</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#2a335f' }]} onPress={onClose}>
-            <Text style={styles.modalBtnText}>CLOSE</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={[styles.modalBtn, styles.modalBtnFull, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
+          <Text style={styles.modalBtnText}>SELL</Text>
+        </TouchableOpacity>
       </>
     );
   }
   const g = GEMS[tower.gemType];
   const t = tier(tower.tier);
-  const stats = gemStats(tower.gemType, tower.tier, tower.ultimate);
+  const stats = gemStats(tower.gemType, tower.tier);
   const matches = boardTowers.filter(
-    (x) => x.id !== tower.id && x.kind === 'gem' && x.gemType === tower.gemType && x.tier === tower.tier && !x.ultimate
+    (x) => x.id !== tower.id && x.kind === 'gem' && x.gemType === tower.gemType && x.tier === tower.tier
   ).length;
-  const canCombine = !tower.ultimate && tower.tier < 5 && matches >= 4;
-  const perfectsDifferent = !tower.ultimate && tower.tier === 5
-    ? new Set(
-        boardTowers
-          .filter((x) => x.id !== tower.id && x.kind === 'gem' && x.tier === 5 && !x.ultimate && x.gemType !== tower.gemType)
-          .map((x) => x.gemType)
-      ).size
-    : 0;
-  const canUltimate = !tower.ultimate && tower.tier === 5 && perfectsDifferent >= 4;
+  const canCombine = tower.tier < 6 && matches >= 4;
+  const nextTierName = tower.tier < 6 ? tier(tower.tier + 1).name : null;
   return (
     <>
       <View style={styles.modalHeaderRow}>
         <View
           style={{
-            width: 28, height: 28,
-            backgroundColor: tower.ultimate ? '#fff' : g.color,
+            width: 32, height: 32,
+            backgroundColor: g.color,
             transform: [{ rotate: '45deg' }],
-            borderRadius: 3,
-            marginRight: 12,
-            borderWidth: tower.ultimate ? 2 : 0,
-            borderColor: '#ffd166',
+            borderRadius: 4,
+            marginRight: 14,
+            borderWidth: tower.tier >= 5 ? 2 : 0,
+            borderColor: tower.tier === 6 ? '#fff' : '#ffd166',
+            shadowColor: g.color,
+            shadowOpacity: 0.9,
+            shadowRadius: 6,
           }}
         />
         <View style={{ flex: 1 }}>
           <Text style={styles.modalTitle}>
-            {tower.ultimate ? 'Ultimate ' : ''}{g.name}{' '}
-            <Text style={{ color: '#ffd166' }}>{t.short}</Text>
+            {g.name} <Text style={{ color: '#ffd166' }}>{t.short}</Text>
           </Text>
           <Text style={styles.modalSub}>
-            {t.name}{tower.ultimate ? ' · all abilities' : ' · ' + g.ability}
+            {t.name} · {g.ability}
           </Text>
         </View>
       </View>
       <View style={styles.modalRow}>
-        <ModalStat label="Damage" value={stats.damage.toFixed(1)} />
-        <ModalStat label="Range" value={stats.range.toFixed(1)} />
-        <ModalStat label="CD" value={`${stats.cooldown.toFixed(2)}s`} />
-        <ModalStat label="Sell" value={`${sellValue(tower.tier)}g`} />
+        <ModalStat label="DAMAGE" value={stats.damage < 10 ? stats.damage.toFixed(1) : Math.round(stats.damage)} />
+        <ModalStat label="RANGE" value={stats.range.toFixed(1)} />
+        <ModalStat label="RATE" value={`${stats.cooldown.toFixed(2)}s`} />
+        <ModalStat label="SELL" value={`${sellValue(tower.tier)}g`} />
       </View>
       <Text style={styles.combineHint}>
-        {tower.ultimate
-          ? 'Ultimate — maxed.'
-          : tower.tier === 5
-            ? canUltimate
-              ? `Can fuse with 4 different Perfect crystals → Ultimate.`
-              : `Perfect. Combine with 4 OTHER Perfect types for Ultimate (have ${perfectsDifferent}/4).`
-            : canCombine
-              ? `Can combine — you have ${matches + 1} of these.`
-              : `Need 4 more ${g.name} ${t.short} on the board (you have ${matches}).`}
+        {tower.tier === 6
+          ? 'Ascendant — fully ascended.'
+          : canCombine
+            ? `Combine 5 ${g.name} ${t.short} → 1 ${g.name} ${nextTierName}.`
+            : `Need 4 more ${g.name} ${t.short} on the board (you have ${matches}).`}
       </Text>
       <View style={styles.modalBtnRow}>
-        {canUltimate ? (
-          <TouchableOpacity
-            style={[styles.modalBtn, { backgroundColor: '#ffd166' }]}
-            onPress={onUltimate}
-          >
-            <Text style={[styles.modalBtnText, { color: '#0b1020' }]}>ULTIMATE</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[styles.modalBtn, { backgroundColor: canCombine ? '#5cf28a' : '#2a335f' }, !canCombine && { opacity: 0.6 }]}
-            onPress={canCombine ? onCombine : undefined}
-          >
-            <Text style={[styles.modalBtnText, canCombine && { color: '#0b1020' }]}>COMBINE</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[styles.modalBtn, { backgroundColor: canCombine ? '#5cf28a' : '#2a335f' }, !canCombine && { opacity: 0.55 }]}
+          onPress={canCombine ? onCombine : undefined}
+        >
+          <Text style={[styles.modalBtnText, canCombine && { color: '#0b1020' }]}>COMBINE</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#ff4d6d' }]} onPress={onSell}>
           <Text style={styles.modalBtnText}>SELL</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#2a335f' }]} onPress={onClose}>
-          <Text style={styles.modalBtnText}>CLOSE</Text>
         </TouchableOpacity>
       </View>
     </>
@@ -1079,7 +1151,7 @@ function step(dt, s, onEnd) {
     if (t.kind !== 'gem') continue;
     t.cooldown = Math.max(0, t.cooldown - dt);
     if (t.cooldown > 0) continue;
-    const stats = gemStats(t.gemType, t.tier, t.ultimate);
+    const stats = gemStats(t.gemType, t.tier);
     const inRange = [];
     for (const e of s.enemies) {
       if (e.hp <= 0) continue;
@@ -1161,11 +1233,11 @@ function step(dt, s, onEnd) {
     s.score += 100 + s.wave * 20;
     s.flash = { text: `Wave ${s.wave} cleared! +${20 + s.wave * 6}g`, until: s.time + 1.8 };
     if (s.wave >= WAVES.length) {
-      onEnd(true, s.score);
+      onEnd(true, s.score, s.wave);
     }
   }
 
-  if (s.lives <= 0) onEnd(false, s.score);
+  if (s.lives <= 0) onEnd(false, s.score, s.wave);
 }
 
 function makeProjectile(tower, enemy, color, s) {
@@ -1181,7 +1253,9 @@ function makeProjectile(tower, enemy, color, s) {
 }
 
 function applyDamage(enemy, stats, s) {
-  enemy.hp -= stats.damage;
+  const def = ENEMIES[enemy.type];
+  const armorMul = stats.armorBreak && def.armored ? 2.0 : 1.0;
+  enemy.hp -= stats.damage * armorMul;
   if (stats.effect) {
     enemy.effects = enemy.effects.filter((ef) => ef.type !== stats.effect.type);
     enemy.effects.push({ ...stats.effect, until: s.time + stats.effect.duration });
@@ -1198,67 +1272,326 @@ function HudStat({ label, value, color }) {
 }
 
 const styles = StyleSheet.create({
-  menuRoot: { flex: 1, backgroundColor: '#0b1020', alignItems: 'center', justifyContent: 'space-between', paddingTop: 24 },
-  menuTop: { alignItems: 'center', marginTop: 60 },
-  menuCrystalRow: { flexDirection: 'row', marginBottom: 8 },
-  menuCrystal: { fontSize: 72, marginHorizontal: 4 },
-  menuTitle: { color: '#fff', fontSize: 38, fontWeight: '800', letterSpacing: 1 },
-  menuSubtitle: { color: '#9aa3c7', fontSize: 16, letterSpacing: 6, marginTop: 4 },
-  menuMid: { alignItems: 'center', paddingHorizontal: 32 },
-  menuRule: { color: '#9aa3c7', fontSize: 13, marginVertical: 3, textAlign: 'center' },
-  bigButton: { backgroundColor: '#4cc9ff', paddingHorizontal: 64, paddingVertical: 16, borderRadius: 999, marginBottom: 32 },
-  bigButtonText: { color: '#0b1020', fontWeight: '800', fontSize: 18, letterSpacing: 4 },
+  // ── Lobby ────────────────────────────────────────────────────────────────
+  lobbyRoot: {
+    flex: 1,
+    backgroundColor: '#0b1020',
+    paddingHorizontal: 18,
+    paddingTop: 24,
+    paddingBottom: 12,
+    justifyContent: 'space-between',
+  },
+  lobbyHeader: {
+    alignItems: 'center',
+    marginTop: 32,
+  },
+  lobbyCrystalRow: { flexDirection: 'row', marginBottom: 8 },
+  lobbyCrystal: {
+    fontSize: 64,
+    marginHorizontal: 6,
+    textShadowColor: '#4cc9ff60',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 12,
+  },
+  lobbyTitle: {
+    color: '#fff',
+    fontSize: 38,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textShadowColor: '#4cc9ff80',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
+  },
+  lobbySubtitle: {
+    color: '#9aa3c7',
+    fontSize: 14,
+    letterSpacing: 8,
+    marginTop: 4,
+  },
 
+  statsCard: {
+    backgroundColor: '#161c33',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#2a335f',
+  },
+  statsCardLabel: {
+    color: '#7c84a8',
+    fontSize: 12,
+    letterSpacing: 2,
+    fontWeight: '700',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 6,
+  },
+  statTile: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  statTileLabel: {
+    color: '#7c84a8',
+    fontSize: 12,
+    letterSpacing: 1.5,
+    fontWeight: '600',
+  },
+  statTileValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  statsHint: {
+    color: '#7c84a8',
+    fontSize: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  newBestText: {
+    color: '#ffd166',
+    fontSize: 14,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+
+  modeList: { gap: 12 },
+  modeBtnPrimary: {
+    backgroundColor: '#4cc9ff',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#4cc9ff',
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  modeBtnTitlePrimary: {
+    color: '#0b1020',
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  modeBtnSubPrimary: {
+    color: '#0b1020',
+    fontSize: 12,
+    opacity: 0.7,
+    marginTop: 2,
+  },
+  modeBtnArrow: {
+    color: '#0b1020',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  modeBtnSecondary: {
+    backgroundColor: '#2a335f',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modeBtnTitleSecondary: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 2,
+  },
+  modeBtnLocked: {
+    backgroundColor: '#161c33',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a335f',
+    opacity: 0.7,
+  },
+  modeBtnTitleLocked: {
+    color: '#9aa3c7',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+  modeBtnSubLocked: {
+    color: '#7c84a8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  modeBtnLock: { fontSize: 18 },
+
+  lobbyFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#161c33',
+  },
+  footerBtn: {
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  footerIcon: { color: '#9aa3c7', fontSize: 22 },
+  footerLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1, marginTop: 2 },
+  footerVersion: { color: '#7c84a8', fontSize: 12 },
+
+  // ── Game HUD & board ─────────────────────────────────────────────────────
   gameRoot: { flex: 1, backgroundColor: '#0b1020' },
-  hud: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 8, paddingHorizontal: 8 },
-  hudStat: { alignItems: 'center', minWidth: 60 },
-  hudLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 1.5 },
-  hudValue: { fontSize: 18, fontWeight: '700' },
+  hud: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    backgroundColor: '#0a0e1c',
+  },
+  hudStat: { alignItems: 'center', minWidth: 64 },
+  hudLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1.5, fontWeight: '600' },
+  hudValue: { fontSize: 20, fontWeight: '800', marginTop: 2 },
 
   marker: { position: 'absolute', width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center' },
-  markerText: { color: '#fff', fontSize: TILE * 0.5, opacity: 0.5 },
+  markerText: { color: '#fff', fontSize: TILE * 0.5, opacity: 0.55 },
 
   recenterBtn: {
     position: 'absolute',
-    right: 10,
-    bottom: 10,
-    width: 40, height: 40,
-    backgroundColor: '#161c33d0',
-    borderRadius: 20,
+    right: 12,
+    bottom: 12,
+    width: 44, height: 44,
+    backgroundColor: '#161c33e0',
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#2a335f',
   },
-  recenterText: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  recenterText: { color: '#fff', fontSize: 22, fontWeight: '800' },
 
-  bottomBar: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 },
-  stoneInfo: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161c33', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, marginRight: 8 },
-  stoneIcon: { width: 22, height: 22, backgroundColor: '#5a627f', borderRadius: 3, borderWidth: 1, borderColor: '#7c84a8', marginRight: 8 },
-  stoneLabel: { color: '#fff', fontWeight: '700', fontSize: 12, letterSpacing: 1 },
-  stoneCost: { color: '#9aa3c7', fontSize: 10 },
+  bottomBar: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
+  stoneInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161c33',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  stoneIcon: {
+    width: 24, height: 24,
+    backgroundColor: '#5a627f',
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#7c84a8',
+    marginRight: 10,
+  },
+  stoneLabel: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 1 },
+  stoneCost: { color: '#9aa3c7', fontSize: 12, marginTop: 1 },
 
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 6 },
-  actionBtn: { flex: 1, backgroundColor: '#4cc9ff', paddingVertical: 12, borderRadius: 999, alignItems: 'center', marginRight: 8 },
-  actionBtnText: { color: '#0b1020', fontWeight: '800', fontSize: 13, letterSpacing: 1.5 },
-  speedBtn: { backgroundColor: '#2a335f', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  speedBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  tipText: { color: '#7c84a8', fontSize: 11, textAlign: 'center', marginTop: 4 },
+  actionBtn: {
+    flex: 1,
+    backgroundColor: '#4cc9ff',
+    paddingVertical: 14,
+    borderRadius: 999,
+    alignItems: 'center',
+    marginRight: 8,
+    shadowColor: '#4cc9ff',
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  actionBtnText: { color: '#0b1020', fontWeight: '900', fontSize: 14, letterSpacing: 1.5 },
+  speedBtn: {
+    backgroundColor: '#2a335f',
+    width: 48, height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  speedBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  tipText: { color: '#7c84a8', fontSize: 12, textAlign: 'center', marginTop: 6 },
 
   flashWrap: { position: 'absolute', top: 16, left: 0, right: 0, alignItems: 'center' },
-  flashText: { color: '#fff', backgroundColor: '#000b', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 6, fontSize: 14, fontWeight: '700' },
+  flashText: {
+    color: '#fff',
+    backgroundColor: '#000c',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
 
-  modalBackdrop: { flex: 1, backgroundColor: '#000a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
-  modalCard: { backgroundColor: '#161c33', borderRadius: 16, padding: 20, width: '100%', maxWidth: 420, borderWidth: 1, borderColor: '#2a335f' },
-  modalHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  // ── Modal ────────────────────────────────────────────────────────────────
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: '#000c',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    backgroundColor: '#161c33',
+    borderRadius: 18,
+    padding: 22,
+    paddingTop: 26,
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderColor: '#2a335f',
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  modalCloseX: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  modalCloseXText: { color: '#9aa3c7', fontSize: 22, fontWeight: '700' },
+  modalHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingRight: 32 },
   modalTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  modalSub: { color: '#9aa3c7', fontSize: 12, marginTop: 2 },
-  modalRow: { flexDirection: 'row', justifyContent: 'space-around', marginVertical: 12, backgroundColor: '#0f1530', borderRadius: 10, paddingVertical: 10 },
-  modalStat: { alignItems: 'center' },
-  modalStatLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 1 },
-  modalStatValue: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  combineHint: { color: '#9aa3c7', fontSize: 12, textAlign: 'center', marginBottom: 12 },
+  modalSub: { color: '#9aa3c7', fontSize: 12, marginTop: 3 },
+  modalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 14,
+    backgroundColor: '#0f1530',
+    borderRadius: 12,
+    paddingVertical: 12,
+  },
+  modalStat: { alignItems: 'center', flex: 1 },
+  modalStatLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1, fontWeight: '600' },
+  modalStatValue: { color: '#fff', fontSize: 16, fontWeight: '800', marginTop: 2 },
+  combineHint: { color: '#9aa3c7', fontSize: 13, textAlign: 'center', marginBottom: 14, lineHeight: 18 },
   modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 999, alignItems: 'center', marginHorizontal: 4 },
-  modalBtnText: { color: '#fff', fontWeight: '800', fontSize: 12, letterSpacing: 1 },
+  modalBtn: {
+    flex: 1,
+    minHeight: 44,
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
+  },
+  modalBtnFull: { flex: 0, marginHorizontal: 0 },
+  modalBtnText: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 1 },
 });
