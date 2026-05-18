@@ -9,8 +9,8 @@ import {
   Modal,
   Pressable,
   PanResponder,
+  StatusBar,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Crystal Maze Defence — inspired by classic Gem TD
@@ -242,7 +242,7 @@ export default function App() {
 function MenuScreen({ onStart }) {
   return (
     <SafeAreaView style={styles.menuRoot}>
-      <StatusBar style="light" />
+      <StatusBar barStyle="light-content" />
       <View style={styles.menuTop}>
         <View style={styles.menuCrystalRow}>
           <Text style={[styles.menuCrystal, { color: '#ff4d6d' }]}>◆</Text>
@@ -270,7 +270,7 @@ function MenuScreen({ onStart }) {
 function EndScreen({ won, score, onBack }) {
   return (
     <SafeAreaView style={styles.menuRoot}>
-      <StatusBar style="light" />
+      <StatusBar barStyle="light-content" />
       <View style={styles.menuTop}>
         <Text style={[styles.menuCrystal, won ? { color: '#5cf28a' } : { color: '#ff4d6d' }]}>
           {won ? '★' : '✦'}
@@ -592,7 +592,7 @@ function Game({ onEnd }) {
 
   return (
     <SafeAreaView style={styles.gameRoot}>
-      <StatusBar style="light" />
+      <StatusBar barStyle="light-content" />
       <View style={styles.hud}>
         <HudStat label="LIVES" value={s.lives} color="#ff4d6d" />
         <HudStat label="GOLD" value={s.gold} color="#ffd166" />
