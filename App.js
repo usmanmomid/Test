@@ -2258,7 +2258,9 @@ function SpecialSvg({ recipe }) {
   const id = useRef(nextGid()).current;
   const main = recipe.color;
   const accent = recipe.accent;
-  const dark = darken(main, 0.6);
+  const dark = darken(main, 0.55);
+  const darker = darken(main, 0.75);
+  const lightMain = `rgba(255,255,255,0.35)`;
 
   return (
     <View pointerEvents="none" style={{
@@ -2267,238 +2269,402 @@ function SpecialSvg({ recipe }) {
     }}>
       <Svg width={px} height={px} viewBox="0 0 100 100">
         <Defs>
+          {/* main body gradient — multi-stop for painted volume */}
           <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={main} />
+            <Stop offset="0" stopColor={lightMain} />
+            <Stop offset="0.15" stopColor={main} />
+            <Stop offset="0.55" stopColor={main} />
             <Stop offset="1" stopColor={dark} />
           </LinearGradient>
+          {/* stone base gradient */}
+          <LinearGradient id={`${id}stone`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#8a98b8" />
+            <Stop offset="0.5" stopColor="#5a6a8c" />
+            <Stop offset="1" stopColor="#1a2034" />
+          </LinearGradient>
+          {/* stone top gradient (lit from above) */}
+          <RadialGradient id={`${id}stonetop`} cx="0.5" cy="0.3" r="0.6">
+            <Stop offset="0" stopColor="#a8b4d0" />
+            <Stop offset="1" stopColor="#3a4060" />
+          </RadialGradient>
+          {/* aura behind the figure */}
           <RadialGradient id={`${id}aura`} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor={accent} stopOpacity={0.55} />
+            <Stop offset="0" stopColor={accent} stopOpacity={0.6} />
             <Stop offset="1" stopColor={accent} stopOpacity="0" />
           </RadialGradient>
         </Defs>
 
-        {/* Aura behind every special — grows with tier */}
-        <Circle cx="50" cy="50" r={tier >= 5 ? 50 : tier >= 4 ? 46 : 40} fill={`url(#${id}aura)`} />
+        {/* heavy drop shadow under base */}
+        <Ellipse cx="50" cy={tier >= 5 ? 99 : 97} rx={tier >= 5 ? 46 : 38} ry="5" fill="#000" opacity="0.7" />
+
+        {/* Aura behind the figure (grows with tier) */}
+        <Circle cx="50" cy={tier >= 4 ? 40 : 50} r={tier >= 6 ? 50 : tier >= 5 ? 46 : tier >= 4 ? 42 : 36} fill={`url(#${id}aura)`} />
 
         {tier === 2 && (
-          // P2 SPIRIT GUARDIAN: small cowled form, gem core in chest
+          // P2 SPIRIT GUARDIAN — small monk on a stone disc
           <>
-            <Ellipse cx="50" cy="92" rx="22" ry="3" fill="#000" opacity="0.5" />
+            {/* base — circular stone disc */}
+            <Ellipse cx="50" cy="84" rx="32" ry="9" fill="#0a0510" opacity="0.4" />
+            <Path d="M 18 76 Q 18 88 50 90 Q 82 88 82 76 Z" fill={`url(#${id}stone)`}
+                  stroke="#0a0510" strokeWidth="2" />
+            <Ellipse cx="50" cy="76" rx="32" ry="6" fill={`url(#${id}stonetop)`}
+                     stroke="#0a0510" strokeWidth="2" />
+            {/* rim lighting on top edge of stone */}
+            <Ellipse cx="50" cy="73" rx="28" ry="3.5" fill="none" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.65" />
+            {/* accent ring on stone */}
+            <Ellipse cx="50" cy="76" rx="24" ry="4" fill="none" stroke={accent} strokeWidth="1" opacity="0.7" />
+
             {/* robed body */}
-            <Path d="M 50 22 C 62 22 70 30 70 40 L 74 86 L 26 86 L 30 40 C 30 30 38 22 50 22 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2" />
+            <Path d="M 50 26 C 60 26 66 32 66 40 L 68 76 L 32 76 L 34 40 C 34 32 40 26 50 26 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.2" />
+            {/* rim light on robe (left side) */}
+            <Path d="M 34 40 C 34 32 40 26 50 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.5" />
             {/* hood */}
-            <Path d="M 30 38 C 30 24 40 18 50 18 C 60 18 70 24 70 38 L 64 50 L 36 50 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
-            <Path d="M 36 50 L 64 50 L 60 56 L 40 56 Z" fill="#0a0510" />
+            <Path d="M 34 36 C 34 22 42 18 50 18 C 58 18 66 22 66 36 L 62 50 L 38 50 Z"
+                  fill={dark} stroke="#0a0510" strokeWidth="2" />
+            <Path d="M 34 36 C 34 22 42 18 50 18" stroke="#fff" strokeWidth="0.7" fill="none" opacity="0.45" />
+            {/* face shadow under hood */}
+            <Path d="M 38 50 L 62 50 L 58 56 L 42 56 Z" fill="#0a0510" />
             {/* glowing eye slit */}
             <Path d="M 42 44 L 50 41 L 58 44 L 50 47 Z" fill={accent} />
-            <Circle cx="50" cy="44" r="1.2" fill="#fff" />
-            {/* chest gem */}
-            <Polygon points="50,60 56,68 50,76 44,68" fill={accent} stroke="#fff" strokeWidth="0.8" />
-            <Polygon points="50,60 50,72 44,68" fill="#fff" opacity="0.45" />
-            {/* trim on robe */}
-            <Path d="M 30 40 L 70 40" stroke={accent} strokeWidth="1.2" />
-            <Path d="M 28 80 L 72 80" stroke={accent} strokeWidth="0.8" opacity="0.7" />
+            <Circle cx="50" cy="44" r="1" fill="#fff" />
+            {/* chest gem (diamond shape) */}
+            <Polygon points="50,58 56,66 50,74 44,66" fill={accent} stroke="#fff" strokeWidth="0.8" />
+            <Polygon points="50,58 50,70 44,66" fill="#fff" opacity="0.45" />
+            {/* belt trim */}
+            <Path d="M 33 70 L 67 70" stroke={accent} strokeWidth="1.2" />
           </>
         )}
 
         {tier === 3 && (
-          // P3 SENTINEL STATUE: taller, crown, sigil ring above head
+          // P3 SENTINEL — taller figure on a stepped stone base
           <>
-            <Ellipse cx="50" cy="94" rx="26" ry="3.5" fill="#000" opacity="0.6" />
-            {/* outer sigil ring */}
-            <Circle cx="50" cy="22" r="14" fill="none" stroke={accent} strokeWidth="1.2" opacity="0.7"
+            {/* base — wider with steps */}
+            <Ellipse cx="50" cy="85" rx="36" ry="9" fill="#0a0510" opacity="0.45" />
+            <Path d="M 12 76 Q 12 92 50 94 Q 88 92 88 76 Z" fill={`url(#${id}stone)`}
+                  stroke="#0a0510" strokeWidth="2" />
+            <Ellipse cx="50" cy="76" rx="38" ry="7" fill={`url(#${id}stonetop)`}
+                     stroke="#0a0510" strokeWidth="2" />
+            <Ellipse cx="50" cy="73" rx="33" ry="4" fill="none" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.7" />
+            <Ellipse cx="50" cy="76" rx="26" ry="4.5" fill="none" stroke={accent} strokeWidth="1.2" opacity="0.75" />
+            {/* base sigil pattern */}
+            <Path d="M 50 74 L 58 78 L 50 82 L 42 78 Z" fill={accent} opacity="0.85" stroke="#0a0510" strokeWidth="0.6" />
+
+            {/* outer sigil ring around head */}
+            <Circle cx="50" cy="20" r="13" fill="none" stroke={accent} strokeWidth="1" opacity="0.55"
                     strokeDasharray="3 2" />
-            {/* halo behind head */}
-            <Circle cx="50" cy="24" r="11" fill="none" stroke={accent} strokeWidth="2" />
+            {/* halo */}
+            <Circle cx="50" cy="22" r="10" fill="none" stroke={accent} strokeWidth="2.5" />
+            <Circle cx="50" cy="22" r="10" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.55" />
             {/* robed body */}
-            <Path d="M 50 28 C 64 28 72 36 72 48 L 78 88 L 22 88 L 28 48 C 28 36 36 28 50 28 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.2" />
+            <Path d="M 50 26 C 64 26 72 34 72 46 L 76 76 L 24 76 L 28 46 C 28 34 36 26 50 26 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
+            <Path d="M 28 46 C 28 34 36 26 50 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.5" />
             {/* head */}
-            <Circle cx="50" cy="26" r="10" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
-            {/* face shadow */}
-            <Path d="M 41 22 Q 50 16 59 22 L 56 32 L 44 32 Z" fill="#0a0510" />
-            {/* two glowing eye dots */}
-            <Circle cx="46" cy="24" r="1.4" fill={accent} />
-            <Circle cx="54" cy="24" r="1.4" fill={accent} />
-            {/* crown points */}
-            <Polygon points="42,18 46,10 50,16 54,10 58,18" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
-            <Circle cx="50" cy="12" r="1.5" fill="#fff" />
+            <Circle cx="50" cy="24" r="9" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+            {/* face hood shadow */}
+            <Path d="M 43 22 Q 50 16 57 22 L 55 32 L 45 32 Z" fill="#0a0510" />
+            {/* two glowing eyes */}
+            <Circle cx="46" cy="23" r="1.5" fill={accent} />
+            <Circle cx="54" cy="23" r="1.5" fill={accent} />
+            <Circle cx="46" cy="22.5" r="0.5" fill="#fff" />
+            <Circle cx="54" cy="22.5" r="0.5" fill="#fff" />
+            {/* crown */}
+            <Polygon points="42,16 46,8 50,14 54,8 58,16" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
+            <Circle cx="50" cy="10" r="1.5" fill="#fff" />
             {/* chest sigil */}
-            <Polygon points="50,52 60,62 50,72 40,62" fill={accent} stroke="#fff" strokeWidth="0.8" />
-            <Path d="M 50 52 L 50 72 M 40 62 L 60 62" stroke="#0a0510" strokeWidth="0.6" />
-            {/* arms (folded across body) */}
-            <Path d="M 30 56 Q 50 70 70 56" stroke={accent} strokeWidth="2.2" fill="none" />
-            {/* robe trim */}
-            <Path d="M 22 88 L 78 88" stroke={accent} strokeWidth="1.5" />
-            <Path d="M 28 64 L 72 64" stroke={accent} strokeWidth="0.8" opacity="0.6" />
+            <Polygon points="50,46 60,56 50,66 40,56" fill={accent} stroke="#fff" strokeWidth="0.8" />
+            <Polygon points="50,46 50,66 40,56" fill="#fff" opacity="0.35" />
+            <Path d="M 40 56 L 60 56 M 50 46 L 50 66" stroke="#0a0510" strokeWidth="0.6" />
+            {/* folded arms */}
+            <Path d="M 30 52 Q 50 64 70 52" stroke={accent} strokeWidth="2.2" fill="none" />
+            <Path d="M 30 52 Q 50 64 70 52" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.5" />
+            {/* robe trim hem */}
+            <Path d="M 24 74 L 76 74" stroke={accent} strokeWidth="1.5" />
             {/* floating side gems */}
-            <Polygon points="14,50 18,46 22,50 18,54" fill={accent} opacity="0.85" />
-            <Polygon points="78,50 82,46 86,50 82,54" fill={accent} opacity="0.85" />
+            <Polygon points="12,46 16,42 20,46 16,50" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="80,46 84,42 88,46 84,50" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
+            <Circle cx="16" cy="46" r="0.8" fill="#fff" />
+            <Circle cx="84" cy="46" r="0.8" fill="#fff" />
           </>
         )}
 
         {tier === 4 && (
-          // P4 WINGED ANGEL GUARDIAN: visible wings spread behind body, staff
+          // P4 ANGEL GUARDIAN — winged paladin on a stone pillar
           <>
-            <Ellipse cx="50" cy="94" rx="30" ry="4" fill="#000" opacity="0.6" />
+            {/* base — taller pillar */}
+            <Ellipse cx="50" cy="89" rx="38" ry="10" fill="#0a0510" opacity="0.6" />
+            {/* pillar shaft (rectangular) */}
+            <Path d="M 18 72 L 82 72 L 86 92 L 14 92 Z" fill={`url(#${id}stone)`}
+                  stroke="#0a0510" strokeWidth="2.2" />
+            {/* pillar top cap */}
+            <Path d="M 12 72 L 88 72 L 84 80 L 16 80 Z" fill={`url(#${id}stone)`}
+                  stroke="#0a0510" strokeWidth="2" />
+            <Ellipse cx="50" cy="72" rx="38" ry="6" fill={`url(#${id}stonetop)`}
+                     stroke="#0a0510" strokeWidth="2" />
+            <Ellipse cx="50" cy="69" rx="33" ry="4" fill="none" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.7" />
+            {/* gold trim band */}
+            <Path d="M 16 80 L 84 80" stroke="#ffd166" strokeWidth="1.5" />
+            <Path d="M 18 76 L 82 76" stroke="#ffd166" strokeWidth="0.8" opacity="0.85" />
+            {/* inner accent ring on top */}
+            <Ellipse cx="50" cy="72" rx="24" ry="4" fill="none" stroke={accent} strokeWidth="1.2" opacity="0.8" />
+            {/* pillar vertical grooves */}
+            <Path d="M 32 72 L 30 92" stroke="#0a0510" strokeWidth="0.7" />
+            <Path d="M 68 72 L 70 92" stroke="#0a0510" strokeWidth="0.7" />
+            <Path d="M 50 72 L 50 92" stroke="#0a0510" strokeWidth="0.5" opacity="0.6" />
+            {/* sigil panel on pillar */}
+            <Polygon points="50,80 56,84 50,88 44,84" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
+
             {/* wings spread out */}
-            <Path d="M 30 44 Q 4 30 -2 54 Q 8 56 22 62 Q 6 66 8 78 Q 22 70 30 68 Z"
-                  fill={accent} stroke="#0a0510" strokeWidth="1.5" opacity="0.95" />
-            <Path d="M 70 44 Q 96 30 102 54 Q 92 56 78 62 Q 94 66 92 78 Q 78 70 70 68 Z"
-                  fill={accent} stroke="#0a0510" strokeWidth="1.5" opacity="0.95" />
-            {/* wing feather highlights */}
-            <Path d="M 12 38 L 26 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 6 50 L 24 58" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 12 70 L 28 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 88 38 L 74 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 94 50 L 76 58" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 88 70 L 72 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            {/* halo */}
-            <Circle cx="50" cy="20" r="11" fill="none" stroke={accent} strokeWidth="2.5" />
-            <Circle cx="50" cy="20" r="11" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.5" />
-            {/* body in armoured robe */}
-            <Path d="M 50 28 C 64 28 72 38 72 50 L 76 92 L 24 92 L 28 50 C 28 38 36 28 50 28 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
-            {/* head */}
-            <Circle cx="50" cy="24" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
-            <Path d="M 42 22 L 58 22" stroke="#0a0510" strokeWidth="1.5" /> {/* visor */}
-            <Path d="M 44 23 L 56 23" stroke="#fff" strokeWidth="0.5" />
-            {/* chest plate with sigil */}
-            <Path d="M 38 42 L 62 42 L 60 78 L 40 78 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
-            <Polygon points="50,50 60,60 50,70 40,60" fill={accent} stroke="#fff" strokeWidth="0.8" />
-            <Path d="M 50 50 L 50 70 M 40 60 L 60 60" stroke="#0a0510" strokeWidth="0.6" />
-            {/* staff in right "hand" */}
-            <Rect x="76" y="20" width="2.5" height="60" fill="#3a2806" stroke="#0a0510" strokeWidth="0.5" />
+            <Path d="M 30 36 Q 4 22 -4 50 Q 8 50 22 56 Q 4 60 6 72 Q 22 64 30 60 Z"
+                  fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+            <Path d="M 70 36 Q 96 22 104 50 Q 92 50 78 56 Q 96 60 94 72 Q 78 64 70 60 Z"
+                  fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+            {/* wing feather highlights / rim */}
+            <Path d="M 6 30 L 24 46" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+            <Path d="M 0 46 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 8 64 L 26 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+            <Path d="M 94 30 L 76 46" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+            <Path d="M 100 46 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 92 64 L 74 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+            {/* wing top rim */}
+            <Path d="M 30 36 Q 4 22 -4 50" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.4" />
+            <Path d="M 70 36 Q 96 22 104 50" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.4" />
+
+            {/* halo behind head */}
+            <Circle cx="50" cy="18" r="11" fill="none" stroke={accent} strokeWidth="2.6" />
+            <Circle cx="50" cy="18" r="11" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.55" />
+            <Circle cx="50" cy="18" r="8" fill="none" stroke={accent} strokeWidth="0.8" opacity="0.7" />
+
+            {/* armoured body */}
+            <Path d="M 50 26 C 64 26 72 34 72 44 L 74 72 L 26 72 L 28 44 C 28 34 36 26 50 26 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.6" />
+            <Path d="M 28 44 C 28 34 36 26 50 26" stroke="#fff" strokeWidth="0.9" fill="none" opacity="0.5" />
+            {/* breastplate */}
+            <Path d="M 38 36 L 62 36 L 60 68 L 40 68 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+            <Path d="M 38 36 L 62 36" stroke="#fff" strokeWidth="0.7" opacity="0.5" />
+            {/* gold trim on breastplate */}
+            <Path d="M 38 36 L 62 36" stroke="#ffd166" strokeWidth="1" />
+            <Path d="M 40 68 L 60 68" stroke="#ffd166" strokeWidth="0.8" />
+            {/* large diamond sigil on chest */}
+            <Polygon points="50,42 60,52 50,62 40,52" fill={accent} stroke="#fff" strokeWidth="0.9" />
+            <Polygon points="50,42 50,62 40,52" fill="#fff" opacity="0.4" />
+            <Path d="M 40 52 L 60 52 M 50 42 L 50 62" stroke="#0a0510" strokeWidth="0.6" />
+            {/* head with visor */}
+            <Circle cx="50" cy="22" r="9" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+            {/* visor strip */}
+            <Path d="M 42 22 L 58 22" stroke="#0a0510" strokeWidth="1.6" />
+            <Path d="M 43 23 L 57 23" stroke="#fff" strokeWidth="0.5" />
+            {/* face plate detail */}
+            <Path d="M 50 24 L 50 30 M 47 28 L 53 28" stroke="#0a0510" strokeWidth="0.6" />
+            {/* small forehead gem */}
+            <Circle cx="50" cy="17" r="1.8" fill="#fff" stroke="#0a0510" strokeWidth="0.4" />
+
+            {/* staff in right hand */}
+            <Rect x="76" y="20" width="2.5" height="48" fill="#3a2806" stroke="#0a0510" strokeWidth="0.5" />
             <Polygon points="77,16 71,22 77,30 83,22" fill={accent} stroke="#fff" strokeWidth="0.8" />
             <Circle cx="77" cy="22" r="1.5" fill="#fff" />
-            {/* robe trim */}
-            <Path d="M 24 92 L 76 92" stroke={accent} strokeWidth="2" />
-            <Path d="M 28 72 L 72 72" stroke={accent} strokeWidth="0.8" opacity="0.7" />
-            {/* small chest gem at top */}
-            <Circle cx="50" cy="40" r="2.5" fill={accent} stroke="#fff" strokeWidth="0.5" />
           </>
         )}
 
         {tier === 5 && (
-          // P5 GREATER CHAMPION: double-wing pair, crown, two-handed weapon
+          // P5 GREATER CHAMPION — bigger, on a tiered stone dais with gold inlay
           <>
-            <Ellipse cx="50" cy="96" rx="34" ry="4.5" fill="#000" opacity="0.7" />
-            {/* upper wing pair */}
-            <Path d="M 30 38 Q 0 18 -8 42 Q 4 44 22 54 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.95" />
-            <Path d="M 70 38 Q 100 18 108 42 Q 96 44 78 54 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.95" />
-            {/* lower wing pair */}
-            <Path d="M 30 56 Q 2 52 -2 80 Q 14 74 30 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
-            <Path d="M 70 56 Q 98 52 102 80 Q 86 74 70 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            {/* drop shadow */}
+            <Ellipse cx="50" cy="92" rx="44" ry="9" fill="#0a0510" opacity="0.65" />
+            {/* base — multi-tier dais */}
+            <Path d="M 6 78 L 94 78 L 88 92 L 12 92 Z" fill={`url(#${id}stone)`}
+                  stroke="#0a0510" strokeWidth="2.4" />
+            {/* upper tier */}
+            <Path d="M 12 70 L 88 70 L 84 80 L 16 80 Z" fill={`url(#${id}stone)`}
+                  stroke="#0a0510" strokeWidth="2.2" />
+            <Ellipse cx="50" cy="70" rx="38" ry="5.5" fill={`url(#${id}stonetop)`}
+                     stroke="#0a0510" strokeWidth="2" />
+            {/* rim lighting on top edge */}
+            <Ellipse cx="50" cy="67" rx="33" ry="3" fill="none" stroke="#cfd5e6" strokeWidth="1" opacity="0.75" />
+            {/* gold inlay on tiers */}
+            <Path d="M 16 80 L 84 80" stroke="#ffd166" strokeWidth="1.6" />
+            <Path d="M 12 78 L 88 78" stroke="#ffd166" strokeWidth="1" opacity="0.85" />
+            <Path d="M 6 78 L 94 78" stroke="#ffd166" strokeWidth="0.6" opacity="0.7" />
+            {/* base gems */}
+            <Polygon points="50,82 56,86 50,90 44,86" fill={accent} stroke="#fff" strokeWidth="0.6" />
+            <Polygon points="22,84 26,82 30,84 26,86" fill={accent} stroke="#0a0510" strokeWidth="0.4" />
+            <Polygon points="70,84 74,82 78,84 74,86" fill={accent} stroke="#0a0510" strokeWidth="0.4" />
+            {/* pillar grooves */}
+            <Path d="M 28 70 L 26 92" stroke="#0a0510" strokeWidth="0.6" />
+            <Path d="M 72 70 L 74 92" stroke="#0a0510" strokeWidth="0.6" />
+
+            {/* upper wings */}
+            <Path d="M 30 32 Q 0 14 -8 38 Q 4 38 22 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+            <Path d="M 70 32 Q 100 14 108 38 Q 96 38 78 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+            <Path d="M 30 32 Q 0 14 -8 38" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.5" />
+            <Path d="M 70 32 Q 100 14 108 38" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.5" />
+            {/* lower wings */}
+            <Path d="M 30 50 Q 2 48 -4 70 Q 14 64 30 60 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.9" />
+            <Path d="M 70 50 Q 98 48 104 70 Q 86 64 70 60 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.9" />
             {/* feather highlights */}
-            <Path d="M 6 26 L 24 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 0 36 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 4 58 L 26 64" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 8 72 L 28 68" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 94 26 L 76 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 100 36 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 96 58 L 74 64" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 92 72 L 72 68" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            {/* multiple halos */}
-            <Circle cx="50" cy="18" r="14" fill="none" stroke={accent} strokeWidth="2.5" />
-            <Circle cx="50" cy="18" r="11" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
-            <Circle cx="50" cy="18" r="8" fill="none" stroke={accent} strokeWidth="1.2" />
+            <Path d="M 6 22 L 24 42" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
+            <Path d="M 0 32 L 22 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 4 56 L 26 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+            <Path d="M 8 66 L 28 62" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+            <Path d="M 94 22 L 76 42" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
+            <Path d="M 100 32 L 78 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 96 56 L 74 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+            <Path d="M 92 66 L 72 62" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+
+            {/* multi-halo */}
+            <Circle cx="50" cy="16" r="13" fill="none" stroke={accent} strokeWidth="2.8" />
+            <Circle cx="50" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.6" />
+            <Circle cx="50" cy="16" r="7" fill="none" stroke={accent} strokeWidth="1" opacity="0.7" />
+
             {/* armoured body */}
-            <Path d="M 50 30 C 66 30 74 40 74 52 L 80 94 L 20 94 L 26 52 C 26 40 34 30 50 30 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.6" />
-            {/* head with crown */}
-            <Circle cx="50" cy="24" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
-            <Polygon points="40,18 44,8 50,16 56,8 60,18" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
-            <Circle cx="50" cy="11" r="2" fill="#fff" />
-            <Path d="M 42 24 L 58 24" stroke="#0a0510" strokeWidth="1.6" />
-            <Path d="M 44 25 L 56 25" stroke="#fff" strokeWidth="0.5" />
-            {/* chest plate with large sigil */}
-            <Path d="M 34 42 L 66 42 L 64 84 L 36 84 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
-            <Polygon points="50,50 64,62 50,76 36,62" fill={accent} stroke="#fff" strokeWidth="1" />
-            <Polygon points="50,54 60,62 50,72 40,62" fill="#fff" opacity="0.45" />
-            <Path d="M 50 50 L 50 76 M 36 62 L 64 62" stroke="#0a0510" strokeWidth="0.7" />
-            {/* two-handed greatsword behind */}
-            <Rect x="48.5" y="-4" width="3" height="100" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.6" />
-            <Polygon points="46,-4 54,-4 50,-12" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.6" />
-            <Rect x="42" y="46" width="16" height="3" fill="#7a6a3a" stroke="#0a0510" strokeWidth="0.5" />
-            <Circle cx="50" cy="60" r="2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
-            {/* robe trim */}
-            <Path d="M 20 94 L 80 94" stroke={accent} strokeWidth="2.4" />
-            <Path d="M 26 76 L 74 76" stroke={accent} strokeWidth="1" opacity="0.65" />
-            {/* small chest gem */}
-            <Circle cx="50" cy="40" r="2.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
-            {/* floating motes around */}
-            <Circle cx="10" cy="14" r="1.5" fill="#fff" opacity="0.8" />
-            <Circle cx="90" cy="14" r="1.5" fill="#fff" opacity="0.8" />
+            <Path d="M 50 24 C 66 24 74 32 74 44 L 78 70 L 22 70 L 26 44 C 26 32 34 24 50 24 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.8" />
+            <Path d="M 26 44 C 26 32 34 24 50 24" stroke="#fff" strokeWidth="1" fill="none" opacity="0.55" />
+            {/* breastplate */}
+            <Path d="M 34 36 L 66 36 L 64 66 L 36 66 Z" fill={dark} stroke="#0a0510" strokeWidth="1.6" />
+            <Path d="M 34 36 L 66 36" stroke="#fff" strokeWidth="0.7" opacity="0.55" />
+            {/* gold trim on breastplate */}
+            <Path d="M 34 36 L 66 36" stroke="#ffd166" strokeWidth="1.2" />
+            <Path d="M 36 66 L 64 66" stroke="#ffd166" strokeWidth="1" />
+            <Path d="M 34 36 L 36 66" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
+            <Path d="M 66 36 L 64 66" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
+            {/* large double-diamond sigil */}
+            <Polygon points="50,38 64,50 50,62 36,50" fill={accent} stroke="#fff" strokeWidth="1" />
+            <Polygon points="50,42 60,50 50,58 40,50" fill="#fff" opacity="0.5" />
+            <Polygon points="50,42 60,50 50,58 40,50" fill="none" stroke="#0a0510" strokeWidth="0.5" />
+            <Path d="M 36 50 L 64 50 M 50 38 L 50 62" stroke="#0a0510" strokeWidth="0.6" />
+            {/* head with golden crown */}
+            <Circle cx="50" cy="20" r="9" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+            {/* gold crown points */}
+            <Polygon points="40,14 44,4 48,12 52,2 56,12 60,4 64,14" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+            <Circle cx="52" cy="5" r="2" fill="#fff" />
+            {/* visor */}
+            <Path d="M 42 21 L 58 21" stroke="#0a0510" strokeWidth="1.6" />
+            <Path d="M 44 22 L 56 22" stroke="#fff" strokeWidth="0.5" />
+            {/* face plate detail */}
+            <Path d="M 50 24 L 50 30 M 47 28 L 53 28" stroke="#0a0510" strokeWidth="0.6" />
+            {/* forehead gem */}
+            <Circle cx="50" cy="15" r="2" fill="#fff" stroke="#0a0510" strokeWidth="0.4" />
+
+            {/* greatsword behind body */}
+            <Rect x="48.5" y="-2" width="3" height="80" fill="#cfd5e6" stroke="#0a0510" strokeWidth="0.6" />
+            <Path d="M 48.5 -2 L 51.5 -2" stroke="#fff" strokeWidth="0.5" />
+            <Polygon points="46,-2 54,-2 50,-10" fill="#cfd5e6" stroke="#0a0510" strokeWidth="0.6" />
+            <Rect x="42" y="42" width="16" height="3.5" fill="#7a6a3a" stroke="#0a0510" strokeWidth="0.5" />
+            <Path d="M 42 42 L 58 42" stroke="#ffd166" strokeWidth="0.8" />
+            <Circle cx="50" cy="55" r="2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+
+            {/* shoulder pauldrons */}
+            <Path d="M 22 38 Q 18 30 28 26 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+            <Path d="M 78 38 Q 82 30 72 26 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+            <Path d="M 22 38 Q 18 30 28 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+            <Path d="M 78 38 Q 82 30 72 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+
+            {/* floating motes */}
+            <Circle cx="8" cy="10" r="1.5" fill="#fff" opacity="0.85" />
+            <Circle cx="92" cy="10" r="1.5" fill="#fff" opacity="0.85" />
           </>
         )}
 
         {tier === 6 && (
-          // P6 COSMIC MYTHIC: floating cosmic figure, star core, rings, big halo
+          // P6 COSMIC MYTHIC — floating cosmic being on a magic dais with floating orbs
           <>
-            <Ellipse cx="50" cy="98" rx="42" ry="5" fill="#000" opacity="0.75" />
-            {/* reality-tear cracks radiating out */}
+            {/* drop shadow on floor */}
+            <Ellipse cx="50" cy="94" rx="48" ry="6" fill="#0a0510" opacity="0.75" />
+            {/* orbit rings under figure (magic dais) */}
+            <Ellipse cx="50" cy="84" rx="44" ry="9" fill="none" stroke="#ffd166" strokeWidth="0.7" opacity="0.7" strokeDasharray="2 3" />
+            <Ellipse cx="50" cy="84" rx="36" ry="6.5" fill="none" stroke={accent} strokeWidth="1.5" opacity="0.75" />
+            <Ellipse cx="50" cy="84" rx="28" ry="4.5" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.55" />
+            {/* magic platform top — runic disc */}
+            <Ellipse cx="50" cy="80" rx="30" ry="5" fill={`url(#${id}stonetop)`} stroke="#0a0510" strokeWidth="2" />
+            <Ellipse cx="50" cy="80" rx="30" ry="5" fill="none" stroke="#ffd166" strokeWidth="1.2" />
+            {/* runes on the disc */}
+            <Path d="M 32 80 L 36 78 L 32 82 Z" fill={accent} />
+            <Path d="M 50 80 L 53 77 L 53 83 Z" fill="#fff" opacity="0.85" />
+            <Path d="M 68 80 L 64 78 L 68 82 Z" fill={accent} />
+            {/* glow under the disc — figure appears to hover */}
+            <Ellipse cx="50" cy="76" rx="22" ry="3" fill="#ffd166" opacity="0.65" />
+
+            {/* reality-tear cracks */}
             <Path d="M 50 -8 L 50 2" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
-            <Path d="M 14 6 L 22 14" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
-            <Path d="M 86 6 L 78 14" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            <Path d="M 14 4 L 22 12" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            <Path d="M 86 4 L 78 12" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
             <Path d="M -4 50 L 6 50" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
             <Path d="M 94 50 L 104 50" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+
+            {/* triple wings per side */}
+            <Path d="M 30 30 Q 0 8 -10 36 Q 6 36 22 48 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+            <Path d="M 28 46 Q -10 42 -10 64 Q 6 60 28 56 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
+            <Path d="M 30 60 Q -2 64 -2 80 Q 16 72 32 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            <Path d="M 70 30 Q 100 8 110 36 Q 94 36 78 48 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+            <Path d="M 72 46 Q 110 42 110 64 Q 94 60 72 56 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
+            <Path d="M 70 60 Q 102 64 102 80 Q 84 72 68 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            {/* feather rim lighting */}
+            <Path d="M -4 16 L 24 38" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+            <Path d="M -8 42 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 0 70 L 28 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 104 16 L 76 38" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+            <Path d="M 108 42 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 100 70 L 72 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+
             {/* multi-layer halo */}
-            <Circle cx="50" cy="44" r="40" fill="none" stroke="#ffd166" strokeWidth="0.6" opacity="0.5" strokeDasharray="1 3" />
-            <Circle cx="50" cy="20" r="16" fill="none" stroke={accent} strokeWidth="2.5" />
-            <Circle cx="50" cy="20" r="13" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.7" />
-            <Circle cx="50" cy="20" r="10" fill="none" stroke={accent} strokeWidth="1.5" />
-            <Circle cx="50" cy="20" r="7" fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            {/* triple wing pair */}
-            <Path d="M 30 32 Q -4 12 -12 38 Q 6 38 22 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
-            <Path d="M 28 48 Q -10 46 -10 70 Q 6 66 28 62 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
-            <Path d="M 30 62 Q -2 70 -2 92 Q 16 80 32 74 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
-            <Path d="M 70 32 Q 104 12 112 38 Q 94 38 78 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
-            <Path d="M 72 48 Q 110 46 110 70 Q 94 66 72 62 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
-            <Path d="M 70 62 Q 102 70 102 92 Q 84 80 68 74 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
-            {/* feather highlights */}
-            <Path d="M -2 22 L 24 42" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M -8 50 L 22 56" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 0 78 L 28 70" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 102 22 L 76 42" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 108 50 L 78 56" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 100 78 L 72 70" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Circle cx="50" cy="14" r="16" fill="none" stroke="#ffd166" strokeWidth="0.7" opacity="0.65" strokeDasharray="1 3" />
+            <Circle cx="50" cy="14" r="13" fill="none" stroke={accent} strokeWidth="2.5" />
+            <Circle cx="50" cy="14" r="10" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.7" />
+            <Circle cx="50" cy="14" r="7" fill="none" stroke={accent} strokeWidth="1.2" />
+
             {/* radiant body */}
-            <Path d="M 50 32 C 68 32 78 42 78 56 L 84 96 L 16 96 L 22 56 C 22 42 32 32 50 32 Z"
+            <Path d="M 50 24 C 70 24 80 32 80 46 L 84 76 L 16 76 L 20 46 C 20 32 30 24 50 24 Z"
                   fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="3" />
-            {/* outer gold trim */}
-            <Path d="M 50 32 C 68 32 78 42 78 56 L 84 96 L 16 96 L 22 56 C 22 42 32 32 50 32 Z"
+            <Path d="M 50 24 C 70 24 80 32 80 46 L 84 76 L 16 76 L 20 46 C 20 32 30 24 50 24 Z"
                   fill="none" stroke="#ffd166" strokeWidth="1.2" />
+            <Path d="M 20 46 C 20 32 30 24 50 24" stroke="#fff" strokeWidth="1" fill="none" opacity="0.55" />
+
             {/* head + crown */}
-            <Circle cx="50" cy="22" r="11" fill={accent} stroke="#0a0510" strokeWidth="1.6" />
-            <Polygon points="36,18 40,4 46,14 50,2 54,14 60,4 64,18" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
-            <Circle cx="50" cy="6" r="2.5" fill="#fff" />
-            {/* face — closed reverent visor */}
-            <Path d="M 41 22 L 59 22" stroke="#0a0510" strokeWidth="1.5" />
-            <Path d="M 43 23 L 57 23" stroke="#fff" strokeWidth="0.6" />
-            {/* chest with cosmic star core */}
-            <Path d="M 32 44 L 68 44 L 66 86 L 34 86 Z" fill={dark} stroke="#0a0510" strokeWidth="1.8" />
-            <Circle cx="50" cy="64" r="14" fill="#000" stroke="#0a0510" strokeWidth="2" />
-            <Circle cx="50" cy="64" r="11" fill={accent} />
-            <Polygon points="50,52 54,60 62,64 54,68 50,76 46,68 38,64 46,60" fill="#fff" opacity="0.85" />
-            <Circle cx="50" cy="64" r="3" fill="#000" />
-            <Circle cx="50" cy="64" r="3" fill="none" stroke="#fff" strokeWidth="0.6" />
+            <Circle cx="50" cy="18" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.6" />
+            <Polygon points="36,14 40,0 46,10 50,-2 54,10 60,0 64,14" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+            <Circle cx="50" cy="2" r="2.5" fill="#fff" />
+            <Path d="M 42 19 L 58 19" stroke="#0a0510" strokeWidth="1.5" />
+            <Path d="M 44 20 L 56 20" stroke="#fff" strokeWidth="0.6" />
+            {/* forehead gem */}
+            <Circle cx="50" cy="12" r="2.5" fill="#fff" stroke="#0a0510" strokeWidth="0.5" />
+
+            {/* chest plate with cosmic core */}
+            <Path d="M 32 36 L 68 36 L 66 72 L 34 72 Z" fill={dark} stroke="#0a0510" strokeWidth="1.8" />
+            <Path d="M 32 36 L 68 36" stroke="#ffd166" strokeWidth="1.2" />
+            <Path d="M 34 72 L 66 72" stroke="#ffd166" strokeWidth="1" />
+            {/* cosmic singularity core */}
+            <Circle cx="50" cy="54" r="13" fill="#000" stroke="#0a0510" strokeWidth="2.2" />
+            <Circle cx="50" cy="54" r="11" fill={accent} />
+            <Polygon points="50,44 54,52 62,54 54,56 50,64 46,56 38,54 46,52" fill="#fff" opacity="0.9" />
+            <Circle cx="50" cy="54" r="3" fill="#000" />
+            <Circle cx="50" cy="54" r="3" fill="none" stroke="#fff" strokeWidth="0.6" />
             {/* orbital ring around the chest core */}
-            <Ellipse cx="50" cy="64" rx="18" ry="4" fill="none" stroke="#ffd166" strokeWidth="0.8" opacity="0.8" />
+            <Ellipse cx="50" cy="54" rx="17" ry="4" fill="none" stroke="#ffd166" strokeWidth="0.8" opacity="0.85" />
+
             {/* twin scepters at sides */}
-            <Rect x="14" y="40" width="2" height="50" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
-            <Circle cx="15" cy="40" r="3" fill={accent} stroke="#fff" strokeWidth="0.6" />
-            <Rect x="84" y="40" width="2" height="50" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
-            <Circle cx="85" cy="40" r="3" fill={accent} stroke="#fff" strokeWidth="0.6" />
-            {/* robe trim — gold */}
-            <Path d="M 16 96 L 84 96" stroke="#ffd166" strokeWidth="2.4" />
-            <Path d="M 22 80 L 78 80" stroke="#ffd166" strokeWidth="1.2" opacity="0.8" />
+            <Rect x="16" y="40" width="2" height="40" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
+            <Circle cx="17" cy="40" r="3.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
+            <Circle cx="17" cy="40" r="1.5" fill="#fff" />
+            <Rect x="82" y="40" width="2" height="40" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
+            <Circle cx="83" cy="40" r="3.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
+            <Circle cx="83" cy="40" r="1.5" fill="#fff" />
+
+            {/* shoulder pauldrons with gems */}
+            <Path d="M 20 40 Q 14 28 26 24 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+            <Path d="M 80 40 Q 86 28 74 24 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+            <Path d="M 20 40 Q 14 28 26 24" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+            <Path d="M 80 40 Q 86 28 74 24" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+            <Circle cx="22" cy="30" r="1.5" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+            <Circle cx="78" cy="30" r="1.5" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+
             {/* orbital motes around */}
-            <Circle cx="-4" cy="18" r="2" fill="#fff" opacity="0.95" />
-            <Circle cx="104" cy="18" r="2" fill="#fff" opacity="0.95" />
-            <Circle cx="-6" cy="84" r="1.8" fill="#fff7a8" opacity="0.9" />
-            <Circle cx="106" cy="84" r="1.8" fill="#fff7a8" opacity="0.9" />
-            <Circle cx="50" cy="-4" r="2.5" fill="#fff" />
+            <Circle cx="-4" cy="16" r="2" fill="#fff" opacity="0.95" />
+            <Circle cx="104" cy="16" r="2" fill="#fff" opacity="0.95" />
+            <Circle cx="-6" cy="64" r="1.8" fill="#fff7a8" opacity="0.9" />
+            <Circle cx="106" cy="64" r="1.8" fill="#fff7a8" opacity="0.9" />
+            <Circle cx="50" cy="-6" r="2.5" fill="#fff" />
           </>
         )}
       </Svg>
