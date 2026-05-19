@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Svg, {
   Path, Circle, Ellipse, Rect, G, LinearGradient, RadialGradient,
-  Stop, Defs, Polygon, Line,
+  Stop, Defs, Polygon, Line, Pattern,
 } from 'react-native-svg';
 import {
   StyleSheet,
@@ -1128,12 +1128,12 @@ function Game({ onEnd }) {
           {/* animated path with flowing wave */}
           <PathLayer path={s.path} time={s.time} />
 
-          {/* spawn, checkpoints, goal */}
-          <Marker pt={SPAWN} label="↓" color="#3a1f4a" />
+          {/* spawn portal, checkpoint torches, castle keep */}
+          <SpawnPortal pt={SPAWN} time={s.time} />
           {CHECKPOINTS.map((cp, i) => (
-            <Marker key={`cp${i}`} pt={cp} label={`${i + 1}`} color="#2a3a55" />
+            <CheckpointTorch key={`cp${i}`} pt={cp} time={s.time} i={i} />
           ))}
-          <Marker pt={GOAL} label="◇" color="#1f4a3a" />
+          <CastleKeep pt={GOAL} time={s.time} />
 
           {/* tap layer */}
           <Pressable onPress={onBoardPress} style={{ position: 'absolute', left: 0, top: 0, width: BOARD_W, height: BOARD_H }} />
@@ -1315,76 +1315,178 @@ const TORCH_SPECS = [
   { left: BOARD_W * 0.75 - 6, top: BOARD_H + WALL_THICKNESS / 2 - 6 },
 ];
 
+// Pseudo-random deterministic noise positions for floor detail (cracks, moss).
+const FLOOR_DETAILS = (() => {
+  let seed = 73219;
+  const rand = () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return Array.from({ length: 60 }, () => ({
+    x: rand() * BOARD_W,
+    y: rand() * BOARD_H,
+    kind: rand() < 0.55 ? 'crack' : rand() < 0.8 ? 'speckle' : 'moss',
+    rot: rand() * 90 - 45,
+    scale: 0.5 + rand() * 0.9,
+    variant: Math.floor(rand() * 3),
+  }));
+})();
+
+// Stone slab floor: one SVG covering the whole board with a tiled pattern
+// plus scattered cracks, speckles, and mossy patches for variation.
+function StoneFloor() {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: BOARD_W, height: BOARD_H }}>
+      <Svg width={BOARD_W} height={BOARD_H}>
+        <Defs>
+          <Pattern id="slab" x="0" y="0" width={TILE} height={TILE} patternUnits="userSpaceOnUse">
+            {/* slab base — gradient from cool blue-grey top to deeper bottom */}
+            <Rect x="0" y="0" width={TILE} height={TILE} fill="#2a2540" />
+            <Rect x="1" y="1" width={TILE - 2} height={TILE - 2} fill="#332e4a" />
+            {/* top-left highlight bevel */}
+            <Path d={`M 1 1 L ${TILE - 1} 1 L ${TILE - 3} 3 L 3 3 L 3 ${TILE - 3} L 1 ${TILE - 1} Z`}
+                  fill="#4a4366" opacity="0.7" />
+            {/* bottom-right shadow bevel */}
+            <Path d={`M 1 ${TILE - 1} L ${TILE - 1} ${TILE - 1} L ${TILE - 1} 1 L ${TILE - 3} 3 L ${TILE - 3} ${TILE - 3} L 3 ${TILE - 3} Z`}
+                  fill="#1a1530" opacity="0.75" />
+            {/* dim center */}
+            <Rect x="4" y="4" width={TILE - 8} height={TILE - 8} fill="#2c2745" opacity="0.55" />
+            {/* tiny corner dots */}
+            <Circle cx="3" cy="3" r="0.6" fill="#1a1530" />
+            <Circle cx={TILE - 3} cy={TILE - 3} r="0.6" fill="#1a1530" />
+          </Pattern>
+          <RadialGradient id="floorVignette" cx="0.5" cy="0.5" r="0.7">
+            <Stop offset="0" stopColor="#000" stopOpacity="0" />
+            <Stop offset="1" stopColor="#000" stopOpacity="0.55" />
+          </RadialGradient>
+        </Defs>
+        <Rect x="0" y="0" width={BOARD_W} height={BOARD_H} fill="url(#slab)" />
+        {/* scattered floor details */}
+        {FLOOR_DETAILS.map((d, i) => {
+          if (d.kind === 'crack') {
+            const len = 6 * d.scale;
+            return (
+              <Path
+                key={i}
+                d={`M ${d.x} ${d.y} L ${d.x + len * Math.cos(d.rot)} ${d.y + len * Math.sin(d.rot)}`}
+                stroke="#0a0510"
+                strokeWidth={0.6}
+                opacity="0.65"
+              />
+            );
+          }
+          if (d.kind === 'speckle') {
+            return (
+              <Circle key={i} cx={d.x} cy={d.y} r={0.8 * d.scale} fill="#1a1530" opacity="0.6" />
+            );
+          }
+          // moss
+          return (
+            <Circle key={i} cx={d.x} cy={d.y} r={1.5 * d.scale} fill="#3a5a3a" opacity="0.45" />
+          );
+        })}
+        {/* vignette — darker at edges */}
+        <Rect x="0" y="0" width={BOARD_W} height={BOARD_H} fill="url(#floorVignette)" />
+      </Svg>
+    </View>
+  );
+}
+
+// Brick wall frame around the perimeter — running-bond pattern with mortar gaps.
+const BRICK_W = 36;
+const BRICK_H = WALL_THICKNESS;
+function BrickWalls() {
+  const outerW = BOARD_W + WALL_THICKNESS * 2;
+  const outerH = BOARD_H + WALL_THICKNESS * 2;
+  return (
+    <View pointerEvents="none" style={{
+      position: 'absolute',
+      left: -WALL_THICKNESS, top: -WALL_THICKNESS,
+      width: outerW, height: outerH,
+    }}>
+      <Svg width={outerW} height={outerH}>
+        <Defs>
+          <Pattern id="brickH" x="0" y="0" width={BRICK_W * 2} height={BRICK_H} patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width={BRICK_W * 2} height={BRICK_H} fill="#16121f" />
+            {/* row brick (top row of pattern) */}
+            <Rect x="1" y="1" width={BRICK_W - 2} height={BRICK_H - 2} fill="#3a3050" />
+            <Rect x={BRICK_W + 1} y="1" width={BRICK_W - 2} height={BRICK_H - 2} fill="#352b48" />
+            {/* highlights */}
+            <Path d={`M 1 1 L ${BRICK_W - 1} 1 L ${BRICK_W - 1} 2 L 1 2 Z`} fill="#5a4d76" opacity="0.65" />
+            <Path d={`M ${BRICK_W + 1} 1 L ${BRICK_W * 2 - 1} 1 L ${BRICK_W * 2 - 1} 2 L ${BRICK_W + 1} 2 Z`} fill="#5a4d76" opacity="0.65" />
+            {/* shadows */}
+            <Path d={`M 1 ${BRICK_H - 2} L ${BRICK_W - 1} ${BRICK_H - 2} L ${BRICK_W - 1} ${BRICK_H - 1} L 1 ${BRICK_H - 1} Z`} fill="#0a0510" opacity="0.6" />
+            <Path d={`M ${BRICK_W + 1} ${BRICK_H - 2} L ${BRICK_W * 2 - 1} ${BRICK_H - 2} L ${BRICK_W * 2 - 1} ${BRICK_H - 1} L ${BRICK_W + 1} ${BRICK_H - 1} Z`} fill="#0a0510" opacity="0.6" />
+            {/* speckles */}
+            <Circle cx={BRICK_W * 0.3} cy={BRICK_H * 0.5} r="0.6" fill="#0a0510" opacity="0.7" />
+            <Circle cx={BRICK_W * 0.7} cy={BRICK_H * 0.4} r="0.5" fill="#0a0510" opacity="0.7" />
+            <Circle cx={BRICK_W * 1.3} cy={BRICK_H * 0.6} r="0.6" fill="#0a0510" opacity="0.7" />
+            <Circle cx={BRICK_W * 1.7} cy={BRICK_H * 0.5} r="0.5" fill="#0a0510" opacity="0.7" />
+          </Pattern>
+          <Pattern id="brickHoffset" x={BRICK_W} y="0" width={BRICK_W * 2} height={BRICK_H} patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width={BRICK_W * 2} height={BRICK_H} fill="#16121f" />
+            <Rect x="1" y="1" width={BRICK_W - 2} height={BRICK_H - 2} fill="#3a3050" />
+            <Rect x={BRICK_W + 1} y="1" width={BRICK_W - 2} height={BRICK_H - 2} fill="#352b48" />
+            <Path d={`M 1 1 L ${BRICK_W - 1} 1 L ${BRICK_W - 1} 2 L 1 2 Z`} fill="#5a4d76" opacity="0.65" />
+            <Path d={`M ${BRICK_W + 1} 1 L ${BRICK_W * 2 - 1} 1 L ${BRICK_W * 2 - 1} 2 L ${BRICK_W + 1} 2 Z`} fill="#5a4d76" opacity="0.65" />
+            <Path d={`M 1 ${BRICK_H - 2} L ${BRICK_W - 1} ${BRICK_H - 2} L ${BRICK_W - 1} ${BRICK_H - 1} L 1 ${BRICK_H - 1} Z`} fill="#0a0510" opacity="0.6" />
+            <Path d={`M ${BRICK_W + 1} ${BRICK_H - 2} L ${BRICK_W * 2 - 1} ${BRICK_H - 2} L ${BRICK_W * 2 - 1} ${BRICK_H - 1} L ${BRICK_W + 1} ${BRICK_H - 1} Z`} fill="#0a0510" opacity="0.6" />
+          </Pattern>
+          <Pattern id="brickV" x="0" y="0" width={BRICK_H} height={BRICK_W * 2} patternUnits="userSpaceOnUse">
+            <Rect x="0" y="0" width={BRICK_H} height={BRICK_W * 2} fill="#16121f" />
+            <Rect x="1" y="1" width={BRICK_H - 2} height={BRICK_W - 2} fill="#3a3050" />
+            <Rect x="1" y={BRICK_W + 1} width={BRICK_H - 2} height={BRICK_W - 2} fill="#352b48" />
+            <Path d={`M 1 1 L 2 1 L 2 ${BRICK_W - 1} L 1 ${BRICK_W - 1} Z`} fill="#5a4d76" opacity="0.65" />
+            <Path d={`M 1 ${BRICK_W + 1} L 2 ${BRICK_W + 1} L 2 ${BRICK_W * 2 - 1} L 1 ${BRICK_W * 2 - 1} Z`} fill="#5a4d76" opacity="0.65" />
+          </Pattern>
+        </Defs>
+        {/* top wall */}
+        <Rect x="0" y="0" width={outerW} height={WALL_THICKNESS} fill="url(#brickH)" />
+        {/* bottom wall — offset row pattern */}
+        <Rect x="0" y={outerH - WALL_THICKNESS} width={outerW} height={WALL_THICKNESS} fill="url(#brickHoffset)" />
+        {/* left wall */}
+        <Rect x="0" y="0" width={WALL_THICKNESS} height={outerH} fill="url(#brickV)" />
+        {/* right wall */}
+        <Rect x={outerW - WALL_THICKNESS} y="0" width={WALL_THICKNESS} height={outerH} fill="url(#brickV)" />
+        {/* outer dark edge */}
+        <Rect x="0" y="0" width={outerW} height={outerH}
+              fill="none" stroke="#0a0510" strokeWidth="2" />
+        {/* inner dark edge against the play area */}
+        <Rect x={WALL_THICKNESS - 1} y={WALL_THICKNESS - 1}
+              width={BOARD_W + 2} height={BOARD_H + 2}
+              fill="none" stroke="#0a0510" strokeWidth="1.5" />
+        {/* corner cap stones */}
+        <Rect x="0" y="0" width={WALL_THICKNESS} height={WALL_THICKNESS} fill="#1f1832" stroke="#0a0510" strokeWidth="1" />
+        <Rect x={outerW - WALL_THICKNESS} y="0" width={WALL_THICKNESS} height={WALL_THICKNESS} fill="#1f1832" stroke="#0a0510" strokeWidth="1" />
+        <Rect x="0" y={outerH - WALL_THICKNESS} width={WALL_THICKNESS} height={WALL_THICKNESS} fill="#1f1832" stroke="#0a0510" strokeWidth="1" />
+        <Rect x={outerW - WALL_THICKNESS} y={outerH - WALL_THICKNESS} width={WALL_THICKNESS} height={WALL_THICKNESS} fill="#1f1832" stroke="#0a0510" strokeWidth="1" />
+        {/* corner gems */}
+        <Polygon points={`${WALL_THICKNESS/2},${WALL_THICKNESS/2 - 5} ${WALL_THICKNESS/2 + 5},${WALL_THICKNESS/2} ${WALL_THICKNESS/2},${WALL_THICKNESS/2 + 5} ${WALL_THICKNESS/2 - 5},${WALL_THICKNESS/2}`}
+                 fill="#4cc9ff" stroke="#0a0510" strokeWidth="0.8" />
+        <Polygon points={`${outerW - WALL_THICKNESS/2},${WALL_THICKNESS/2 - 5} ${outerW - WALL_THICKNESS/2 + 5},${WALL_THICKNESS/2} ${outerW - WALL_THICKNESS/2},${WALL_THICKNESS/2 + 5} ${outerW - WALL_THICKNESS/2 - 5},${WALL_THICKNESS/2}`}
+                 fill="#ff4d6d" stroke="#0a0510" strokeWidth="0.8" />
+        <Polygon points={`${WALL_THICKNESS/2},${outerH - WALL_THICKNESS/2 - 5} ${WALL_THICKNESS/2 + 5},${outerH - WALL_THICKNESS/2} ${WALL_THICKNESS/2},${outerH - WALL_THICKNESS/2 + 5} ${WALL_THICKNESS/2 - 5},${outerH - WALL_THICKNESS/2}`}
+                 fill="#5cf28a" stroke="#0a0510" strokeWidth="0.8" />
+        <Polygon points={`${outerW - WALL_THICKNESS/2},${outerH - WALL_THICKNESS/2 - 5} ${outerW - WALL_THICKNESS/2 + 5},${outerH - WALL_THICKNESS/2} ${outerW - WALL_THICKNESS/2},${outerH - WALL_THICKNESS/2 + 5} ${outerW - WALL_THICKNESS/2 - 5},${outerH - WALL_THICKNESS/2}`}
+                 fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+      </Svg>
+    </View>
+  );
+}
+
 const BoardChrome = React.memo(function BoardChrome() {
   return (
     <>
-      {/* Vertical gradient strips (blue → purple) */}
-      {Array.from({ length: GRADIENT_STRIPS }).map((_, i) => (
-        <View key={`gr${i}`} pointerEvents="none" style={{
-          position: 'absolute',
-          left: i * STRIP_W, top: 0,
-          width: STRIP_W + 1, height: BOARD_H,
-          backgroundColor: gradColor(i / (GRADIENT_STRIPS - 1)),
-        }} />
-      ))}
-
-      {/* Subtle tile grid (vertical lines + horizontal lines) */}
-      {Array.from({ length: COLS + 1 }).map((_, i) => (
-        <View key={`gv${i}`} pointerEvents="none" style={{
-          position: 'absolute',
-          left: i * TILE, top: 0,
-          width: 1, height: BOARD_H,
-          backgroundColor: '#00000040',
-        }} />
-      ))}
-      {Array.from({ length: ROWS + 1 }).map((_, i) => (
-        <View key={`gh${i}`} pointerEvents="none" style={{
-          position: 'absolute',
-          left: 0, top: i * TILE,
-          width: BOARD_W, height: 1,
-          backgroundColor: '#00000040',
-        }} />
-      ))}
+      {/* SVG-based stone floor (slabs, cracks, moss, vignette) */}
+      <StoneFloor />
 
       {/* Decorative crystals outside the play area */}
       {CRYSTAL_SPECS.map((c, i) => <DecoCrystal key={`dc${i}`} {...c} />)}
 
-      {/* Stone wall frame */}
-      <View pointerEvents="none" style={{
-        position: 'absolute',
-        left: -WALL_THICKNESS, top: -WALL_THICKNESS,
-        width: BOARD_W + WALL_THICKNESS * 2,
-        height: BOARD_H + WALL_THICKNESS * 2,
-        borderWidth: WALL_THICKNESS,
-        borderColor: '#28233f',
-        borderRadius: 6,
-      }} />
-      {/* Inner highlight (slight bevel) */}
-      <View pointerEvents="none" style={{
-        position: 'absolute',
-        left: -2, top: -2,
-        width: BOARD_W + 4, height: BOARD_H + 4,
-        borderWidth: 2,
-        borderColor: '#4a4060',
-        borderRadius: 4,
-      }} />
-      {/* Outer highlight */}
-      <View pointerEvents="none" style={{
-        position: 'absolute',
-        left: -WALL_THICKNESS - 1, top: -WALL_THICKNESS - 1,
-        width: BOARD_W + WALL_THICKNESS * 2 + 2,
-        height: BOARD_H + WALL_THICKNESS * 2 + 2,
-        borderWidth: 1,
-        borderColor: '#1a1530',
-        borderRadius: 7,
-      }} />
-
-      {/* Vignette: subtle dark corners */}
-      <View pointerEvents="none" style={{
-        position: 'absolute',
-        left: 0, top: 0, width: BOARD_W, height: BOARD_H,
-        backgroundColor: '#00000026',
-      }} />
+      {/* SVG-based brick wall frame with corner gems */}
+      <BrickWalls />
     </>
   );
 });
@@ -1475,27 +1577,73 @@ function DustLayer({ time }) {
 }
 
 // Path flow — bright wave travels Start → Castle along the route.
+// Cobblestone path tiles with neighbour-aware rendering. Each path cell
+// gets a worn-stone look and the animated cyan wave still travels along it.
 function PathLayer({ path, time }) {
   if (!path) return null;
+  // Build a set of path coords for neighbour checks.
+  const pathSet = new Set(path.map((p) => `${p.r},${p.c}`));
+  const has = (r, c) => pathSet.has(`${r},${c}`);
   const len = path.length;
-  // The wave position (in path indices) advances with time.
   const head = (time * 18) % (len + 20);
   return (
     <>
+      {/* static cobblestone underlay */}
       {path.map((p, i) => {
-        // Distance from the wave's head, in path indices.
-        const dist = head - i;
-        let brightness = 0.0;
-        if (dist >= 0 && dist < 8) brightness = 1 - dist / 8;
-        const baseOpacity = 0.45;
-        const totalBlue = Math.min(1, baseOpacity + brightness * 0.55);
+        const cx = p.c * TILE + TILE / 2;
+        const cy = p.r * TILE + TILE / 2;
+        const left = p.c * TILE;
+        const top = p.r * TILE;
+        // Stable per-tile seed so each cobble has its own subtle look.
+        const seed = (p.r * 73 + p.c * 31) & 0xff;
+        const tint = 0.85 + ((seed * 7) % 30) / 100;
+        const r1 = 8 + ((seed * 3) % 4); // primary cobble radius
+        const r2 = 6 + ((seed * 5) % 3);
+        // neighbour flags so we can blunt corners that face other path cells
+        const n = has(p.r - 1, p.c);
+        const s = has(p.r + 1, p.c);
+        const w = has(p.r, p.c - 1);
+        const e = has(p.r, p.c + 1);
+        const base = `rgb(${Math.floor(60 * tint)}, ${Math.floor(80 * tint)}, ${Math.floor(120 * tint)})`;
+        const baseHi = `rgb(${Math.floor(100 * tint)}, ${Math.floor(130 * tint)}, ${Math.floor(180 * tint)})`;
         return (
-          <View key={`p${i}`} pointerEvents="none" style={{
+          <View key={`pb${i}`} pointerEvents="none" style={{
+            position: 'absolute', left, top, width: TILE, height: TILE,
+          }}>
+            <Svg width={TILE} height={TILE}>
+              {/* the path "bed" — bracketed by neighbours so corners merge */}
+              <Rect
+                x={w ? 0 : 2}
+                y={n ? 0 : 2}
+                width={TILE - (w ? 0 : 2) - (e ? 0 : 2)}
+                height={TILE - (n ? 0 : 2) - (s ? 0 : 2)}
+                rx={n || s || w || e ? 0 : 3}
+                fill="#1a1530"
+                stroke="#0a0510"
+                strokeWidth="0.6"
+              />
+              {/* two main cobble stones */}
+              <Circle cx={TILE / 2 - 4 + (seed % 3)} cy={TILE / 2 - 4 + ((seed >> 2) % 3)} r={r1 * 0.55} fill={base} stroke="#0a0510" strokeWidth="0.4" />
+              <Circle cx={TILE / 2 + 3 + ((seed >> 3) % 3)} cy={TILE / 2 + 3 + ((seed >> 4) % 3)} r={r2 * 0.55} fill={baseHi} opacity="0.95" />
+              {/* highlight pip */}
+              <Circle cx={TILE / 2 - 4} cy={TILE / 2 - 4} r="1" fill="#fff" opacity="0.35" />
+            </Svg>
+          </View>
+        );
+      })}
+      {/* animated cyan wave overlay */}
+      {path.map((p, i) => {
+        const dist = head - i;
+        let brightness = 0;
+        if (dist >= 0 && dist < 8) brightness = 1 - dist / 8;
+        if (brightness <= 0.05) return null;
+        return (
+          <View key={`pw${i}`} pointerEvents="none" style={{
             position: 'absolute',
             left: p.c * TILE, top: p.r * TILE,
             width: TILE, height: TILE,
-            backgroundColor: brightness > 0.1 ? '#4cc9ff' : '#15204a',
-            opacity: brightness > 0.1 ? totalBlue : 0.55,
+            backgroundColor: '#4cc9ff',
+            opacity: brightness * 0.45,
           }} />
         );
       })}
@@ -1507,6 +1655,220 @@ function Marker({ pt, label, color }) {
   return (
     <View pointerEvents="none" style={[styles.marker, { left: pt.c * TILE, top: pt.r * TILE, backgroundColor: color }]}>
       <Text style={styles.markerText}>{label}</Text>
+    </View>
+  );
+}
+
+// ───── Spawn portal — arched cave entrance with red glow ────────────────────
+function SpawnPortal({ pt, time }) {
+  const flicker = 0.7 + 0.3 * Math.sin(time * 5);
+  const size = TILE * 3;
+  // center the 3-tile portal on the spawn cell, extending into the wall to the left
+  const left = pt.c * TILE - TILE * 2;
+  const top = pt.r * TILE - TILE;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
+      <Svg width={size} height={size} viewBox="0 0 66 66">
+        <Defs>
+          <RadialGradient id="portalDepth" cx="0.7" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#ff4d6d" stopOpacity="0.6" />
+            <Stop offset="0.5" stopColor="#7a1d2e" stopOpacity="0.8" />
+            <Stop offset="1" stopColor="#000" stopOpacity="1" />
+          </RadialGradient>
+          <RadialGradient id="portalGlow" cx="0.7" cy="0.5" r="0.6">
+            <Stop offset="0" stopColor="#ff4d6d" stopOpacity={0.45 * flicker} />
+            <Stop offset="1" stopColor="#ff4d6d" stopOpacity="0" />
+          </RadialGradient>
+          <LinearGradient id="portalStone" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#4a4060" />
+            <Stop offset="1" stopColor="#1a1530" />
+          </LinearGradient>
+        </Defs>
+        {/* outer red glow */}
+        <Rect x="0" y="0" width="66" height="66" fill="url(#portalGlow)" />
+        {/* stone arch frame — rectangle with rounded top forming an arch shape */}
+        <Path
+          d="M 8 60 L 8 30 Q 8 12 33 12 Q 58 12 58 30 L 58 60 Z"
+          fill="url(#portalStone)"
+          stroke="#0a0510"
+          strokeWidth="1.5"
+        />
+        {/* arch inner — actual portal opening (dark + red glow) */}
+        <Path
+          d="M 14 58 L 14 32 Q 14 18 33 18 Q 52 18 52 32 L 52 58 Z"
+          fill="url(#portalDepth)"
+          stroke="#0a0510"
+          strokeWidth="1"
+        />
+        {/* keystone at top of arch */}
+        <Polygon points="29,12 37,12 39,20 27,20" fill="#5a4d76" stroke="#0a0510" strokeWidth="1" />
+        <Circle cx="33" cy="16" r="1.8" fill="#ff4d6d" />
+        {/* voussoirs (arch stones) — slight wedges around the arch */}
+        {[16, 22, 28, 38, 44, 50].map((x, i) => (
+          <Path key={i} d={`M ${x} 18 L ${x + 4} 14 L ${x + 6} 20 L ${x + 2} 24 Z`}
+                fill="#3a3050" stroke="#0a0510" strokeWidth="0.5" />
+        ))}
+        {/* arch keystone trim */}
+        <Path d="M 8 30 Q 8 12 33 12 Q 58 12 58 30" stroke="#5a4d76" strokeWidth="1.2" fill="none" />
+        {/* red runes inside cave */}
+        <Circle cx="44" cy="40" r="2" fill="#ff4d6d" opacity={flicker} />
+        <Circle cx="44" cy="40" r="1" fill="#fff" opacity="0.7" />
+        <Path d="M 22 50 L 26 46 L 30 50" stroke="#ff4d6d" strokeWidth="0.8" fill="none" opacity={0.6 * flicker} />
+        {/* base steps */}
+        <Rect x="6" y="58" width="54" height="3" fill="#3a3050" stroke="#0a0510" strokeWidth="0.5" />
+        <Rect x="4" y="61" width="58" height="3" fill="#2a2540" stroke="#0a0510" strokeWidth="0.5" />
+        {/* skull at base */}
+        <Ellipse cx="18" cy="56" rx="2.5" ry="2" fill="#e8e0c8" stroke="#0a0510" strokeWidth="0.5" />
+        <Circle cx="17" cy="56" r="0.6" fill="#0a0510" />
+        <Circle cx="19" cy="56" r="0.6" fill="#0a0510" />
+      </Svg>
+    </View>
+  );
+}
+
+// ───── Castle keep — fortress with towers, battlements, banner ─────────────
+function CastleKeep({ pt, time }) {
+  const bannerWave = Math.sin(time * 3) * 1.5;
+  const size = TILE * 3;
+  // center on the goal cell, extending into the right wall
+  const left = pt.c * TILE - TILE * 2;
+  const top = pt.r * TILE - TILE;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
+      <Svg width={size} height={size} viewBox="0 0 66 66">
+        <Defs>
+          <LinearGradient id="castleStone" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#7a8aa8" />
+            <Stop offset="1" stopColor="#3a4060" />
+          </LinearGradient>
+          <LinearGradient id="castleTower" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#8a98b8" />
+            <Stop offset="1" stopColor="#2a3050" />
+          </LinearGradient>
+          <LinearGradient id="castleRoof" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#5cf28a" />
+            <Stop offset="1" stopColor="#1a6a30" />
+          </LinearGradient>
+        </Defs>
+        {/* base shadow */}
+        <Ellipse cx="33" cy="62" rx="30" ry="3" fill="#000" opacity="0.5" />
+        {/* main keep — central rectangle */}
+        <Rect x="22" y="22" width="22" height="38" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1.5" />
+        {/* main keep merlons (battlements) */}
+        <Rect x="22" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
+        <Rect x="28" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
+        <Rect x="34" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
+        <Rect x="40" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
+        {/* left tower */}
+        <Rect x="8" y="20" width="14" height="40" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="1.5" />
+        {/* left tower merlons */}
+        <Rect x="8" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
+        <Rect x="13" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
+        <Rect x="18" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
+        {/* left tower roof */}
+        <Polygon points="6,20 24,20 15,4" fill="url(#castleRoof)" stroke="#0a0510" strokeWidth="1.5" />
+        <Path d="M 6 20 L 15 4" stroke="#fff" strokeWidth="0.6" opacity="0.4" />
+        {/* right tower */}
+        <Rect x="44" y="20" width="14" height="40" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="1.5" />
+        <Rect x="45" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
+        <Rect x="50" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
+        <Rect x="55" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
+        <Polygon points="42,20 60,20 51,4" fill="url(#castleRoof)" stroke="#0a0510" strokeWidth="1.5" />
+        <Path d="M 42 20 L 51 4" stroke="#fff" strokeWidth="0.6" opacity="0.4" />
+        {/* gate */}
+        <Path d="M 28 60 L 28 44 Q 28 38 33 38 Q 38 38 38 44 L 38 60 Z" fill="#0a0510" stroke="#0a0510" strokeWidth="1" />
+        {/* gate portcullis bars */}
+        <Path d="M 30 44 L 30 58 M 33 42 L 33 58 M 36 44 L 36 58" stroke="#7a6a3a" strokeWidth="0.8" />
+        <Path d="M 28 50 L 38 50" stroke="#7a6a3a" strokeWidth="0.8" />
+        {/* tower windows — arched slits */}
+        <Path d="M 13 30 L 13 36 Q 13 38 15 38 Q 17 38 17 36 L 17 30 Z" fill="#ffd166" />
+        <Path d="M 49 30 L 49 36 Q 49 38 51 38 Q 53 38 53 36 L 53 30 Z" fill="#ffd166" />
+        <Path d="M 13 44 L 13 50 Q 13 52 15 52 Q 17 52 17 50 L 17 44 Z" fill="#ffd166" opacity="0.6" />
+        <Path d="M 49 44 L 49 50 Q 49 52 51 52 Q 53 52 53 50 L 53 44 Z" fill="#ffd166" opacity="0.6" />
+        {/* main keep windows */}
+        <Path d="M 26 30 L 26 34 Q 26 36 28 36 Q 30 36 30 34 L 30 30 Z" fill="#ffd166" />
+        <Path d="M 36 30 L 36 34 Q 36 36 38 36 Q 40 36 40 34 L 40 30 Z" fill="#ffd166" />
+        {/* main keep flagpole + waving banner */}
+        <Rect x="32.5" y="0" width="1" height="20" fill="#3a2806" />
+        <Path
+          d={`M 33 2 L ${42 + bannerWave} 6 L ${40 + bannerWave} 14 L 33 12 Z`}
+          fill="#5cf28a"
+          stroke="#0a0510"
+          strokeWidth="0.6"
+        />
+        <Path d={`M 33 6 L ${39 + bannerWave} 8 L ${38 + bannerWave} 11 L 33 9 Z`} fill="#fff" opacity="0.4" />
+        {/* heraldry star on the banner */}
+        <Polygon
+          points={`${36 + bannerWave * 0.5},6 ${37 + bannerWave * 0.5},9 ${40 + bannerWave * 0.5},9 ${37.5 + bannerWave * 0.5},11 ${38.5 + bannerWave * 0.5},14 ${36 + bannerWave * 0.5},12 ${33.5 + bannerWave * 0.5},14 ${34.5 + bannerWave * 0.5},11 ${32 + bannerWave * 0.5},9 ${35 + bannerWave * 0.5},9`}
+          fill="#ffd166"
+        />
+        {/* tower roof flags */}
+        <Rect x="14.5" y="-2" width="1" height="7" fill="#3a2806" />
+        <Polygon points="15.5,-2 20,0 15.5,2" fill="#ff4d6d" />
+        <Rect x="50.5" y="-2" width="1" height="7" fill="#3a2806" />
+        <Polygon points="51.5,-2 56,0 51.5,2" fill="#4cc9ff" />
+        {/* warm window glow */}
+        <Circle cx="15" cy="34" r="3.5" fill="#ffd166" opacity="0.25" />
+        <Circle cx="51" cy="34" r="3.5" fill="#ffd166" opacity="0.25" />
+        {/* stone block lines on tower */}
+        <Path d="M 8 30 L 22 30 M 8 40 L 22 40 M 8 50 L 22 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.6" />
+        <Path d="M 44 30 L 58 30 M 44 40 L 58 40 M 44 50 L 58 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.6" />
+        <Path d="M 22 30 L 44 30 M 22 40 L 44 40 M 22 50 L 44 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.6" />
+      </Svg>
+    </View>
+  );
+}
+
+// ───── Checkpoint torch post — stone pedestal with flickering flame ────────
+function CheckpointTorch({ pt, time, i }) {
+  const phase = (i || 0) * 1.7;
+  const flicker = 0.75 + 0.25 * Math.sin(time * 7 + phase) * Math.sin(time * 13 + phase * 1.3);
+  const size = TILE * 1.6;
+  const left = pt.c * TILE - TILE * 0.3;
+  const top = pt.r * TILE - TILE * 0.6;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
+      <Svg width={size} height={size} viewBox="0 0 35 35">
+        <Defs>
+          <RadialGradient id={`tg${i}`} cx="0.5" cy="0.3" r="0.7">
+            <Stop offset="0" stopColor="#ffd166" stopOpacity={flicker} />
+            <Stop offset="1" stopColor="#ffd166" stopOpacity="0" />
+          </RadialGradient>
+          <LinearGradient id={`tp${i}`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#5a4d76" />
+            <Stop offset="1" stopColor="#1a1530" />
+          </LinearGradient>
+        </Defs>
+        {/* warm light pool */}
+        <Rect x="0" y="0" width="35" height="35" fill={`url(#tg${i})`} />
+        {/* shadow under base */}
+        <Ellipse cx="17.5" cy="33" rx="9" ry="1.5" fill="#000" opacity="0.5" />
+        {/* stone pedestal base */}
+        <Path d="M 11 33 L 24 33 L 22 28 L 13 28 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.8" />
+        {/* pedestal mid */}
+        <Rect x="14" y="20" width="7" height="8" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.8" />
+        {/* pedestal top */}
+        <Path d="M 12 20 L 23 20 L 22 16 L 13 16 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.8" />
+        {/* iron torch shaft */}
+        <Rect x="16.5" y="10" width="2" height="8" fill="#3a2806" stroke="#0a0510" strokeWidth="0.4" />
+        {/* torch bowl */}
+        <Path d="M 13 10 L 22 10 L 21 6 L 14 6 Z" fill="#3a2806" stroke="#0a0510" strokeWidth="0.6" />
+        {/* flame */}
+        <Path
+          d={`M 17.5 ${5 - flicker * 1.5} Q ${14.5 - flicker * 0.3} 6 14 8 Q 13 5 17.5 ${0 - flicker * 2} Q ${22 + flicker * 0.3} 5 21 8 Q ${20.5 + flicker * 0.3} 6 17.5 ${5 - flicker * 1.5} Z`}
+          fill="#ff6f1f"
+        />
+        <Path
+          d={`M 17.5 ${5 - flicker * 1} Q 16 4 16 6 Q 15.5 3 17.5 ${1 - flicker * 1.5} Q 19.5 3 19 6 Q 19 4 17.5 ${5 - flicker * 1} Z`}
+          fill="#ffd166"
+        />
+        <Circle cx="17.5" cy={4 - flicker * 0.5} r="0.8" fill="#fff" />
+        {/* iron bracket decorations */}
+        <Circle cx="13" cy="22" r="0.8" fill="#0a0510" />
+        <Circle cx="22" cy="22" r="0.8" fill="#0a0510" />
+        {/* engraved rune on pedestal */}
+        <Path d="M 16 24 L 19 24 M 17.5 23 L 17.5 26" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
+      </Svg>
     </View>
   );
 }
