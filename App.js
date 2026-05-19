@@ -75,10 +75,48 @@ function isReserved(r, c) {
 
 // ─── Game constants ──────────────────────────────────────────────────────────
 const STARTING_GOLD = 0;
-const STARTING_LIVES = 20;
 const MAX_PLACEMENTS = 5;
 const STONE_REFUND = 0;     // rocks can't be sold under standard rules
 const NUM_WAVES = 50;
+
+// ─── Difficulty ─────────────────────────────────────────────────────────────
+// Each difficulty multiplies enemy HP / speed / boss HP / gold and overrides
+// starting lives. Player-side stats and gem damage are NOT modified — the
+// challenge curve comes purely from the enemy side and economy.
+const DIFFICULTIES = {
+  newcomer:  {
+    id: 'newcomer',  name: 'NEWCOMER',  short: 'New here',
+    tagline: 'First crystals, kind waves',
+    hpMul: 0.7,  speedMul: 0.9,  bossMul: 0.65, goldMul: 1.3,
+    lives: 30, color: '#5cf28a',
+  },
+  thatkid:   {
+    id: 'thatkid',   name: 'THATKID',   short: 'You know this game',
+    tagline: 'Standard challenge — the way it was designed',
+    hpMul: 1.0,  speedMul: 1.0,  bossMul: 1.0,  goldMul: 1.0,
+    lives: 20, color: '#4cc9ff',
+  },
+  coolkid:   {
+    id: 'coolkid',   name: 'COOLKID',   short: 'Too cool for the path',
+    tagline: 'You started skipping classes — and skipping defences',
+    hpMul: 1.6,  speedMul: 1.05, bossMul: 1.8,  goldMul: 0.85,
+    lives: 15, color: '#ffd166',
+  },
+  principal: {
+    id: 'principal', name: "PRINCIPAL'S OFFICE", short: 'You went too far',
+    tagline: 'Detention, daily, eternal. The maze remembers.',
+    hpMul: 2.5,  speedMul: 1.2,  bossMul: 3.0,  goldMul: 0.7,
+    lives: 10, color: '#ff4d6d',
+  },
+};
+const DIFFICULTY_ORDER = ['newcomer', 'thatkid', 'coolkid', 'principal'];
+const DEFAULT_DIFFICULTY = 'thatkid';
+const emptyPerDiff = () => ({
+  newcomer: { bestWave: 0 },
+  thatkid: { bestWave: 0 },
+  coolkid: { bestWave: 0 },
+  principal: { bestWave: 0 },
+});
 
 // ─── Purities (canonical names) ─────────────────────────────────────────────
 const TIERS = [
@@ -183,7 +221,7 @@ const GEM_STATS = {
     { damage: 8,  range: 8, cooldown: 1.00, poison: { dps: 16,   duration: 4 } },
     { damage: 16, range: 8, cooldown: 1.00, poison: { dps: 32,   duration: 4 } },
     { damage: 32, range: 8, cooldown: 1.00, poison: { dps: 64,   duration: 5 } },
-    { damage: 12, range: 8, cooldown: 1.00, poison: { dps: 128,  duration: 5 } },
+    { damage: 60, range: 8, cooldown: 1.00, poison: { dps: 220, duration: 5 } },
   ],
   amethyst: [
     { damage: 2,  range: 8, cooldown: 0.60, armorBreak: 2  },
@@ -401,6 +439,10 @@ function ingredientLabel(ing) {
 }
 
 // ─── Enemies ─────────────────────────────────────────────────────────────────
+// Per-tier multipliers were dropping mega's effective HP into the trillions on
+// the old 1.25^w curve. Mega base reduced 34k→12k and curve gentled to 1.18^w
+// (W50 mul ≈ 3,000 instead of ≈ 70,000) so endgame is achievable with the
+// mythic specials. Difficulty multipliers then scale on top.
 const ENEMIES = {
   grunt:  { hp: 30,    speed: 1.4, gold: 1, color: '#c4b9ff', size: 0.55, armor: 0, flying: false },
   runner: { hp: 18,    speed: 2.8, gold: 1, color: '#ffd166', size: 0.45, armor: 0, flying: false },
@@ -408,18 +450,18 @@ const ENEMIES = {
   swarm:  { hp: 12,    speed: 2.2, gold: 1, color: '#ff8fab', size: 0.4,  armor: 0, flying: false },
   flyer:  { hp: 40,    speed: 2.0, gold: 1, color: '#88f088', size: 0.5,  armor: 1, flying: true  },
   boss:   { hp: 2100,  speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
-  mega:   { hp: 34000, speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
+  mega:   { hp: 12000, speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
 };
 
 // ─── Wave generator (50 waves) ───────────────────────────────────────────────
 // Generates spawn lists + per-wave HP multiplier so we don't have to hand-tune
 // every wave. Bosses on 10/20/30/40/50.
+// Curve anchors (THATKID baseline, ×1.0 difficulty):
+//   W1 ≈ 1,  W10 ≈ 5.2,  W20 ≈ 32,  W30 ≈ 199,  W40 ≈ 1235,  W50 ≈ 7657
 function buildWaves() {
   const waves = [];
   for (let w = 1; w <= NUM_WAVES; w++) {
-    // Per-wave HP multiplier matches doc anchors:
-    // W1 = 1, W10 ≈ 9, W20 ≈ 85, W30 ≈ 800, W40 ≈ 7500, W50 ≈ 70000
-    const hpMul = Math.pow(1.25, w - 1);
+    const hpMul = Math.pow(1.18, w - 1);
     let spawns;
     if (w === 10) spawns = [['boss', 1, 0.5]];
     else if (w === 20) spawns = [['boss', 2, 3.0], ['swarm', 22, 0.18]];
@@ -492,32 +534,48 @@ const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(fals
 // ─── App shell ───────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState('lobby');
-  const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0 });
-  const [stats, setStats] = useState({ bestScore: 0, bestWave: 0, gamesPlayed: 0, wins: 0 });
+  const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0, difficulty: DEFAULT_DIFFICULTY });
+  const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY);
+  const [stats, setStats] = useState({
+    bestScore: 0, bestWave: 0, gamesPlayed: 0, wins: 0,
+    // per-difficulty bests
+    perDiff: emptyPerDiff(),
+  });
 
   const recordResult = (won, score, waveReached) => {
-    setLastResult({ won, score, waveReached });
-    setStats((prev) => ({
-      bestScore: Math.max(prev.bestScore, score),
-      bestWave: Math.max(prev.bestWave, waveReached),
-      gamesPlayed: prev.gamesPlayed + 1,
-      wins: prev.wins + (won ? 1 : 0),
-    }));
+    setLastResult({ won, score, waveReached, difficulty });
+    setStats((prev) => {
+      const prevDiff = prev.perDiff || emptyPerDiff();
+      const prevForDiff = prevDiff[difficulty] || { bestWave: 0 };
+      return {
+        bestScore: Math.max(prev.bestScore, score),
+        bestWave: Math.max(prev.bestWave, waveReached),
+        gamesPlayed: prev.gamesPlayed + 1,
+        wins: prev.wins + (won ? 1 : 0),
+        perDiff: { ...prevDiff, [difficulty]: { bestWave: Math.max(prevForDiff.bestWave, waveReached) } },
+      };
+    });
     setScreen(won ? 'win' : 'lose');
   };
 
-  if (screen === 'lobby') return <LobbyScreen stats={stats} onStartSolo={() => setScreen('game')} />;
+  const startSolo = (diffId) => {
+    setDifficulty(diffId);
+    setScreen('game');
+  };
+
+  if (screen === 'lobby') return <LobbyScreen stats={stats} onStartSolo={startSolo} />;
   if (screen === 'win' || screen === 'lose') return (
     <EndScreen
       won={screen === 'win'}
       score={lastResult.score}
       waveReached={lastResult.waveReached}
+      difficulty={lastResult.difficulty}
       stats={stats}
       onPlayAgain={() => setScreen('game')}
       onLobby={() => setScreen('lobby')}
     />
   );
-  return <Game onEnd={recordResult} />;
+  return <Game onEnd={recordResult} difficulty={difficulty} />;
 }
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
@@ -622,13 +680,32 @@ function LobbyScreen({ stats, onStartSolo }) {
       </View>
 
       <View style={styles.modeList}>
-        <TouchableOpacity style={styles.modeBtnPrimary} onPress={onStartSolo} activeOpacity={0.85}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.modeBtnTitlePrimary}>SOLO</Text>
-            <Text style={styles.modeBtnSubPrimary}>Defend 50 waves · 5 checkpoints</Text>
-          </View>
-          <Text style={styles.modeBtnArrow}>▶</Text>
-        </TouchableOpacity>
+        <Text style={styles.soloHeader}>SOLO · pick a difficulty</Text>
+        {DIFFICULTY_ORDER.map((id) => {
+          const d = DIFFICULTIES[id];
+          const bestWave = stats.perDiff?.[id]?.bestWave || 0;
+          return (
+            <TouchableOpacity
+              key={id}
+              onPress={() => onStartSolo(id)}
+              activeOpacity={0.85}
+              style={[styles.diffBtn, { borderColor: d.color }]}
+            >
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                  <Text style={[styles.diffName, { color: d.color }]}>{d.name}</Text>
+                  <Text style={styles.diffShort}>  · {d.short}</Text>
+                </View>
+                <Text style={styles.diffTagline}>{d.tagline}</Text>
+                <Text style={styles.diffStats}>
+                  HP ×{d.hpMul} · BOSS ×{d.bossMul} · GOLD ×{d.goldMul} · {d.lives} lives
+                  {bestWave > 0 ? `   ·   best W${bestWave}` : ''}
+                </Text>
+              </View>
+              <Text style={[styles.modeBtnArrow, { color: d.color }]}>▶</Text>
+            </TouchableOpacity>
+          );
+        })}
         <View style={styles.modeBtnLocked}>
           <View style={{ flex: 1 }}>
             <Text style={styles.modeBtnTitleLocked}>QUICK MATCH</Text>
@@ -723,8 +800,9 @@ function RecipeBookModal({ visible, onClose }) {
   );
 }
 
-function EndScreen({ won, score, waveReached, stats, onPlayAgain, onLobby }) {
+function EndScreen({ won, score, waveReached, difficulty, stats, onPlayAgain, onLobby }) {
   const newBest = score > 0 && score === stats.bestScore;
+  const diff = DIFFICULTIES[difficulty] || DIFFICULTIES[DEFAULT_DIFFICULTY];
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
@@ -736,6 +814,10 @@ function EndScreen({ won, score, waveReached, stats, onPlayAgain, onLobby }) {
         <Text style={styles.lobbySubtitle}>
           {won ? 'The crystals shine on' : `Fell on wave ${waveReached}`}
         </Text>
+        <View style={[styles.diffPill, { borderColor: diff.color, marginTop: 8 }]}>
+          <View style={[styles.diffPillDot, { backgroundColor: diff.color }]} />
+          <Text style={[styles.diffPillText, { color: diff.color }]}>{diff.name}</Text>
+        </View>
       </View>
       <View style={styles.statsCard}>
         <Text style={styles.statsCardLabel}>THIS RUN</Text>
@@ -749,7 +831,7 @@ function EndScreen({ won, score, waveReached, stats, onPlayAgain, onLobby }) {
         <TouchableOpacity style={styles.modeBtnPrimary} onPress={onPlayAgain} activeOpacity={0.85}>
           <View style={{ flex: 1 }}>
             <Text style={styles.modeBtnTitlePrimary}>PLAY AGAIN</Text>
-            <Text style={styles.modeBtnSubPrimary}>Another 50-wave run</Text>
+            <Text style={styles.modeBtnSubPrimary}>Another run · {diff.name}</Text>
           </View>
           <Text style={styles.modeBtnArrow}>▶</Text>
         </TouchableOpacity>
@@ -763,7 +845,8 @@ function EndScreen({ won, score, waveReached, stats, onPlayAgain, onLobby }) {
 }
 
 // ─── Game ────────────────────────────────────────────────────────────────────
-function Game({ onEnd }) {
+function Game({ onEnd, difficulty }) {
+  const diff = DIFFICULTIES[difficulty] || DIFFICULTIES[DEFAULT_DIFFICULTY];
   const stateRef = useRef(null);
   if (!stateRef.current) {
     stateRef.current = {
@@ -785,9 +868,10 @@ function Game({ onEnd }) {
       nextTowerId: 1,
       nextFxId: 1,
       gold: STARTING_GOLD,
-      lives: STARTING_LIVES,
+      lives: diff.lives,
       score: 0,
       speed: 1,
+      difficulty: diff,
       inspect: null,               // candidate id being inspected
       flash: null,
       pan: { x: 0, y: 0 },
@@ -1100,6 +1184,12 @@ function Game({ onEnd }) {
         <HudStat label="GOLD" value={s.gold} color="#ffd166" />
         <HudStat label="WAVE" value={`${s.wave}/${NUM_WAVES}`} color="#4cc9ff" />
         <HudStat label="LVL" value={s.playerLevel} color="#b08bff" />
+      </View>
+      <View style={styles.diffStrip}>
+        <View style={[styles.diffPill, { borderColor: diff.color }]}>
+          <View style={[styles.diffPillDot, { backgroundColor: diff.color }]} />
+          <Text style={[styles.diffPillText, { color: diff.color }]}>{diff.name}</Text>
+        </View>
       </View>
 
       <View
@@ -4684,7 +4774,10 @@ function step(dt, s, onEnd) {
   while (s.spawnQueue.length && s.spawnQueue[0].atTime <= s.time) {
     const sp = s.spawnQueue.shift();
     const def = ENEMIES[sp.type];
-    const hp = Math.floor(def.hp * sp.hpMul);
+    const diff = s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY];
+    const isBossOrMega = sp.type === 'boss' || sp.type === 'mega';
+    const bossExtra = isBossOrMega ? diff.bossMul : 1;
+    const hp = Math.floor(def.hp * sp.hpMul * diff.hpMul * bossExtra);
     const subPath = def.flying
       ? [SPAWN, GOAL] // flyers go direct
       : bfsCheckpoints(s.grid, SPAWN) || [SPAWN, GOAL];
@@ -4744,7 +4837,8 @@ function step(dt, s, onEnd) {
     const dr = target.r - e.r;
     const dc = target.c - e.c;
     const dist = Math.hypot(dr, dc);
-    const move = def.speed * speedMul * dt;
+    const diffSpeed = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).speedMul;
+    const move = def.speed * speedMul * diffSpeed * dt;
     if (dist <= move) {
       e.r = target.r;
       e.c = target.c;
@@ -4790,7 +4884,8 @@ function step(dt, s, onEnd) {
     const r = SPECIAL_BY_ID[t.specialId];
     return r && r.stats.goldAura;
   });
-  const goldMul = goldAuraActive ? 2 : 1;
+  const diffGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
+  const goldMul = (goldAuraActive ? 2 : 1) * diffGold;
   const wavePerKill = KILL_GOLD_BY_WAVE[s.wave] || 1;
 
   const alive = [];
@@ -4826,7 +4921,8 @@ function step(dt, s, onEnd) {
 
   // Wave end?
   if (s.spawnQueue.length === 0 && s.enemies.length === 0) {
-    const bossBonus = BOSS_GOLD_BONUS[s.wave] || 0;
+    const diffMulGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
+    const bossBonus = Math.floor((BOSS_GOLD_BONUS[s.wave] || 0) * diffMulGold);
     if (bossBonus > 0) {
       s.gold += bossBonus;
       s.score += bossBonus;
@@ -4976,7 +5072,33 @@ const styles = StyleSheet.create({
   statsHint: { color: '#7c84a8', fontSize: 12, textAlign: 'center', fontStyle: 'italic', marginTop: 4 },
   newBestText: { color: '#ffd166', fontSize: 14, fontWeight: '900', letterSpacing: 2, textAlign: 'center', marginTop: 8 },
 
-  modeList: { gap: 12 },
+  modeList: { gap: 10 },
+  soloHeader: {
+    color: '#9aa3c7', fontSize: 11, fontWeight: '700',
+    letterSpacing: 4, marginBottom: 4, marginLeft: 4,
+  },
+  diffBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#181430',
+    borderRadius: 10, padding: 12,
+    borderWidth: 1.5,
+  },
+  diffName: { fontSize: 16, fontWeight: '900', letterSpacing: 1.5 },
+  diffShort: { color: '#9aa3c7', fontSize: 11, fontStyle: 'italic' },
+  diffTagline: { color: '#cfd5e6', fontSize: 11, marginTop: 2 },
+  diffStats: { color: '#6f7798', fontSize: 9.5, marginTop: 4, letterSpacing: 0.5 },
+  diffStrip: {
+    flexDirection: 'row', justifyContent: 'center',
+    paddingBottom: 4,
+  },
+  diffPill: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: 12, borderWidth: 1,
+    alignSelf: 'center',
+  },
+  diffPillDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  diffPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
   modeBtnPrimary: {
     backgroundColor: '#4cc9ff', paddingHorizontal: 20, paddingVertical: 18,
     borderRadius: 16, flexDirection: 'row', alignItems: 'center',
