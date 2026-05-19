@@ -2035,6 +2035,477 @@ function RockView({ t }) {
   );
 }
 
+// ─── Gem rendering with clear P1–P6 progression ─────────────────────────────
+// Each tier gets larger and more elaborate. The body silhouette changes shape
+// up to P3, then accumulates more facets / rays / sparkles / halo layers /
+// crown elements as tier rises. Renders into 100×100 viewBox; outer wrapper
+// scales to actual size which grows with tier (P1 = 0.7×, P6 = 1.25×).
+
+const GEM_TIER_SCALE = { 1: 0.78, 2: 0.86, 3: 0.96, 4: 1.06, 5: 1.18, 6: 1.32 };
+
+function darken(hex, amt) {
+  // Naive hex→darker (mix with black by amt 0..1).
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const dr = Math.max(0, Math.floor(r * (1 - amt)));
+  const dg = Math.max(0, Math.floor(g * (1 - amt)));
+  const db = Math.max(0, Math.floor(b * (1 - amt)));
+  return `rgb(${dr},${dg},${db})`;
+}
+
+function GemSvg({ gemType, tier }) {
+  const g = GEMS[gemType];
+  const scale = GEM_TIER_SCALE[tier] || 1;
+  const px = TILE * scale;
+  const id = useRef(nextGid()).current;
+  const light = g.color;
+  const dark = darken(g.color, 0.55);
+  const veryDark = darken(g.color, 0.75);
+  const labelColor = tier >= 4 ? '#0b1020' : '#fff';
+
+  return (
+    <View pointerEvents="none" style={{
+      width: px, height: px,
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      <Svg width={px} height={px} viewBox="0 0 100 100">
+        <Defs>
+          <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={light} />
+            <Stop offset="0.5" stopColor={light} />
+            <Stop offset="1" stopColor={dark} />
+          </LinearGradient>
+          <RadialGradient id={`${id}halo`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor={light} stopOpacity={0.5} />
+            <Stop offset="1" stopColor={light} stopOpacity="0" />
+          </RadialGradient>
+          <LinearGradient id={`${id}crown`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#fff7a8" />
+            <Stop offset="1" stopColor="#ffd166" />
+          </LinearGradient>
+        </Defs>
+
+        {/* TIER 5 & 6 outer halo */}
+        {tier >= 4 && <Circle cx="50" cy="50" r="48" fill={`url(#${id}halo)`} />}
+
+        {/* TIER 4+ radiating rays */}
+        {tier >= 4 && [0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => (
+          <Path
+            key={i}
+            d={`M 50 50 L ${50 + 44 * Math.cos((deg * Math.PI) / 180)} ${50 + 44 * Math.sin((deg * Math.PI) / 180)}`}
+            stroke={light}
+            strokeWidth={tier === 4 ? 1.2 : tier === 5 ? 1.8 : 2.4}
+            opacity={tier === 4 ? 0.35 : tier === 5 ? 0.5 : 0.75}
+          />
+        ))}
+
+        {/* TIER 5+ inner halo ring */}
+        {tier >= 5 && (
+          <Circle cx="50" cy="50" r="36" fill="none" stroke={light} strokeWidth="1.5" opacity="0.6"
+                  strokeDasharray="3 3" />
+        )}
+
+        {/* GEM BODY — silhouette varies by tier */}
+        {tier === 1 && (
+          // P1: rough irregular crystal, cracked
+          <>
+            <Polygon points="50,22 70,38 64,76 36,76 30,38" fill={`url(#${id}b)`}
+                     stroke={veryDark} strokeWidth="2" />
+            <Path d="M 42 38 L 46 70" stroke={veryDark} strokeWidth="1.2" />
+            <Path d="M 38 50 L 60 56" stroke={veryDark} strokeWidth="0.6" opacity="0.6" />
+            {/* crack */}
+            <Path d="M 48 32 L 52 50 L 46 68" stroke="#0a0510" strokeWidth="0.8" fill="none" />
+          </>
+        )}
+        {tier === 2 && (
+          // P2: cut rhombus — clean 6-sided
+          <>
+            <Polygon points="50,18 74,38 68,74 32,74 26,38" fill={`url(#${id}b)`}
+                     stroke={veryDark} strokeWidth="2" />
+            {/* facet lines */}
+            <Path d="M 50 18 L 42 46 L 50 74" stroke={veryDark} strokeWidth="0.8" fill="none" opacity="0.7" />
+            <Path d="M 50 18 L 58 46 L 50 74" stroke={veryDark} strokeWidth="0.8" fill="none" opacity="0.7" />
+            <Path d="M 26 38 L 42 46 L 32 74" stroke={veryDark} strokeWidth="0.6" fill="none" opacity="0.6" />
+            <Path d="M 74 38 L 58 46 L 68 74" stroke={veryDark} strokeWidth="0.6" fill="none" opacity="0.6" />
+            {/* one bright facet */}
+            <Polygon points="50,18 42,46 50,40" fill="#fff" opacity="0.35" />
+          </>
+        )}
+        {tier === 3 && (
+          // P3: polished hexagonal, star highlight
+          <>
+            <Polygon points="50,14 78,32 78,68 50,86 22,68 22,32" fill={`url(#${id}b)`}
+                     stroke={veryDark} strokeWidth="2" />
+            {/* radial facets to centre */}
+            <Path d="M 50 14 L 50 50 M 78 32 L 50 50 M 78 68 L 50 50 M 50 86 L 50 50 M 22 68 L 50 50 M 22 32 L 50 50"
+                  stroke={veryDark} strokeWidth="0.8" opacity="0.55" />
+            {/* upper-left bright facet */}
+            <Polygon points="50,14 22,32 50,50" fill="#fff" opacity="0.3" />
+            {/* shine spot */}
+            <Circle cx="38" cy="30" r="4" fill="#fff" opacity="0.7" />
+          </>
+        )}
+        {tier === 4 && (
+          // P4: radiant — 8-pointed brilliant cut + star sparkle
+          <>
+            <Polygon points="50,8 64,22 86,28 78,50 86,72 64,78 50,92 36,78 14,72 22,50 14,28 36,22"
+                     fill={`url(#${id}b)`} stroke={veryDark} strokeWidth="2" />
+            {/* internal facets */}
+            <Path d="M 50 8 L 50 50 M 64 22 L 50 50 M 86 28 L 50 50 M 78 50 L 50 50 M 86 72 L 50 50 M 64 78 L 50 50 M 50 92 L 50 50 M 36 78 L 50 50 M 14 72 L 50 50 M 22 50 L 50 50 M 14 28 L 50 50 M 36 22 L 50 50"
+                  stroke={veryDark} strokeWidth="0.7" opacity="0.55" />
+            {/* upper bright wedge */}
+            <Polygon points="50,8 36,22 50,50 64,22" fill="#fff" opacity="0.32" />
+            {/* sparkle: 4-point star */}
+            <Path d="M 38 26 L 40 30 L 44 32 L 40 34 L 38 38 L 36 34 L 32 32 L 36 30 Z" fill="#fff" />
+            {/* shine spots */}
+            <Circle cx="36" cy="62" r="2" fill="#fff" opacity="0.6" />
+            <Circle cx="68" cy="36" r="1.5" fill="#fff" opacity="0.7" />
+          </>
+        )}
+        {tier === 5 && (
+          // P5: perfect — crown-rim and inner gem
+          <>
+            <Polygon points="50,8 64,20 86,28 78,50 86,72 64,80 50,92 36,80 14,72 22,50 14,28 36,20"
+                     fill={`url(#${id}b)`} stroke={veryDark} strokeWidth="2.2" />
+            {/* extra inner facet ring */}
+            <Polygon points="50,22 66,32 76,50 66,68 50,78 34,68 24,50 34,32" fill="none"
+                     stroke="#fff" strokeWidth="1" opacity="0.5" />
+            {/* internal facets */}
+            <Path d="M 50 8 L 50 50 M 64 20 L 50 50 M 86 28 L 50 50 M 78 50 L 50 50 M 86 72 L 50 50 M 64 80 L 50 50 M 50 92 L 50 50 M 36 80 L 50 50 M 14 72 L 50 50 M 22 50 L 50 50 M 14 28 L 50 50 M 36 20 L 50 50"
+                  stroke={veryDark} strokeWidth="0.6" opacity="0.55" />
+            <Polygon points="50,8 36,20 50,50 64,20" fill="#fff" opacity="0.4" />
+            {/* crown points */}
+            <Polygon points="42,4 50,-2 58,4 50,12" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            {/* 8-point starburst sparkle */}
+            <Path d="M 36 28 L 38 32 L 42 32 L 39 36 L 41 40 L 36 38 L 31 40 L 33 36 L 30 32 L 34 32 Z"
+                  fill="#fff" />
+            {/* shine pips */}
+            <Circle cx="64" cy="32" r="1.5" fill="#fff" opacity="0.85" />
+            <Circle cx="60" cy="62" r="1.5" fill="#fff" opacity="0.75" />
+            {/* floating mote */}
+            <Circle cx="84" cy="14" r="1.8" fill="#fff" opacity="0.9" />
+          </>
+        )}
+        {tier === 6 && (
+          // P6: ascendant — biggest, gold crown of mini-gems, multi-aura
+          <>
+            {/* extra outer aura ring */}
+            <Circle cx="50" cy="50" r="46" fill="none" stroke="#ffd166" strokeWidth="0.8"
+                    opacity="0.7" strokeDasharray="2 4" />
+            <Polygon points="50,10 66,22 88,30 80,50 88,70 66,78 50,90 34,78 12,70 20,50 12,30 34,22"
+                     fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
+            {/* extra gold trim border */}
+            <Polygon points="50,10 66,22 88,30 80,50 88,70 66,78 50,90 34,78 12,70 20,50 12,30 34,22"
+                     fill="none" stroke="#ffd166" strokeWidth="0.8" />
+            {/* inner gem inside the outer body */}
+            <Polygon points="50,28 60,38 68,50 60,62 50,72 40,62 32,50 40,38" fill="#fff"
+                     opacity="0.35" />
+            <Polygon points="50,28 60,38 68,50 60,62 50,72 40,62 32,50 40,38" fill="none"
+                     stroke="#ffd166" strokeWidth="1" />
+            {/* internal facets */}
+            <Path d="M 50 10 L 50 50 M 66 22 L 50 50 M 88 30 L 50 50 M 80 50 L 50 50 M 88 70 L 50 50 M 66 78 L 50 50 M 50 90 L 50 50 M 34 78 L 50 50 M 12 70 L 50 50 M 20 50 L 50 50 M 12 30 L 50 50 M 34 22 L 50 50"
+                  stroke={veryDark} strokeWidth="0.5" opacity="0.65" />
+            <Polygon points="50,10 34,22 50,50 66,22" fill="#fff" opacity="0.45" />
+            {/* crown of mini gems above */}
+            <Polygon points="40,2 44,-4 48,2 44,8" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="48,-2 52,-8 56,-2 52,4" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="56,2 60,-4 64,2 60,8" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Path d="M 38 4 Q 50 0 62 4" stroke="#ffd166" strokeWidth="1.2" fill="none" />
+            {/* big 8-point starburst sparkle */}
+            <Path d="M 36 26 L 38 30 L 44 30 L 40 34 L 42 40 L 36 36 L 30 40 L 32 34 L 28 30 L 34 30 Z"
+                  fill="#fff" />
+            {/* extra sparkles */}
+            <Circle cx="68" cy="32" r="2" fill="#fff" opacity="0.95" />
+            <Circle cx="64" cy="62" r="1.8" fill="#fff" opacity="0.8" />
+            <Circle cx="32" cy="60" r="1.5" fill="#fff" opacity="0.75" />
+            {/* floating motes */}
+            <Circle cx="88" cy="14" r="2" fill="#fff7a8" opacity="0.95" />
+            <Circle cx="14" cy="84" r="2" fill="#fff7a8" opacity="0.95" />
+            <Circle cx="86" cy="84" r="1.5" fill="#fff7a8" opacity="0.85" />
+            <Circle cx="14" cy="16" r="1.5" fill="#fff7a8" opacity="0.85" />
+          </>
+        )}
+      </Svg>
+      {/* Tier label baked on top */}
+      <Text style={{
+        position: 'absolute',
+        color: labelColor,
+        fontSize: TILE * 0.34, fontWeight: '900',
+        textShadowColor: tier >= 4 ? '#fff8' : '#000a',
+        textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 1,
+      }}>
+        {gemLabel(gemType, tier)}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Special tower rendering — distinct silhouettes per tier ────────────────
+// P2 = small spirit guardian (shielded crystal in a robed shroud).
+// P3 = sentinel statue with crown and outer sigil.
+// P4 = winged angel guardian with halo and staff.
+// P5 = greater champion with double-wings, two-handed weapon, crown.
+// P6 = cosmic mythic with floating rings, star core, multiple radiating shapes.
+// All use recipe.color (main robe/body) and recipe.accent (trim/wings).
+
+const SPECIAL_TIER_SCALE = { 2: 1.05, 3: 1.18, 4: 1.35, 5: 1.55, 6: 1.85 };
+
+function SpecialSvg({ recipe }) {
+  const tier = parseInt(recipe.tier.slice(1), 10);
+  const scale = SPECIAL_TIER_SCALE[tier] || 1;
+  const px = TILE * scale;
+  const id = useRef(nextGid()).current;
+  const main = recipe.color;
+  const accent = recipe.accent;
+  const dark = darken(main, 0.6);
+
+  return (
+    <View pointerEvents="none" style={{
+      width: px, height: px,
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      <Svg width={px} height={px} viewBox="0 0 100 100">
+        <Defs>
+          <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={main} />
+            <Stop offset="1" stopColor={dark} />
+          </LinearGradient>
+          <RadialGradient id={`${id}aura`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor={accent} stopOpacity={0.55} />
+            <Stop offset="1" stopColor={accent} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+
+        {/* Aura behind every special — grows with tier */}
+        <Circle cx="50" cy="50" r={tier >= 5 ? 50 : tier >= 4 ? 46 : 40} fill={`url(#${id}aura)`} />
+
+        {tier === 2 && (
+          // P2 SPIRIT GUARDIAN: small cowled form, gem core in chest
+          <>
+            <Ellipse cx="50" cy="92" rx="22" ry="3" fill="#000" opacity="0.5" />
+            {/* robed body */}
+            <Path d="M 50 22 C 62 22 70 30 70 40 L 74 86 L 26 86 L 30 40 C 30 30 38 22 50 22 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2" />
+            {/* hood */}
+            <Path d="M 30 38 C 30 24 40 18 50 18 C 60 18 70 24 70 38 L 64 50 L 36 50 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+            <Path d="M 36 50 L 64 50 L 60 56 L 40 56 Z" fill="#0a0510" />
+            {/* glowing eye slit */}
+            <Path d="M 42 44 L 50 41 L 58 44 L 50 47 Z" fill={accent} />
+            <Circle cx="50" cy="44" r="1.2" fill="#fff" />
+            {/* chest gem */}
+            <Polygon points="50,60 56,68 50,76 44,68" fill={accent} stroke="#fff" strokeWidth="0.8" />
+            <Polygon points="50,60 50,72 44,68" fill="#fff" opacity="0.45" />
+            {/* trim on robe */}
+            <Path d="M 30 40 L 70 40" stroke={accent} strokeWidth="1.2" />
+            <Path d="M 28 80 L 72 80" stroke={accent} strokeWidth="0.8" opacity="0.7" />
+          </>
+        )}
+
+        {tier === 3 && (
+          // P3 SENTINEL STATUE: taller, crown, sigil ring above head
+          <>
+            <Ellipse cx="50" cy="94" rx="26" ry="3.5" fill="#000" opacity="0.6" />
+            {/* outer sigil ring */}
+            <Circle cx="50" cy="22" r="14" fill="none" stroke={accent} strokeWidth="1.2" opacity="0.7"
+                    strokeDasharray="3 2" />
+            {/* halo behind head */}
+            <Circle cx="50" cy="24" r="11" fill="none" stroke={accent} strokeWidth="2" />
+            {/* robed body */}
+            <Path d="M 50 28 C 64 28 72 36 72 48 L 78 88 L 22 88 L 28 48 C 28 36 36 28 50 28 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.2" />
+            {/* head */}
+            <Circle cx="50" cy="26" r="10" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+            {/* face shadow */}
+            <Path d="M 41 22 Q 50 16 59 22 L 56 32 L 44 32 Z" fill="#0a0510" />
+            {/* two glowing eye dots */}
+            <Circle cx="46" cy="24" r="1.4" fill={accent} />
+            <Circle cx="54" cy="24" r="1.4" fill={accent} />
+            {/* crown points */}
+            <Polygon points="42,18 46,10 50,16 54,10 58,18" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
+            <Circle cx="50" cy="12" r="1.5" fill="#fff" />
+            {/* chest sigil */}
+            <Polygon points="50,52 60,62 50,72 40,62" fill={accent} stroke="#fff" strokeWidth="0.8" />
+            <Path d="M 50 52 L 50 72 M 40 62 L 60 62" stroke="#0a0510" strokeWidth="0.6" />
+            {/* arms (folded across body) */}
+            <Path d="M 30 56 Q 50 70 70 56" stroke={accent} strokeWidth="2.2" fill="none" />
+            {/* robe trim */}
+            <Path d="M 22 88 L 78 88" stroke={accent} strokeWidth="1.5" />
+            <Path d="M 28 64 L 72 64" stroke={accent} strokeWidth="0.8" opacity="0.6" />
+            {/* floating side gems */}
+            <Polygon points="14,50 18,46 22,50 18,54" fill={accent} opacity="0.85" />
+            <Polygon points="78,50 82,46 86,50 82,54" fill={accent} opacity="0.85" />
+          </>
+        )}
+
+        {tier === 4 && (
+          // P4 WINGED ANGEL GUARDIAN: visible wings spread behind body, staff
+          <>
+            <Ellipse cx="50" cy="94" rx="30" ry="4" fill="#000" opacity="0.6" />
+            {/* wings spread out */}
+            <Path d="M 30 44 Q 4 30 -2 54 Q 8 56 22 62 Q 6 66 8 78 Q 22 70 30 68 Z"
+                  fill={accent} stroke="#0a0510" strokeWidth="1.5" opacity="0.95" />
+            <Path d="M 70 44 Q 96 30 102 54 Q 92 56 78 62 Q 94 66 92 78 Q 78 70 70 68 Z"
+                  fill={accent} stroke="#0a0510" strokeWidth="1.5" opacity="0.95" />
+            {/* wing feather highlights */}
+            <Path d="M 12 38 L 26 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 6 50 L 24 58" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 12 70 L 28 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 88 38 L 74 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 94 50 L 76 58" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            <Path d="M 88 70 L 72 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            {/* halo */}
+            <Circle cx="50" cy="20" r="11" fill="none" stroke={accent} strokeWidth="2.5" />
+            <Circle cx="50" cy="20" r="11" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.5" />
+            {/* body in armoured robe */}
+            <Path d="M 50 28 C 64 28 72 38 72 50 L 76 92 L 24 92 L 28 50 C 28 38 36 28 50 28 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
+            {/* head */}
+            <Circle cx="50" cy="24" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+            <Path d="M 42 22 L 58 22" stroke="#0a0510" strokeWidth="1.5" /> {/* visor */}
+            <Path d="M 44 23 L 56 23" stroke="#fff" strokeWidth="0.5" />
+            {/* chest plate with sigil */}
+            <Path d="M 38 42 L 62 42 L 60 78 L 40 78 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+            <Polygon points="50,50 60,60 50,70 40,60" fill={accent} stroke="#fff" strokeWidth="0.8" />
+            <Path d="M 50 50 L 50 70 M 40 60 L 60 60" stroke="#0a0510" strokeWidth="0.6" />
+            {/* staff in right "hand" */}
+            <Rect x="76" y="20" width="2.5" height="60" fill="#3a2806" stroke="#0a0510" strokeWidth="0.5" />
+            <Polygon points="77,16 71,22 77,30 83,22" fill={accent} stroke="#fff" strokeWidth="0.8" />
+            <Circle cx="77" cy="22" r="1.5" fill="#fff" />
+            {/* robe trim */}
+            <Path d="M 24 92 L 76 92" stroke={accent} strokeWidth="2" />
+            <Path d="M 28 72 L 72 72" stroke={accent} strokeWidth="0.8" opacity="0.7" />
+            {/* small chest gem at top */}
+            <Circle cx="50" cy="40" r="2.5" fill={accent} stroke="#fff" strokeWidth="0.5" />
+          </>
+        )}
+
+        {tier === 5 && (
+          // P5 GREATER CHAMPION: double-wing pair, crown, two-handed weapon
+          <>
+            <Ellipse cx="50" cy="96" rx="34" ry="4.5" fill="#000" opacity="0.7" />
+            {/* upper wing pair */}
+            <Path d="M 30 38 Q 0 18 -8 42 Q 4 44 22 54 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.95" />
+            <Path d="M 70 38 Q 100 18 108 42 Q 96 44 78 54 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.95" />
+            {/* lower wing pair */}
+            <Path d="M 30 56 Q 2 52 -2 80 Q 14 74 30 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            <Path d="M 70 56 Q 98 52 102 80 Q 86 74 70 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            {/* feather highlights */}
+            <Path d="M 6 26 L 24 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 0 36 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 4 58 L 26 64" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 8 72 L 28 68" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 94 26 L 76 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 100 36 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 96 58 L 74 64" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 92 72 L 72 68" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            {/* multiple halos */}
+            <Circle cx="50" cy="18" r="14" fill="none" stroke={accent} strokeWidth="2.5" />
+            <Circle cx="50" cy="18" r="11" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
+            <Circle cx="50" cy="18" r="8" fill="none" stroke={accent} strokeWidth="1.2" />
+            {/* armoured body */}
+            <Path d="M 50 30 C 66 30 74 40 74 52 L 80 94 L 20 94 L 26 52 C 26 40 34 30 50 30 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.6" />
+            {/* head with crown */}
+            <Circle cx="50" cy="24" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+            <Polygon points="40,18 44,8 50,16 56,8 60,18" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+            <Circle cx="50" cy="11" r="2" fill="#fff" />
+            <Path d="M 42 24 L 58 24" stroke="#0a0510" strokeWidth="1.6" />
+            <Path d="M 44 25 L 56 25" stroke="#fff" strokeWidth="0.5" />
+            {/* chest plate with large sigil */}
+            <Path d="M 34 42 L 66 42 L 64 84 L 36 84 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+            <Polygon points="50,50 64,62 50,76 36,62" fill={accent} stroke="#fff" strokeWidth="1" />
+            <Polygon points="50,54 60,62 50,72 40,62" fill="#fff" opacity="0.45" />
+            <Path d="M 50 50 L 50 76 M 36 62 L 64 62" stroke="#0a0510" strokeWidth="0.7" />
+            {/* two-handed greatsword behind */}
+            <Rect x="48.5" y="-4" width="3" height="100" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="46,-4 54,-4 50,-12" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.6" />
+            <Rect x="42" y="46" width="16" height="3" fill="#7a6a3a" stroke="#0a0510" strokeWidth="0.5" />
+            <Circle cx="50" cy="60" r="2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+            {/* robe trim */}
+            <Path d="M 20 94 L 80 94" stroke={accent} strokeWidth="2.4" />
+            <Path d="M 26 76 L 74 76" stroke={accent} strokeWidth="1" opacity="0.65" />
+            {/* small chest gem */}
+            <Circle cx="50" cy="40" r="2.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
+            {/* floating motes around */}
+            <Circle cx="10" cy="14" r="1.5" fill="#fff" opacity="0.8" />
+            <Circle cx="90" cy="14" r="1.5" fill="#fff" opacity="0.8" />
+          </>
+        )}
+
+        {tier === 6 && (
+          // P6 COSMIC MYTHIC: floating cosmic figure, star core, rings, big halo
+          <>
+            <Ellipse cx="50" cy="98" rx="42" ry="5" fill="#000" opacity="0.75" />
+            {/* reality-tear cracks radiating out */}
+            <Path d="M 50 -8 L 50 2" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
+            <Path d="M 14 6 L 22 14" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            <Path d="M 86 6 L 78 14" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            <Path d="M -4 50 L 6 50" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            <Path d="M 94 50 L 104 50" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            {/* multi-layer halo */}
+            <Circle cx="50" cy="44" r="40" fill="none" stroke="#ffd166" strokeWidth="0.6" opacity="0.5" strokeDasharray="1 3" />
+            <Circle cx="50" cy="20" r="16" fill="none" stroke={accent} strokeWidth="2.5" />
+            <Circle cx="50" cy="20" r="13" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.7" />
+            <Circle cx="50" cy="20" r="10" fill="none" stroke={accent} strokeWidth="1.5" />
+            <Circle cx="50" cy="20" r="7" fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            {/* triple wing pair */}
+            <Path d="M 30 32 Q -4 12 -12 38 Q 6 38 22 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+            <Path d="M 28 48 Q -10 46 -10 70 Q 6 66 28 62 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
+            <Path d="M 30 62 Q -2 70 -2 92 Q 16 80 32 74 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            <Path d="M 70 32 Q 104 12 112 38 Q 94 38 78 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+            <Path d="M 72 48 Q 110 46 110 70 Q 94 66 72 62 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
+            <Path d="M 70 62 Q 102 70 102 92 Q 84 80 68 74 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+            {/* feather highlights */}
+            <Path d="M -2 22 L 24 42" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M -8 50 L 22 56" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 0 78 L 28 70" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 102 22 L 76 42" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 108 50 L 78 56" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 100 78 L 72 70" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            {/* radiant body */}
+            <Path d="M 50 32 C 68 32 78 42 78 56 L 84 96 L 16 96 L 22 56 C 22 42 32 32 50 32 Z"
+                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="3" />
+            {/* outer gold trim */}
+            <Path d="M 50 32 C 68 32 78 42 78 56 L 84 96 L 16 96 L 22 56 C 22 42 32 32 50 32 Z"
+                  fill="none" stroke="#ffd166" strokeWidth="1.2" />
+            {/* head + crown */}
+            <Circle cx="50" cy="22" r="11" fill={accent} stroke="#0a0510" strokeWidth="1.6" />
+            <Polygon points="36,18 40,4 46,14 50,2 54,14 60,4 64,18" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+            <Circle cx="50" cy="6" r="2.5" fill="#fff" />
+            {/* face — closed reverent visor */}
+            <Path d="M 41 22 L 59 22" stroke="#0a0510" strokeWidth="1.5" />
+            <Path d="M 43 23 L 57 23" stroke="#fff" strokeWidth="0.6" />
+            {/* chest with cosmic star core */}
+            <Path d="M 32 44 L 68 44 L 66 86 L 34 86 Z" fill={dark} stroke="#0a0510" strokeWidth="1.8" />
+            <Circle cx="50" cy="64" r="14" fill="#000" stroke="#0a0510" strokeWidth="2" />
+            <Circle cx="50" cy="64" r="11" fill={accent} />
+            <Polygon points="50,52 54,60 62,64 54,68 50,76 46,68 38,64 46,60" fill="#fff" opacity="0.85" />
+            <Circle cx="50" cy="64" r="3" fill="#000" />
+            <Circle cx="50" cy="64" r="3" fill="none" stroke="#fff" strokeWidth="0.6" />
+            {/* orbital ring around the chest core */}
+            <Ellipse cx="50" cy="64" rx="18" ry="4" fill="none" stroke="#ffd166" strokeWidth="0.8" opacity="0.8" />
+            {/* twin scepters at sides */}
+            <Rect x="14" y="40" width="2" height="50" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
+            <Circle cx="15" cy="40" r="3" fill={accent} stroke="#fff" strokeWidth="0.6" />
+            <Rect x="84" y="40" width="2" height="50" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
+            <Circle cx="85" cy="40" r="3" fill={accent} stroke="#fff" strokeWidth="0.6" />
+            {/* robe trim — gold */}
+            <Path d="M 16 96 L 84 96" stroke="#ffd166" strokeWidth="2.4" />
+            <Path d="M 22 80 L 78 80" stroke="#ffd166" strokeWidth="1.2" opacity="0.8" />
+            {/* orbital motes around */}
+            <Circle cx="-4" cy="18" r="2" fill="#fff" opacity="0.95" />
+            <Circle cx="104" cy="18" r="2" fill="#fff" opacity="0.95" />
+            <Circle cx="-6" cy="84" r="1.8" fill="#fff7a8" opacity="0.9" />
+            <Circle cx="106" cy="84" r="1.8" fill="#fff7a8" opacity="0.9" />
+            <Circle cx="50" cy="-4" r="2.5" fill="#fff" />
+          </>
+        )}
+      </Svg>
+    </View>
+  );
+}
+
 function TowerView({ t }) {
   if (t.kind === 'rock') {
     return <RockView t={t} />;
@@ -2042,35 +2513,12 @@ function TowerView({ t }) {
   if (t.kind === 'special') {
     const recipe = SPECIAL_BY_ID[t.specialId];
     if (!recipe) return null;
-    const tierLevel = parseInt(recipe.tier.slice(1), 10);
     return (
       <View pointerEvents="none" style={{
         position: 'absolute', left: t.c * TILE, top: t.r * TILE,
         width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
       }}>
-        <View style={{
-          position: 'absolute',
-          width: TILE * (1.0 + tierLevel * 0.05),
-          height: TILE * (1.0 + tierLevel * 0.05),
-          borderRadius: TILE, backgroundColor: recipe.accent,
-          opacity: 0.18 + tierLevel * 0.04,
-        }} />
-        <View style={{
-          width: TILE * 0.85, height: TILE * 0.85,
-          borderRadius: TILE * 0.42,
-          backgroundColor: recipe.color,
-          borderWidth: 2, borderColor: recipe.accent,
-          shadowColor: recipe.accent, shadowOpacity: 1,
-          shadowRadius: 6 + tierLevel, shadowOffset: { width: 0, height: 0 },
-          elevation: 4 + tierLevel,
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <View style={{
-            width: TILE * 0.5, height: TILE * 0.5,
-            backgroundColor: recipe.accent,
-            transform: [{ rotate: '45deg' }], borderRadius: 3,
-          }} />
-        </View>
+        <SpecialSvg recipe={recipe} />
         {/* Full special tower name written below the tile */}
         <View style={{
           position: 'absolute',
@@ -2098,91 +2546,17 @@ function TowerView({ t }) {
     );
   }
   // Gem
-  const g = GEMS[t.gemType];
-  const isAscendant = t.tier === 6;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute', left: t.c * TILE, top: t.r * TILE,
       width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
     }}>
-      {t.tier >= 3 && (
-        <View style={{
-          position: 'absolute',
-          width: TILE * (0.85 + t.tier * 0.04),
-          height: TILE * (0.85 + t.tier * 0.04),
-          borderRadius: TILE, backgroundColor: g.color,
-          opacity: 0.15 + t.tier * 0.05,
-        }} />
-      )}
-      {/* Crystal body (rotated square) */}
-      <View style={{
-        width: TILE * 0.72, height: TILE * 0.72,
-        backgroundColor: g.color, borderRadius: 4,
-        transform: [{ rotate: '45deg' }],
-        shadowColor: g.color, shadowOpacity: 0.9,
-        shadowRadius: 4 + t.tier, shadowOffset: { width: 0, height: 0 },
-        elevation: 3 + t.tier,
-        borderWidth: isAscendant ? 2 : t.tier >= 4 ? 1.5 : 0,
-        borderColor: isAscendant ? '#ffd166' : '#fff',
-      }}>
-        {/* Top-left facet (lighter) */}
-        <View style={{
-          position: 'absolute',
-          left: 0, top: 0,
-          width: '50%', height: '50%',
-          backgroundColor: '#fff',
-          opacity: 0.22,
-          borderTopLeftRadius: 4,
-        }} />
-        {/* Bottom-right facet (darker, simulating shaded side) */}
-        <View style={{
-          position: 'absolute',
-          right: 0, bottom: 0,
-          width: '50%', height: '50%',
-          backgroundColor: '#000',
-          opacity: 0.18,
-          borderBottomRightRadius: 4,
-        }} />
-        {/* Center crisp diagonal line (gem fold) */}
-        <View style={{
-          position: 'absolute',
-          left: 0, top: '50%',
-          width: '100%', height: 1,
-          backgroundColor: '#000',
-          opacity: 0.15,
-        }} />
-        <View style={{
-          position: 'absolute',
-          top: 0, left: '50%',
-          width: 1, height: '100%',
-          backgroundColor: '#000',
-          opacity: 0.15,
-        }} />
-      </View>
-      {/* Specular highlight (small bright dot) */}
-      <View style={{
-        position: 'absolute',
-        width: TILE * 0.16, height: TILE * 0.16,
-        borderRadius: TILE,
-        backgroundColor: '#fff',
-        opacity: 0.7,
-        top: TILE * 0.2, left: TILE * 0.22,
-      }} />
-      {/* Tier label */}
-      <Text style={{
-        position: 'absolute', color: t.tier >= 3 ? '#0b1020' : '#fff',
-        fontSize: TILE * 0.34, fontWeight: '900',
-        textShadowColor: '#fff8',
-        textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 1,
-      }}>
-        {gemLabel(t.gemType, t.tier)}
-      </Text>
+      <GemSvg gemType={t.gemType} tier={t.tier} />
     </View>
   );
 }
 
 function CandidateView({ t, time }) {
-  const g = GEMS[t.gemType];
   const pulse = 0.55 + 0.35 * Math.sin(time * 6);
   return (
     <View pointerEvents="none" style={{
@@ -2191,23 +2565,12 @@ function CandidateView({ t, time }) {
     }}>
       <View style={{
         position: 'absolute',
-        width: TILE * 1.05, height: TILE * 1.05,
+        width: TILE * 1.15, height: TILE * 1.15,
         borderRadius: TILE,
         borderWidth: 3, borderColor: '#ffd166',
         opacity: pulse,
       }} />
-      <View style={{
-        width: TILE * 0.72, height: TILE * 0.72,
-        backgroundColor: g.color, borderRadius: 4,
-        transform: [{ rotate: '45deg' }],
-        opacity: 0.85,
-        shadowColor: g.color, shadowOpacity: 1,
-        shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
-      }} />
-      <Text style={{ position: 'absolute', color: t.tier >= 3 ? '#0b1020' : '#fff',
-        fontSize: TILE * 0.34, fontWeight: '900' }}>
-        {gemLabel(t.gemType, t.tier)}
-      </Text>
+      <GemSvg gemType={t.gemType} tier={t.tier} />
     </View>
   );
 }
@@ -5133,11 +5496,17 @@ const styles = StyleSheet.create({
   gameRoot: { flex: 1, backgroundColor: '#0b1020' },
   hud: {
     flexDirection: 'row', justifyContent: 'space-around',
-    paddingVertical: 10, paddingHorizontal: 8, backgroundColor: '#0a0e1c',
+    paddingVertical: 12, paddingHorizontal: 8,
+    backgroundColor: '#0a0e1c',
+    borderBottomWidth: 1, borderBottomColor: '#1f2a4a',
   },
-  hudStat: { alignItems: 'center', minWidth: 64 },
-  hudLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1.5, fontWeight: '600' },
-  hudValue: { fontSize: 20, fontWeight: '800', marginTop: 2 },
+  hudStat: {
+    alignItems: 'center', minWidth: 64,
+    paddingVertical: 4, paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  hudLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 2, fontWeight: '700' },
+  hudValue: { fontSize: 22, fontWeight: '900', marginTop: 1, textShadowColor: '#000a', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
 
   marker: { position: 'absolute', width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center' },
   markerText: { color: '#fff', fontSize: TILE * 0.55, opacity: 0.6, fontWeight: '700' },
@@ -5157,13 +5526,19 @@ const styles = StyleSheet.create({
   },
   tiltBtnText: { color: '#ffd166', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
 
-  bottomBar: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, alignItems: 'center' },
+  bottomBar: {
+    paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14,
+    alignItems: 'center',
+    backgroundColor: '#0a0e1ce0',
+    borderTopWidth: 1, borderTopColor: '#1f2a4a',
+  },
   phaseBadge: {
-    backgroundColor: '#4cc9ff', paddingHorizontal: 14, paddingVertical: 4,
-    borderRadius: 999, marginBottom: 6,
+    backgroundColor: '#4cc9ff', paddingHorizontal: 16, paddingVertical: 5,
+    borderRadius: 999, marginBottom: 8,
+    shadowColor: '#4cc9ff', shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
   },
   phaseBadgeText: { color: '#0b1020', fontWeight: '900', fontSize: 12, letterSpacing: 2 },
-  bottomMessage: { color: '#fff', fontSize: 14, fontWeight: '600', textAlign: 'center' },
+  bottomMessage: { color: '#cfd5e6', fontSize: 13, fontWeight: '600', textAlign: 'center', letterSpacing: 0.3 },
   bottomRow: { marginTop: 8 },
   speedBtn: {
     backgroundColor: '#2a335f', width: 56, height: 36,
@@ -5180,11 +5555,11 @@ const styles = StyleSheet.create({
 
   modalBackdrop: { flex: 1, backgroundColor: '#000c', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
   modalCard: {
-    backgroundColor: '#161c33', borderRadius: 18,
+    backgroundColor: '#161c33', borderRadius: 20,
     padding: 22, paddingTop: 26,
     width: '100%', maxWidth: 420,
-    borderWidth: 1, borderColor: '#2a335f',
-    shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 18, shadowOffset: { width: 0, height: 8 },
+    borderWidth: 1.5, borderColor: '#2f3a66',
+    shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 22, shadowOffset: { width: 0, height: 12 },
   },
   modalCloseX: {
     position: 'absolute', top: 8, right: 8,
@@ -5193,16 +5568,17 @@ const styles = StyleSheet.create({
   },
   modalCloseXText: { color: '#9aa3c7', fontSize: 22, fontWeight: '700' },
   modalHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingRight: 32 },
-  modalTitle: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  modalSub: { color: '#9aa3c7', fontSize: 12, marginTop: 3 },
+  modalTitle: { color: '#fff', fontSize: 24, fontWeight: '900', letterSpacing: 0.5 },
+  modalSub: { color: '#9aa3c7', fontSize: 12, marginTop: 4, letterSpacing: 0.5 },
   modalRow: {
     flexDirection: 'row', justifyContent: 'space-around',
     marginVertical: 14, backgroundColor: '#0f1530',
-    borderRadius: 12, paddingVertical: 12,
+    borderRadius: 14, paddingVertical: 14,
+    borderWidth: 1, borderColor: '#1f2a4a',
   },
   modalStat: { alignItems: 'center', flex: 1 },
-  modalStatLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1, fontWeight: '600' },
-  modalStatValue: { color: '#fff', fontSize: 16, fontWeight: '800', marginTop: 2 },
+  modalStatLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 2, fontWeight: '700' },
+  modalStatValue: { color: '#fff', fontSize: 18, fontWeight: '900', marginTop: 4 },
   combineHint: { color: '#9aa3c7', fontSize: 13, textAlign: 'center', marginBottom: 14, lineHeight: 18 },
 
   actionRowBtn: {
