@@ -1025,13 +1025,11 @@ function Game({ onEnd }) {
           {/* dungeon chrome: gradient, tile grid, stone frame, torches, crystals */}
           <BoardChrome />
 
-          {/* path tint */}
-          {s.path && s.path.map((p, i) => (
-            <View key={`p${i}`} pointerEvents="none" style={{
-              position: 'absolute', left: p.c * TILE, top: p.r * TILE,
-              width: TILE, height: TILE, backgroundColor: '#15204a',
-            }} />
-          ))}
+          {/* drifting dust motes (animated) */}
+          <DustLayer time={s.time} />
+
+          {/* animated path with flowing wave */}
+          <PathLayer path={s.path} time={s.time} />
 
           {/* spawn, checkpoints, goal */}
           <Marker pt={SPAWN} label="↓" color="#3a1f4a" />
@@ -1054,6 +1052,9 @@ function Game({ onEnd }) {
 
           {/* projectiles */}
           {s.projectiles.map((p) => <ProjectileView key={`pr${p.id}`} p={p} />)}
+
+          {/* animated torches on top of everything (so they cast over walls) */}
+          <TorchLayer time={s.time} />
         </View>
 
         <TouchableOpacity onPress={recenter} style={styles.recenterBtn}>
@@ -1276,28 +1277,6 @@ const BoardChrome = React.memo(function BoardChrome() {
         borderRadius: 7,
       }} />
 
-      {/* Torches at corners and mid-edges */}
-      {TORCH_SPECS.map((pos, i) => (
-        <View key={`to${i}`} pointerEvents="none" style={{
-          position: 'absolute',
-          left: pos.left, top: pos.top,
-          width: 12, height: 12, borderRadius: 6,
-          backgroundColor: '#ffb24a',
-          borderWidth: 1, borderColor: '#ffd166',
-          shadowColor: '#ffaa44',
-          shadowOpacity: 1, shadowRadius: 14,
-          shadowOffset: { width: 0, height: 0 },
-          elevation: 8,
-        }}>
-          {/* inner flame core */}
-          <View style={{
-            position: 'absolute',
-            left: 3, top: 3, width: 6, height: 6, borderRadius: 3,
-            backgroundColor: '#fff7a8',
-          }} />
-        </View>
-      ))}
-
       {/* Vignette: subtle dark corners */}
       <View pointerEvents="none" style={{
         position: 'absolute',
@@ -1307,6 +1286,120 @@ const BoardChrome = React.memo(function BoardChrome() {
     </>
   );
 });
+
+// Animated torches — flickers via the game-loop time. Each torch has a
+// random phase so they don't all sync up.
+function TorchLayer({ time }) {
+  return (
+    <>
+      {TORCH_SPECS.map((pos, i) => {
+        const phase = (i * 1.3) % (Math.PI * 2);
+        const flicker = 0.7 + 0.3 * Math.sin(time * 6 + phase) * Math.sin(time * 11 + phase * 1.7);
+        const scale = 0.92 + 0.12 * Math.sin(time * 8 + phase);
+        return (
+          <View key={`to${i}`} pointerEvents="none" style={{
+            position: 'absolute',
+            left: pos.left, top: pos.top,
+            width: 12, height: 12, borderRadius: 6,
+            backgroundColor: '#ffb24a',
+            borderWidth: 1, borderColor: '#ffd166',
+            transform: [{ scale }],
+            shadowColor: '#ffaa44',
+            shadowOpacity: flicker,
+            shadowRadius: 12 + flicker * 10,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 8,
+          }}>
+            <View style={{
+              position: 'absolute',
+              left: 3, top: 3, width: 6, height: 6, borderRadius: 3,
+              backgroundColor: '#fff7a8',
+              opacity: 0.7 + flicker * 0.3,
+            }} />
+            {/* warm pool of light on the floor */}
+            <View style={{
+              position: 'absolute',
+              left: -28, top: -28, width: 68, height: 68, borderRadius: 34,
+              backgroundColor: '#ffaa44',
+              opacity: 0.05 + flicker * 0.08,
+            }} />
+          </View>
+        );
+      })}
+    </>
+  );
+}
+
+// Background drifting dust motes — pure decoration, drift slowly.
+const DUST_COUNT = 28;
+const DUST_SPECS = (() => {
+  let seed = 9876543;
+  const rand = () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return Array.from({ length: DUST_COUNT }, (_, i) => ({
+    x0: rand() * BOARD_W,
+    y0: rand() * BOARD_H,
+    drift: 0.3 + rand() * 0.8,
+    phase: rand() * Math.PI * 2,
+    size: 1 + rand() * 2.2,
+    color: i % 3 === 0 ? '#fff7a8' : i % 3 === 1 ? '#a8d0ff' : '#ffb0e0',
+  }));
+})();
+
+function DustLayer({ time }) {
+  return (
+    <>
+      {DUST_SPECS.map((d, i) => {
+        const y = (d.y0 - time * d.drift * 10) % BOARD_H;
+        const adjustedY = y < 0 ? y + BOARD_H : y;
+        const x = d.x0 + 6 * Math.sin(time * 0.7 + d.phase);
+        const opacity = 0.4 + 0.4 * Math.sin(time * 1.5 + d.phase);
+        return (
+          <View key={`du${i}`} pointerEvents="none" style={{
+            position: 'absolute',
+            left: x, top: adjustedY,
+            width: d.size, height: d.size, borderRadius: d.size,
+            backgroundColor: d.color,
+            opacity: opacity * 0.6,
+          }} />
+        );
+      })}
+    </>
+  );
+}
+
+// Path flow — bright wave travels Start → Castle along the route.
+function PathLayer({ path, time }) {
+  if (!path) return null;
+  const len = path.length;
+  // The wave position (in path indices) advances with time.
+  const head = (time * 18) % (len + 20);
+  return (
+    <>
+      {path.map((p, i) => {
+        // Distance from the wave's head, in path indices.
+        const dist = head - i;
+        let brightness = 0.0;
+        if (dist >= 0 && dist < 8) brightness = 1 - dist / 8;
+        const baseOpacity = 0.45;
+        const totalBlue = Math.min(1, baseOpacity + brightness * 0.55);
+        return (
+          <View key={`p${i}`} pointerEvents="none" style={{
+            position: 'absolute',
+            left: p.c * TILE, top: p.r * TILE,
+            width: TILE, height: TILE,
+            backgroundColor: brightness > 0.1 ? '#4cc9ff' : '#15204a',
+            opacity: brightness > 0.1 ? totalBlue : 0.55,
+          }} />
+        );
+      })}
+    </>
+  );
+}
 
 function Marker({ pt, label, color }) {
   return (
@@ -1467,6 +1560,7 @@ function TowerView({ t }) {
           opacity: 0.15 + t.tier * 0.05,
         }} />
       )}
+      {/* Crystal body (rotated square) */}
       <View style={{
         width: TILE * 0.72, height: TILE * 0.72,
         backgroundColor: g.color, borderRadius: 4,
@@ -1476,18 +1570,56 @@ function TowerView({ t }) {
         elevation: 3 + t.tier,
         borderWidth: isAscendant ? 2 : t.tier >= 4 ? 1.5 : 0,
         borderColor: isAscendant ? '#ffd166' : '#fff',
-      }} />
+      }}>
+        {/* Top-left facet (lighter) */}
+        <View style={{
+          position: 'absolute',
+          left: 0, top: 0,
+          width: '50%', height: '50%',
+          backgroundColor: '#fff',
+          opacity: 0.22,
+          borderTopLeftRadius: 4,
+        }} />
+        {/* Bottom-right facet (darker, simulating shaded side) */}
+        <View style={{
+          position: 'absolute',
+          right: 0, bottom: 0,
+          width: '50%', height: '50%',
+          backgroundColor: '#000',
+          opacity: 0.18,
+          borderBottomRightRadius: 4,
+        }} />
+        {/* Center crisp diagonal line (gem fold) */}
+        <View style={{
+          position: 'absolute',
+          left: 0, top: '50%',
+          width: '100%', height: 1,
+          backgroundColor: '#000',
+          opacity: 0.15,
+        }} />
+        <View style={{
+          position: 'absolute',
+          top: 0, left: '50%',
+          width: 1, height: '100%',
+          backgroundColor: '#000',
+          opacity: 0.15,
+        }} />
+      </View>
+      {/* Specular highlight (small bright dot) */}
       <View style={{
         position: 'absolute',
-        width: TILE * 0.18, height: TILE * 0.18,
+        width: TILE * 0.16, height: TILE * 0.16,
         borderRadius: TILE,
         backgroundColor: '#fff',
-        opacity: 0.55,
-        top: TILE * 0.22, left: TILE * 0.22,
+        opacity: 0.7,
+        top: TILE * 0.2, left: TILE * 0.22,
       }} />
+      {/* Tier label */}
       <Text style={{
         position: 'absolute', color: t.tier >= 3 ? '#0b1020' : '#fff',
         fontSize: TILE * 0.34, fontWeight: '900',
+        textShadowColor: '#fff8',
+        textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 1,
       }}>
         {gemLabel(t.gemType, t.tier)}
       </Text>
