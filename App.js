@@ -1030,7 +1030,8 @@ function Game({ onEnd }) {
     const totalEnemies = queue.length;
     const isBossWave = s.wave % 10 === 0;
     const bossNames = { 10: 'DEMON LORD', 20: 'VOID KING', 30: 'BLOOD TYRANT', 40: 'DESTROYER', 50: 'WORLD ENDER' };
-    const champion = s.wave >= 21 && !isBossWave;
+    const apex = s.wave >= 31 && !isBossWave;
+    const champion = s.wave >= 21 && s.wave <= 30 && !isBossWave;
     const elite = s.wave >= 11 && s.wave <= 20 && !isBossWave;
     s.waveBanner = {
       wave: s.wave,
@@ -1039,6 +1040,7 @@ function Game({ onEnd }) {
       bossName: bossNames[s.wave] || null,
       elite,
       champion,
+      apex,
       start: s.time,
       until: s.time + 2.4,
     };
@@ -1818,31 +1820,36 @@ function EnemyView({ e, time }) {
 function CreatureSvg({ type, size, burning, flap, tier, bossVariant }) {
   const t = tier || 0;
   if (type === 'grunt') {
+    if (t === 3) return <ApexGruntSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionGruntSvg size={size} burning={burning} />;
     if (t === 1) return <EliteGruntSvg size={size} burning={burning} />;
     return <GruntSvg size={size} burning={burning} />;
   }
   if (type === 'runner') {
+    if (t === 3) return <ApexRunnerSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionRunnerSvg size={size} burning={burning} />;
     if (t === 1) return <EliteRunnerSvg size={size} burning={burning} />;
     return <RunnerSvg size={size} burning={burning} />;
   }
   if (type === 'tank') {
+    if (t === 3) return <ApexTankSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionTankSvg size={size} burning={burning} />;
     if (t === 1) return <EliteTankSvg size={size} burning={burning} />;
     return <TankSvg size={size} burning={burning} />;
   }
   if (type === 'swarm') {
+    if (t === 3) return <ApexSwarmSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionSwarmSvg size={size} burning={burning} />;
     if (t === 1) return <EliteSwarmSvg size={size} burning={burning} />;
     return <SwarmSvg size={size} burning={burning} />;
   }
   if (type === 'flyer') {
-    // Champion flyer is just the elite flyer for now.
-    if (t >= 1) return <EliteFlyerSvg size={size} burning={burning} flap={flap} />;
+    if (t >= 2) return <ChampionFlyerSvg size={size} burning={burning} flap={flap} />;
+    if (t === 1) return <EliteFlyerSvg size={size} burning={burning} flap={flap} />;
     return <FlyerSvg size={size} burning={burning} flap={flap} />;
   }
   if (type === 'boss') {
+    if (bossVariant === 'destroyer') return <DestroyerBossSvg size={size} burning={burning} />;
     if (bossVariant === 'blood') return <BloodBossSvg size={size} burning={burning} />;
     if (bossVariant === 'void') return <VoidBossSvg size={size} burning={burning} />;
     return <BossSvg size={size} burning={burning} />;
@@ -2976,6 +2983,503 @@ const BloodBossSvg = React.memo(function BloodBossSvg({ size, burning }) {
   );
 });
 
+// ───── Apex variants (waves 31+) — void-touched, ascended forms ─────────────
+
+// Apex Grunt — Soulreaper. Spectral hood, crystalline armor shards, third eye.
+const ApexGruntSvg = React.memo(function ApexGruntSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const body1 = burning ? '#a8f8c8' : '#4cc9ff';
+  const body2 = burning ? '#2e8c50' : '#0a1a3a';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={body1} />
+          <Stop offset="1" stopColor={body2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}e`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#5cf28a" />
+          <Stop offset="1" stopColor="#0a4a20" />
+        </RadialGradient>
+        <RadialGradient id={`${id}a`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#4cc9ff" opacity="0.5" />
+          <Stop offset="1" stopColor="#4cc9ff" opacity="0" />
+        </RadialGradient>
+      </Defs>
+      {/* ethereal aura */}
+      <Circle cx="50" cy="50" r="45" fill={`url(#${id}a)`} />
+      <Ellipse cx="50" cy="94" rx="30" ry="3.5" fill="#000" opacity="0.5" />
+      {/* spectral wisps trailing up */}
+      <Path d="M 18 30 Q 20 14 14 4" stroke="#4cc9ff" strokeWidth="1.2" fill="none" opacity="0.6" />
+      <Path d="M 82 30 Q 80 14 86 4" stroke="#4cc9ff" strokeWidth="1.2" fill="none" opacity="0.6" />
+      <Circle cx="14" cy="4" r="1.5" fill="#4cc9ff" opacity="0.7" />
+      <Circle cx="86" cy="4" r="1.5" fill="#4cc9ff" opacity="0.7" />
+      {/* crystalline horns */}
+      <Polygon points="22,30 28,2 36,32" fill="#0a1a3a" stroke="#4cc9ff" strokeWidth="1" />
+      <Polygon points="78,30 72,2 64,32" fill="#0a1a3a" stroke="#4cc9ff" strokeWidth="1" />
+      <Path d="M 28 16 L 30 20" stroke="#fff" strokeWidth="0.6" opacity="0.7" />
+      <Path d="M 72 16 L 70 20" stroke="#fff" strokeWidth="0.6" opacity="0.7" />
+      {/* ears */}
+      <Polygon points="14,55 4,48 16,68" fill={body2} stroke="#4cc9ff" strokeWidth="1.2" />
+      <Polygon points="86,55 96,48 84,68" fill={body2} stroke="#4cc9ff" strokeWidth="1.2" />
+      {/* body */}
+      <Circle cx="50" cy="55" r="34" fill={`url(#${id}b)`} stroke="#0a1a3a" strokeWidth="3" />
+      <Ellipse cx="50" cy="72" rx="22" ry="11" fill="#fff" opacity="0.15" />
+      {/* crystal shard plates floating around body */}
+      <Polygon points="22,60 18,72 28,68" fill="#4cc9ff" opacity="0.85" stroke="#0a1a3a" strokeWidth="0.8" />
+      <Polygon points="78,60 82,72 72,68" fill="#4cc9ff" opacity="0.85" stroke="#0a1a3a" strokeWidth="0.8" />
+      <Polygon points="20,42 14,38 22,36" fill="#4cc9ff" opacity="0.85" stroke="#0a1a3a" strokeWidth="0.8" />
+      <Polygon points="80,42 86,38 78,36" fill="#4cc9ff" opacity="0.85" stroke="#0a1a3a" strokeWidth="0.8" />
+      {/* spectral runes on forehead */}
+      <Path d="M 44 30 L 50 26 L 56 30 L 50 34 Z" fill="none" stroke="#5cf28a" strokeWidth="1.2" />
+      <Circle cx="50" cy="30" r="1.5" fill="#5cf28a" />
+      {/* eye sockets */}
+      <Ellipse cx="38" cy="50" rx="8" ry="7" fill="#000" />
+      <Ellipse cx="62" cy="50" rx="8" ry="7" fill="#000" />
+      {/* glowing green eyes (apex = different colour from earlier tiers) */}
+      <Circle cx="38" cy="49" r="5.5" fill={`url(#${id}e)`} />
+      <Circle cx="62" cy="49" r="5.5" fill={`url(#${id}e)`} />
+      <Ellipse cx="38" cy="50" rx="1.5" ry="3.5" fill="#000" />
+      <Ellipse cx="62" cy="50" rx="1.5" ry="3.5" fill="#000" />
+      {/* third eye on forehead */}
+      <Ellipse cx="50" cy="40" rx="4" ry="3.5" fill="#000" />
+      <Circle cx="50" cy="40" r="2.5" fill={`url(#${id}e)`} />
+      <Ellipse cx="50" cy="40" rx="0.8" ry="2" fill="#000" />
+      {/* etched brows */}
+      <Path d="M 26 38 L 46 44" stroke="#0a1a3a" strokeWidth="3" strokeLinecap="round" />
+      <Path d="M 74 38 L 54 44" stroke="#0a1a3a" strokeWidth="3" strokeLinecap="round" />
+      {/* fanged mouth — closed grin */}
+      <Path d="M 32 70 L 68 70" stroke="#0a1a3a" strokeWidth="2.5" strokeLinecap="round" />
+      <Polygon points="38,70 39,76 41,70" fill="#fff" />
+      <Polygon points="48,70 49,77 50,70" fill="#fff" />
+      <Polygon points="58,70 59,76 61,70" fill="#fff" />
+      {/* tiny floating motes */}
+      <Circle cx="12" cy="78" r="1.2" fill="#5cf28a" opacity="0.7" />
+      <Circle cx="88" cy="80" r="1.2" fill="#5cf28a" opacity="0.7" />
+      <Circle cx="6" cy="36" r="1" fill="#4cc9ff" opacity="0.6" />
+      <Circle cx="94" cy="36" r="1" fill="#4cc9ff" opacity="0.6" />
+    </Svg>
+  );
+});
+
+// Apex Runner — Voidblade. Trailing afterimages, void cloak, twin curved blades.
+const ApexRunnerSvg = React.memo(function ApexRunnerSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const c1 = burning ? '#a8f8c8' : '#1a0e4a';
+  const c2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c1} />
+          <Stop offset="1" stopColor={c2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}a`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#9e7afc" opacity="0.55" />
+          <Stop offset="1" stopColor="#9e7afc" opacity="0" />
+        </RadialGradient>
+      </Defs>
+      {/* void aura */}
+      <Circle cx="50" cy="55" r="50" fill={`url(#${id}a)`} />
+      <Ellipse cx="50" cy="94" rx="26" ry="3.5" fill="#000" opacity="0.6" />
+      {/* afterimage trail behind (3 ghost cloaks) */}
+      <Path
+        d="M 50 8 L 78 60 L 76 88 L 24 88 L 22 60 Z"
+        fill="#9e7afc" opacity="0.12"
+        transform="translate(-10,2)"
+      />
+      <Path
+        d="M 50 8 L 78 60 L 76 88 L 24 88 L 22 60 Z"
+        fill="#9e7afc" opacity="0.18"
+        transform="translate(-5,1)"
+      />
+      {/* main cloak — tattered hem with sharp jags */}
+      <Path
+        d="M 50 4
+           C 60 8 66 18 70 30
+           L 84 60
+           L 88 84
+           L 80 78 L 78 90 L 70 82 L 64 92 L 56 86 L 50 92 L 44 86 L 36 92 L 30 82 L 22 90 L 20 78 L 12 84
+           L 16 60
+           L 30 30
+           C 34 18 40 8 50 4 Z"
+        fill={`url(#${id}c)`} stroke="#000" strokeWidth="2.4"
+      />
+      {/* glowing void runes on cloak */}
+      <Path d="M 30 50 L 30 60 L 36 60" stroke="#9e7afc" strokeWidth="1.5" fill="none" />
+      <Path d="M 70 50 L 70 60 L 64 60" stroke="#9e7afc" strokeWidth="1.5" fill="none" />
+      <Path d="M 50 64 L 46 70 L 54 70 Z" fill="#9e7afc" />
+      <Path d="M 38 72 L 38 80 M 42 76 L 38 76" stroke="#9e7afc" strokeWidth="1" />
+      <Path d="M 62 72 L 62 80 M 58 76 L 62 76" stroke="#9e7afc" strokeWidth="1" />
+      {/* crystal hood trim */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30" stroke="#9e7afc" strokeWidth="2.5" fill="none" />
+      <Polygon points="34,28 30,18 38,26" fill="#9e7afc" />
+      <Polygon points="50,18 47,8 53,8" fill="#9e7afc" />
+      <Polygon points="66,28 70,18 62,26" fill="#9e7afc" />
+      {/* abyssal hood */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30 L 64 54 L 36 54 Z" fill="#000" />
+      {/* three glowing eye slits — left/right pairs + center */}
+      <Path d="M 34 40 L 44 36 L 44 42 L 34 44 Z" fill="#9e7afc" />
+      <Path d="M 66 40 L 56 36 L 56 42 L 66 44 Z" fill="#9e7afc" />
+      <Circle cx="50" cy="38" r="2.5" fill="#fff" />
+      <Circle cx="50" cy="38" r="1.5" fill="#9e7afc" />
+      <Circle cx="40" cy="40" r="1.2" fill="#fff" />
+      <Circle cx="60" cy="40" r="1.2" fill="#fff" />
+      {/* belt with floating purple gem */}
+      <Rect x="20" y="60" width="60" height="6" fill="#000" />
+      <Rect x="20" y="60" width="60" height="1.5" fill="#9e7afc" opacity="0.7" />
+      <Polygon points="46,57 50,52 54,57 50,69 Z" fill="#9e7afc" stroke="#fff" strokeWidth="0.6" />
+      <Polygon points="46,57 50,52 50,60 Z" fill="#fff" opacity="0.6" />
+      {/* twin curved void-blades behind shoulders */}
+      <Path d="M 8 30 Q 4 50 18 64 L 22 60 Q 12 50 14 32 Z" fill="#9e7afc" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 92 30 Q 96 50 82 64 L 78 60 Q 88 50 86 32 Z" fill="#9e7afc" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 10 32 Q 8 50 18 60" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+      <Path d="M 90 32 Q 92 50 82 60" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+    </Svg>
+  );
+});
+
+// Apex Tank — Worldbreaker Titan. Massive, crystalline weak points, halo.
+const ApexTankSvg = React.memo(function ApexTankSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const a1 = burning ? '#a8f8c8' : '#2a3450';
+  const a2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}a`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={a1} />
+          <Stop offset="1" stopColor={a2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}g`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#5cf28a" />
+          <Stop offset="1" stopColor="#0a4a20" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="96" rx="46" ry="5.5" fill="#000" opacity="0.8" />
+      {/* halo of energy above */}
+      <Ellipse cx="50" cy="2" rx="34" ry="3" fill="none" stroke="#5cf28a" strokeWidth="1.5" opacity="0.75" />
+      <Ellipse cx="50" cy="2" rx="34" ry="3" fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+      <Circle cx="50" cy="2" r="2" fill="#5cf28a" />
+      {/* twin greatswords crossed behind (silhouettes) */}
+      <Rect x="6" y="22" width="3" height="60" fill="#a8b4d0" stroke="#000" strokeWidth="0.8"
+            transform="rotate(-18,7.5,52)" />
+      <Polygon points="-2,12 8,12 12,22 4,30" fill="#a8b4d0" stroke="#000" strokeWidth="0.8"
+               transform="rotate(-18,7.5,52)" />
+      <Rect x="91" y="22" width="3" height="60" fill="#a8b4d0" stroke="#000" strokeWidth="0.8"
+            transform="rotate(18,92.5,52)" />
+      <Polygon points="88,12 98,12 96,22 88,30" fill="#a8b4d0" stroke="#000" strokeWidth="0.8"
+               transform="rotate(18,92.5,52)" />
+      {/* pauldrons — colossal with crystals embedded */}
+      <Path d="M 0 50 Q -2 24 22 20 L 38 50 L 30 74 L 2 70 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="2.8" />
+      <Path d="M 100 50 Q 102 24 78 20 L 62 50 L 70 74 L 98 70 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="2.8" />
+      {/* crystalline pauldron gems */}
+      <Polygon points="14,40 8,46 14,52 20,46" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      <Polygon points="86,40 92,46 86,52 80,46" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      <Polygon points="14,40 14,52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+      <Polygon points="86,40 86,52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+      {/* multi-spike pauldron tops */}
+      <Polygon points="4,32 8,4 12,34" fill="#000" />
+      <Polygon points="14,24 18,-2 22,26" fill="#000" />
+      <Polygon points="24,18 28,-8 32,22" fill="#000" />
+      <Polygon points="96,32 92,4 88,34" fill="#000" />
+      <Polygon points="86,24 82,-2 78,26" fill="#000" />
+      <Polygon points="76,18 72,-8 68,22" fill="#000" />
+      {/* torso — wide and angular */}
+      <Path d="M 20 36 L 80 36 L 86 86 L 76 96 L 24 96 L 14 86 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="3.2" />
+      {/* central core glow on chest */}
+      <Circle cx="50" cy="60" r="12" fill="#000" stroke="#000" strokeWidth="2" />
+      <Circle cx="50" cy="60" r="9" fill={`url(#${id}g)`} />
+      <Polygon points="50,52 44,60 50,68 56,60" fill="#fff" opacity="0.5" />
+      {/* glowing seams down the torso */}
+      <Path d="M 30 40 L 30 90" stroke="#5cf28a" strokeWidth="1.2" opacity="0.85" />
+      <Path d="M 70 40 L 70 90" stroke="#5cf28a" strokeWidth="1.2" opacity="0.85" />
+      <Path d="M 25 70 L 75 70" stroke="#5cf28a" strokeWidth="1" opacity="0.7" />
+      {/* helmet — angular crystal crown */}
+      <Path d="M 20 38 L 28 8 L 72 8 L 80 38 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="3" />
+      {/* crystal crown spikes */}
+      <Polygon points="28,8 26,-12 36,4" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      <Polygon points="42,4 40,-14 48,2" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      <Polygon points="50,2 47,-16 53,-16" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      <Polygon points="58,4 60,-14 52,2" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      <Polygon points="72,8 74,-12 64,4" fill="#5cf28a" stroke="#000" strokeWidth="1" />
+      {/* visor — wide with green glow + 4 sensor lenses */}
+      <Rect x="22" y="20" width="56" height="12" fill="#000" />
+      <Rect x="26" y="22" width="48" height="3" fill="#5cf28a" />
+      <Circle cx="34" cy="27" r="2.2" fill="#5cf28a" stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="44" cy="27" r="1.5" fill="#5cf28a" stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="56" cy="27" r="1.5" fill="#5cf28a" stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="66" cy="27" r="2.2" fill="#5cf28a" stroke="#fff" strokeWidth="0.5" />
+      {/* gold trim */}
+      <Path d="M 22 35 Q 50 33 78 35 L 78 38 Q 50 36 22 38 Z" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      {/* rivets */}
+      <Circle cx="26" cy="48" r="2.2" fill="#000" />
+      <Circle cx="74" cy="48" r="2.2" fill="#000" />
+      <Circle cx="30" cy="88" r="2.2" fill="#000" />
+      <Circle cx="70" cy="88" r="2.2" fill="#000" />
+    </Svg>
+  );
+});
+
+// Apex Swarm — Worldeater Larva. Segmented worm form, multiple maws, tentacles.
+const ApexSwarmSvg = React.memo(function ApexSwarmSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#5a3050';
+  const b2 = burning ? '#2e8c50' : '#0e0418';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${id}b`} cx="0.4" cy="0.35" r="0.65">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </RadialGradient>
+        <RadialGradient id={`${id}o`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#ffd166" />
+          <Stop offset="1" stopColor="#a05000" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="92" rx="36" ry="4.5" fill="#000" opacity="0.7" />
+      {/* writhing tentacles outside body */}
+      <Path d="M 14 50 Q 0 36 4 22 Q 12 32 16 42" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 18 70 Q 0 76 -2 88 Q 10 84 18 80" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 86 50 Q 100 36 96 22 Q 88 32 84 42" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 82 70 Q 100 76 102 88 Q 90 84 82 80" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      {/* tentacle tips with suckers */}
+      <Circle cx="4" cy="22" r="2.5" fill={b2} stroke="#000" strokeWidth="0.6" />
+      <Circle cx="-2" cy="88" r="2.5" fill={b2} stroke="#000" strokeWidth="0.6" />
+      <Circle cx="96" cy="22" r="2.5" fill={b2} stroke="#000" strokeWidth="0.6" />
+      <Circle cx="102" cy="88" r="2.5" fill={b2} stroke="#000" strokeWidth="0.6" />
+      {/* main body — wider, ovoid larva */}
+      <Ellipse cx="50" cy="55" rx="36" ry="30" fill={`url(#${id}b)`} stroke="#000" strokeWidth="3" />
+      {/* glowing yellow innards visible through translucent segments */}
+      <Ellipse cx="50" cy="68" rx="20" ry="6" fill="#ffd166" opacity="0.55" />
+      <Ellipse cx="50" cy="58" rx="14" ry="4" fill="#ffd166" opacity="0.4" />
+      {/* segmented carapace lines */}
+      <Path d="M 18 45 Q 50 52 82 45" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.85" />
+      <Path d="M 16 56 Q 50 64 84 56" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.8" />
+      <Path d="M 18 67 Q 50 74 82 67" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.75" />
+      <Path d="M 22 78 Q 50 82 78 78" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.7" />
+      {/* secondary maws on the sides */}
+      <Ellipse cx="22" cy="55" rx="6" ry="4" fill="#0a0008" stroke="#000" strokeWidth="1" />
+      <Polygon points="18,55 22,52 26,55 22,58" fill="#fff" />
+      <Polygon points="18,55 26,55 22,58" fill="#0a0008" />
+      <Ellipse cx="78" cy="55" rx="6" ry="4" fill="#0a0008" stroke="#000" strokeWidth="1" />
+      <Polygon points="74,55 78,52 82,55 78,58" fill="#fff" />
+      <Polygon points="74,55 82,55 78,58" fill="#0a0008" />
+      {/* spines along back */}
+      <Polygon points="30,32 32,18 36,32" fill="#0a0008" />
+      <Polygon points="42,28 44,12 48,28" fill="#0a0008" />
+      <Polygon points="52,28 54,12 56,28" fill="#0a0008" />
+      <Polygon points="62,28 64,12 66,28" fill="#0a0008" />
+      <Polygon points="68,32 64,32 72,18" fill="#0a0008" />
+      {/* acid drip from multiple points */}
+      <Circle cx="22" cy="62" r="1.5" fill="#5cf28a" />
+      <Circle cx="78" cy="62" r="1.5" fill="#5cf28a" />
+      <Path d="M 22 62 L 22 70" stroke="#5cf28a" strokeWidth="1" />
+      <Path d="M 78 62 L 78 70" stroke="#5cf28a" strokeWidth="1" />
+      {/* huge gaping main maw */}
+      <Path d="M 28 76 Q 50 96 72 76 Q 60 84 50 84 Q 40 84 28 76 Z" fill="#0a0008" stroke="#000" strokeWidth="1.5" />
+      <Polygon points="32,76 36,90 40,76" fill="#fff" />
+      <Polygon points="42,78 45,92 48,78" fill="#fff" />
+      <Polygon points="52,78 55,92 58,78" fill="#fff" />
+      <Polygon points="60,76 64,90 68,76" fill="#fff" />
+      {/* drooling tongue */}
+      <Path d="M 46 84 Q 50 94 54 84" fill="#5cf28a" stroke="#000" strokeWidth="0.8" />
+      {/* compound eye — 6 eyes arranged like a cluster */}
+      <Circle cx="50" cy="48" r="14" fill="#000" stroke="#000" strokeWidth="1.5" />
+      <Circle cx="44" cy="44" r="3.5" fill={`url(#${id}o)`} />
+      <Circle cx="56" cy="44" r="3.5" fill={`url(#${id}o)`} />
+      <Circle cx="50" cy="40" r="3" fill={`url(#${id}o)`} />
+      <Circle cx="44" cy="52" r="3" fill={`url(#${id}o)`} />
+      <Circle cx="56" cy="52" r="3" fill={`url(#${id}o)`} />
+      <Circle cx="50" cy="54" r="3" fill={`url(#${id}o)`} />
+      <Circle cx="44" cy="44" r="1.2" fill="#000" />
+      <Circle cx="56" cy="44" r="1.2" fill="#000" />
+    </Svg>
+  );
+});
+
+// ───── Champion Flyer (waves 21+) — fills the gap from previous batch ──────
+
+// Champion Flyer — Nightwing. Skull face, larger jagged wings, tail with hook.
+const ChampionFlyerSvg = React.memo(function ChampionFlyerSvg({ size, burning, flap }) {
+  const id = useRef(nextGid()).current;
+  const c1 = burning ? '#a8f8c8' : '#1a3020';
+  const c2 = burning ? '#2e8c50' : '#000';
+  const wing = (flap || 0) * 18;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c1} />
+          <Stop offset="1" stopColor={c2} />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="92" rx="22" ry="3" fill="#000" opacity="0.45" />
+      {/* huge tattered wings — left */}
+      <G rotation={-wing} originX="35" originY="40">
+        <Path d="M 35 40 Q -6 18 -8 60 Q 10 48 22 54 Q 0 60 4 74 Q 18 64 28 60 Q 12 72 18 84 Q 28 70 35 62 Z"
+              fill={c2} stroke="#000" strokeWidth="1.8" />
+        <Path d="M 12 30 L 26 50" stroke="#000" strokeWidth="1.2" />
+        <Path d="M -4 52 L 22 58" stroke="#000" strokeWidth="1.2" />
+        <Path d="M 4 70 L 26 62" stroke="#000" strokeWidth="1.2" />
+        <Path d="M 16 80 L 28 64" stroke="#000" strokeWidth="1.2" />
+        {/* claws on wing tips */}
+        <Polygon points="-8,60 -12,54 -4,58" fill="#a8b4d0" stroke="#000" strokeWidth="0.5" />
+        <Polygon points="4,74 0,82 8,76" fill="#a8b4d0" stroke="#000" strokeWidth="0.5" />
+      </G>
+      {/* huge tattered wings — right */}
+      <G rotation={wing} originX="65" originY="40">
+        <Path d="M 65 40 Q 106 18 108 60 Q 90 48 78 54 Q 100 60 96 74 Q 82 64 72 60 Q 88 72 82 84 Q 72 70 65 62 Z"
+              fill={c2} stroke="#000" strokeWidth="1.8" />
+        <Path d="M 88 30 L 74 50" stroke="#000" strokeWidth="1.2" />
+        <Path d="M 104 52 L 78 58" stroke="#000" strokeWidth="1.2" />
+        <Path d="M 96 70 L 74 62" stroke="#000" strokeWidth="1.2" />
+        <Path d="M 84 80 L 72 64" stroke="#000" strokeWidth="1.2" />
+        <Polygon points="108,60 112,54 104,58" fill="#a8b4d0" stroke="#000" strokeWidth="0.5" />
+        <Polygon points="96,74 100,82 92,76" fill="#a8b4d0" stroke="#000" strokeWidth="0.5" />
+      </G>
+      {/* tail with hooked end */}
+      <Path d="M 50 78 Q 56 92 50 100" stroke={c2} strokeWidth="3" fill="none" />
+      <Path d="M 50 100 Q 46 102 44 96" stroke={c2} strokeWidth="2.5" fill="none" />
+      <Polygon points="44,96 40,98 46,92" fill="#a8b4d0" stroke="#000" strokeWidth="0.6" />
+      {/* body — skull-faced */}
+      <Ellipse cx="50" cy="48" rx="22" ry="26" fill={`url(#${id}b)`} stroke="#000" strokeWidth="2.2" />
+      {/* skull mask on face */}
+      <Ellipse cx="50" cy="44" rx="16" ry="18" fill="#e8e0c8" stroke="#000" strokeWidth="1.2" />
+      {/* skull cracks */}
+      <Path d="M 42 32 L 46 42" stroke="#000" strokeWidth="0.8" fill="none" />
+      <Path d="M 58 30 L 56 38" stroke="#000" strokeWidth="0.8" fill="none" />
+      {/* devil/bat ears */}
+      <Polygon points="34,28 26,4 44,24" fill={c2} stroke="#000" strokeWidth="1.2" />
+      <Polygon points="66,28 74,4 56,24" fill={c2} stroke="#000" strokeWidth="1.2" />
+      {/* eye sockets — empty black with red glow inside */}
+      <Ellipse cx="42" cy="44" rx="5" ry="6" fill="#0a0000" />
+      <Ellipse cx="58" cy="44" rx="5" ry="6" fill="#0a0000" />
+      <Circle cx="42" cy="44" r="2.5" fill="#ff4d6d" />
+      <Circle cx="58" cy="44" r="2.5" fill="#ff4d6d" />
+      <Circle cx="42" cy="44" r="0.8" fill="#fff" />
+      <Circle cx="58" cy="44" r="0.8" fill="#fff" />
+      {/* nose hole */}
+      <Polygon points="50,52 47,58 53,58" fill="#0a0000" />
+      {/* fanged grin */}
+      <Rect x="40" y="60" width="20" height="5" fill="#e8e0c8" stroke="#000" strokeWidth="0.8" />
+      <Line x1="44" y1="60" x2="44" y2="65" stroke="#000" strokeWidth="0.7" />
+      <Line x1="48" y1="60" x2="48" y2="65" stroke="#000" strokeWidth="0.7" />
+      <Line x1="52" y1="60" x2="52" y2="65" stroke="#000" strokeWidth="0.7" />
+      <Line x1="56" y1="60" x2="56" y2="65" stroke="#000" strokeWidth="0.7" />
+    </Svg>
+  );
+});
+
+// ───── Destroyer boss (wave 40) — apocalyptic war engine ────────────────────
+
+const DestroyerBossSvg = React.memo(function DestroyerBossSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#3a2a40';
+  const b2 = burning ? '#2e8c50' : '#0a0410';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}core`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.3" stopColor="#ffd166" />
+          <Stop offset="0.7" stopColor="#ff6f1f" />
+          <Stop offset="1" stopColor="#5a1a00" />
+        </RadialGradient>
+        <RadialGradient id={`${id}eye`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#ff6f1f" />
+          <Stop offset="1" stopColor="#3a0a00" />
+        </RadialGradient>
+        <RadialGradient id={`${id}aura`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#ff6f1f" opacity="0.5" />
+          <Stop offset="1" stopColor="#ff6f1f" opacity="0" />
+        </RadialGradient>
+      </Defs>
+      {/* ember aura under the engine */}
+      <Ellipse cx="50" cy="94" rx="48" ry="7" fill={`url(#${id}aura)`} />
+      <Ellipse cx="50" cy="96" rx="42" ry="4" fill="#3a0a00" opacity="0.85" />
+      {/* embers floating */}
+      <Circle cx="14" cy="78" r="1.5" fill="#ff6f1f" opacity="0.85" />
+      <Circle cx="86" cy="78" r="1.5" fill="#ff6f1f" opacity="0.85" />
+      <Circle cx="8" cy="60" r="1.2" fill="#ffd166" opacity="0.7" />
+      <Circle cx="92" cy="60" r="1.2" fill="#ffd166" opacity="0.7" />
+      <Circle cx="20" cy="40" r="1" fill="#ffd166" opacity="0.6" />
+      <Circle cx="80" cy="40" r="1" fill="#ffd166" opacity="0.6" />
+      {/* hulking shoulder armor with smokestacks */}
+      <Path d="M 6 56 Q 4 30 22 26 L 32 54 L 28 70 L 8 66 Z" fill={`url(#${id}b)`} stroke="#000" strokeWidth="2.5" />
+      <Path d="M 94 56 Q 96 30 78 26 L 68 54 L 72 70 L 92 66 Z" fill={`url(#${id}b)`} stroke="#000" strokeWidth="2.5" />
+      {/* smokestacks */}
+      <Rect x="10" y="14" width="8" height="20" fill="#1a1424" stroke="#000" strokeWidth="1.2" />
+      <Rect x="9" y="12" width="10" height="3" fill="#000" />
+      <Ellipse cx="14" cy="10" rx="6" ry="2" fill="#1a1424" opacity="0.85" />
+      <Ellipse cx="14" cy="4" rx="9" ry="3" fill="#3a3030" opacity="0.55" />
+      <Rect x="82" y="14" width="8" height="20" fill="#1a1424" stroke="#000" strokeWidth="1.2" />
+      <Rect x="81" y="12" width="10" height="3" fill="#000" />
+      <Ellipse cx="86" cy="10" rx="6" ry="2" fill="#1a1424" opacity="0.85" />
+      <Ellipse cx="86" cy="4" rx="9" ry="3" fill="#3a3030" opacity="0.55" />
+      {/* shoulder spikes */}
+      <Polygon points="2,42 -2,34 10,38" fill="#000" />
+      <Polygon points="98,42 102,34 90,38" fill="#000" />
+      {/* central armored body */}
+      <Path d="M 18 32 L 82 32 L 88 86 L 78 96 L 22 96 L 12 86 Z" fill={`url(#${id}b)`} stroke="#000" strokeWidth="3.2" />
+      {/* head — angular reinforced helmet (no separate head, the visor is built into the body) */}
+      <Path d="M 22 30 L 30 14 L 70 14 L 78 30 Z" fill={`url(#${id}b)`} stroke="#000" strokeWidth="2.8" />
+      <Polygon points="50,14 47,2 53,2" fill="#000" />
+      <Polygon points="36,14 34,4 40,12" fill="#000" />
+      <Polygon points="64,14 66,4 60,12" fill="#000" />
+      {/* visor housing 4 lensed compound eyes */}
+      <Rect x="24" y="20" width="52" height="10" fill="#000" />
+      <Circle cx="34" cy="25" r="3.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="44" cy="25" r="2.8" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="56" cy="25" r="2.8" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="66" cy="25" r="3.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.5" />
+      {/* gold trim band */}
+      <Path d="M 22 31 Q 50 30 78 31 L 78 34 Q 50 32 22 34 Z" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      {/* chest plate with massive glowing core */}
+      <Path d="M 30 38 L 70 38 L 72 78 L 28 78 Z" fill="#1a1424" stroke="#000" strokeWidth="2" />
+      <Circle cx="50" cy="58" r="15" fill="#000" stroke="#000" strokeWidth="2.5" />
+      <Circle cx="50" cy="58" r="12" fill={`url(#${id}core)`} />
+      <Polygon points="50,46 42,58 50,70 58,58" fill="#fff" opacity="0.55" />
+      {/* exhaust vents emitting ember glow */}
+      <Rect x="32" y="80" width="6" height="3" fill="#000" />
+      <Rect x="33" y="81" width="4" height="1" fill="#ff6f1f" />
+      <Rect x="46" y="80" width="8" height="3" fill="#000" />
+      <Rect x="47" y="81" width="6" height="1" fill="#ff6f1f" />
+      <Rect x="62" y="80" width="6" height="3" fill="#000" />
+      <Rect x="63" y="81" width="4" height="1" fill="#ff6f1f" />
+      {/* heavy plating seams */}
+      <Path d="M 24 40 L 24 90" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 76 40 L 76 90" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 50 38 L 50 50" stroke="#000" strokeWidth="1.5" />
+      {/* chain hanging across chest */}
+      <Path d="M 24 42 Q 50 56 76 42" stroke="#7a6a3a" strokeWidth="1.5" fill="none" />
+      <Circle cx="32" cy="46" r="1.5" fill="#7a6a3a" stroke="#000" strokeWidth="0.4" />
+      <Circle cx="40" cy="50" r="1.5" fill="#7a6a3a" stroke="#000" strokeWidth="0.4" />
+      <Circle cx="60" cy="50" r="1.5" fill="#7a6a3a" stroke="#000" strokeWidth="0.4" />
+      <Circle cx="68" cy="46" r="1.5" fill="#7a6a3a" stroke="#000" strokeWidth="0.4" />
+      {/* rivets */}
+      <Circle cx="28" cy="46" r="2" fill="#000" />
+      <Circle cx="72" cy="46" r="2" fill="#000" />
+      <Circle cx="30" cy="86" r="2" fill="#000" />
+      <Circle cx="70" cy="86" r="2" fill="#000" />
+      {/* battle damage cracks with ember glow inside */}
+      <Path d="M 38 80 L 34 86 L 38 90" stroke="#000" strokeWidth="1.5" fill="none" />
+      <Path d="M 38 80 L 34 86 L 38 90" stroke="#ff6f1f" strokeWidth="0.6" fill="none" opacity="0.85" />
+      <Path d="M 64 70 L 70 78" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 64 70 L 70 78" stroke="#ff6f1f" strokeWidth="0.6" opacity="0.85" />
+    </Svg>
+  );
+});
+
 
 function ProjectileView({ p }) {
   const len = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
@@ -3087,6 +3591,7 @@ function WaveBanner({ banner, time }) {
     }}>
       <Text style={{
         color: banner.boss ? '#ff4d6d'
+          : banner.apex ? '#5cf28a'
           : banner.champion ? '#ffd166'
           : banner.elite ? '#b08bff'
           : '#4cc9ff',
@@ -3094,6 +3599,7 @@ function WaveBanner({ banner, time }) {
         letterSpacing: 6,
       }}>
         {banner.boss ? '⚠  BOSS WAVE  ⚠'
+          : banner.apex ? '◆  APEX WAVE  ◆'
           : banner.champion ? '☠  CHAMPION WAVE  ☠'
           : banner.elite ? 'ELITE WAVE'
           : 'INCOMING'}
@@ -3102,6 +3608,7 @@ function WaveBanner({ banner, time }) {
         color: '#fff', fontSize: 56, fontWeight: '900',
         letterSpacing: 4,
         textShadowColor: banner.boss ? '#ff4d6d'
+          : banner.apex ? '#5cf28a'
           : banner.champion ? '#ffd166'
           : banner.elite ? '#b08bff'
           : '#4cc9ff',
@@ -3267,9 +3774,10 @@ function step(dt, s, onEnd) {
     const subPath = def.flying
       ? [SPAWN, GOAL] // flyers go direct
       : bfsCheckpoints(s.grid, SPAWN) || [SPAWN, GOAL];
-    // Tier 0 = base (W1-10), 1 = elite (W11-20), 2 = champion (W21+).
+    // Tier 0 = base (W1-10), 1 = elite (W11-20), 2 = champion (W21-30), 3 = apex (W31+).
     // Bosses/mega use their bossVariant slot for skin selection, not tier.
     const tier = sp.type === 'boss' || sp.type === 'mega' ? 0
+      : s.wave >= 31 ? 3
       : s.wave >= 21 ? 2
       : s.wave >= 11 ? 1
       : 0;
