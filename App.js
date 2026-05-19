@@ -1030,7 +1030,8 @@ function Game({ onEnd }) {
     const totalEnemies = queue.length;
     const isBossWave = s.wave % 10 === 0;
     const bossNames = { 10: 'DEMON LORD', 20: 'VOID KING', 30: 'BLOOD TYRANT', 40: 'DESTROYER', 50: 'WORLD ENDER' };
-    const apex = s.wave >= 31 && !isBossWave;
+    const mythic = s.wave >= 41 && !isBossWave;
+    const apex = s.wave >= 31 && s.wave <= 40 && !isBossWave;
     const champion = s.wave >= 21 && s.wave <= 30 && !isBossWave;
     const elite = s.wave >= 11 && s.wave <= 20 && !isBossWave;
     s.waveBanner = {
@@ -1041,8 +1042,10 @@ function Game({ onEnd }) {
       elite,
       champion,
       apex,
+      mythic,
+      finalWave: s.wave === 50,
       start: s.time,
-      until: s.time + 2.4,
+      until: s.time + (s.wave === 50 ? 3.0 : 2.4),
     };
     force();
   };
@@ -1820,24 +1823,28 @@ function EnemyView({ e, time }) {
 function CreatureSvg({ type, size, burning, flap, tier, bossVariant }) {
   const t = tier || 0;
   if (type === 'grunt') {
+    if (t === 4) return <MythicGruntSvg size={size} burning={burning} />;
     if (t === 3) return <ApexGruntSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionGruntSvg size={size} burning={burning} />;
     if (t === 1) return <EliteGruntSvg size={size} burning={burning} />;
     return <GruntSvg size={size} burning={burning} />;
   }
   if (type === 'runner') {
+    if (t === 4) return <MythicRunnerSvg size={size} burning={burning} />;
     if (t === 3) return <ApexRunnerSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionRunnerSvg size={size} burning={burning} />;
     if (t === 1) return <EliteRunnerSvg size={size} burning={burning} />;
     return <RunnerSvg size={size} burning={burning} />;
   }
   if (type === 'tank') {
+    if (t === 4) return <MythicTankSvg size={size} burning={burning} />;
     if (t === 3) return <ApexTankSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionTankSvg size={size} burning={burning} />;
     if (t === 1) return <EliteTankSvg size={size} burning={burning} />;
     return <TankSvg size={size} burning={burning} />;
   }
   if (type === 'swarm') {
+    if (t === 4) return <MythicSwarmSvg size={size} burning={burning} />;
     if (t === 3) return <ApexSwarmSvg size={size} burning={burning} />;
     if (t === 2) return <ChampionSwarmSvg size={size} burning={burning} />;
     if (t === 1) return <EliteSwarmSvg size={size} burning={burning} />;
@@ -1849,12 +1856,16 @@ function CreatureSvg({ type, size, burning, flap, tier, bossVariant }) {
     return <FlyerSvg size={size} burning={burning} flap={flap} />;
   }
   if (type === 'boss') {
+    if (bossVariant === 'ender') return <WorldEnderBossSvg size={size} burning={burning} />;
     if (bossVariant === 'destroyer') return <DestroyerBossSvg size={size} burning={burning} />;
     if (bossVariant === 'blood') return <BloodBossSvg size={size} burning={burning} />;
     if (bossVariant === 'void') return <VoidBossSvg size={size} burning={burning} />;
     return <BossSvg size={size} burning={burning} />;
   }
-  if (type === 'mega') return <MegaSvg size={size} burning={burning} />;
+  if (type === 'mega') {
+    if (bossVariant === 'ender-mega') return <WorldEnderMegaSvg size={size} burning={burning} />;
+    return <MegaSvg size={size} burning={burning} />;
+  }
   return null;
 }
 
@@ -3480,6 +3491,541 @@ const DestroyerBossSvg = React.memo(function DestroyerBossSvg({ size, burning })
   );
 });
 
+// ───── Mythic variants (waves 41+) — eldritch, divine corruption ────────────
+
+// Mythic Grunt — Herald of Ruin. Floating, gold-broken halo, event-horizon eye.
+const MythicGruntSvg = React.memo(function MythicGruntSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const body1 = burning ? '#a8f8c8' : '#1a0a2a';
+  const body2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={body1} />
+          <Stop offset="1" stopColor={body2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}h`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#000" />
+          <Stop offset="0.6" stopColor="#5a0050" />
+          <Stop offset="0.9" stopColor="#ff6f1f" />
+          <Stop offset="1" stopColor="#ffd166" />
+        </RadialGradient>
+        <RadialGradient id={`${id}aura`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#ffd166" opacity="0.55" />
+          <Stop offset="1" stopColor="#ffd166" opacity="0" />
+        </RadialGradient>
+      </Defs>
+      {/* divine aura */}
+      <Circle cx="50" cy="48" r="50" fill={`url(#${id}aura)`} />
+      {/* broken golden halo behind head */}
+      <Circle cx="50" cy="32" r="32" fill="none" stroke="#ffd166" strokeWidth="3" opacity="0.85" />
+      <Circle cx="50" cy="32" r="32" fill="none" stroke="#fff" strokeWidth="1" opacity="0.6"
+              strokeDasharray="6 4" />
+      {/* halo cracks */}
+      <Path d="M 30 18 L 22 4" stroke="#ffd166" strokeWidth="2" opacity="0.8" />
+      <Path d="M 70 18 L 78 4" stroke="#ffd166" strokeWidth="2" opacity="0.8" />
+      <Path d="M 18 36 L 6 30" stroke="#ffd166" strokeWidth="2" opacity="0.7" />
+      <Path d="M 82 36 L 94 30" stroke="#ffd166" strokeWidth="2" opacity="0.7" />
+      {/* floating — no ground shadow, replaced by levitation glow */}
+      <Ellipse cx="50" cy="96" rx="22" ry="3" fill="#ffd166" opacity="0.35" />
+      {/* three orbiting smaller heads — small skull motifs */}
+      <Circle cx="18" cy="60" r="4" fill="#e8e0c8" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="17" cy="59" r="0.6" fill="#ff6f1f" />
+      <Circle cx="19" cy="59" r="0.6" fill="#ff6f1f" />
+      <Circle cx="82" cy="60" r="4" fill="#e8e0c8" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="81" cy="59" r="0.6" fill="#ff6f1f" />
+      <Circle cx="83" cy="59" r="0.6" fill="#ff6f1f" />
+      <Circle cx="50" cy="92" r="4" fill="#e8e0c8" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="49" cy="91" r="0.6" fill="#ff6f1f" />
+      <Circle cx="51" cy="91" r="0.6" fill="#ff6f1f" />
+      {/* central body — robed figure with no defined arms */}
+      <Path d="M 28 32 Q 50 22 72 32 L 76 80 Q 70 88 50 86 Q 30 88 24 80 Z"
+            fill={`url(#${id}b)`} stroke="#000" strokeWidth="2.8" />
+      {/* gold trim on robe edges */}
+      <Path d="M 28 32 Q 50 22 72 32" stroke="#ffd166" strokeWidth="1.8" fill="none" />
+      <Path d="M 24 80 Q 50 86 76 80" stroke="#ffd166" strokeWidth="1.5" fill="none" />
+      {/* divine sigil on chest */}
+      <Polygon points="50,52 60,58 56,68 44,68 40,58" fill="none" stroke="#ffd166" strokeWidth="1.5" />
+      <Circle cx="50" cy="60" r="2.5" fill="#ffd166" />
+      <Path d="M 50 56 L 50 64 M 46 60 L 54 60" stroke="#000" strokeWidth="0.6" />
+      {/* event-horizon central eye — black hole with accretion ring */}
+      <Circle cx="50" cy="40" r="12" fill={`url(#${id}h)`} />
+      <Circle cx="50" cy="40" r="6" fill="#000" />
+      <Circle cx="50" cy="40" r="6" fill="none" stroke="#ffd166" strokeWidth="0.6" opacity="0.7" />
+      {/* tiny side eyes */}
+      <Circle cx="36" cy="34" r="1.8" fill="#ffd166" />
+      <Circle cx="36" cy="34" r="0.8" fill="#000" />
+      <Circle cx="64" cy="34" r="1.8" fill="#ffd166" />
+      <Circle cx="64" cy="34" r="0.8" fill="#000" />
+      {/* small flame motes orbiting */}
+      <Circle cx="10" cy="48" r="1.5" fill="#ff6f1f" opacity="0.85" />
+      <Circle cx="90" cy="48" r="1.5" fill="#ff6f1f" opacity="0.85" />
+      <Circle cx="6" cy="70" r="1.2" fill="#ffd166" opacity="0.7" />
+      <Circle cx="94" cy="70" r="1.2" fill="#ffd166" opacity="0.7" />
+    </Svg>
+  );
+});
+
+// Mythic Runner — Time-Wraith. Three overlapping ghost shells, hourglass body.
+const MythicRunnerSvg = React.memo(function MythicRunnerSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const c1 = burning ? '#a8f8c8' : '#4cc9ff';
+  const c2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c1} />
+          <Stop offset="1" stopColor={c2} />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="94" rx="24" ry="3" fill="#4cc9ff" opacity="0.45" />
+      {/* THREE ghost-shell silhouettes phased back */}
+      <Path d="M 50 4 L 78 60 L 76 90 L 24 90 L 22 60 Z"
+            fill="#4cc9ff" opacity="0.18" transform="translate(-12, 3)" />
+      <Path d="M 50 4 L 78 60 L 76 90 L 24 90 L 22 60 Z"
+            fill="#4cc9ff" opacity="0.18" transform="translate(12, 3)" />
+      <Path d="M 50 4 L 78 60 L 76 90 L 24 90 L 22 60 Z"
+            fill="#4cc9ff" opacity="0.25" transform="translate(0, -2)" />
+      {/* main cloak — note hourglass cinch at the middle */}
+      <Path
+        d="M 50 4
+           C 60 8 66 18 70 30
+           L 76 44
+           Q 60 50 60 54
+           Q 60 58 76 64
+           L 82 88
+           L 18 88
+           L 24 64
+           Q 40 58 40 54
+           Q 40 50 24 44
+           L 30 30
+           C 34 18 40 8 50 4 Z"
+        fill={`url(#${id}c)`} stroke="#000" strokeWidth="2.4"
+      />
+      {/* hourglass detail at the cinch */}
+      <Path d="M 40 48 L 60 48 L 50 54 L 60 60 L 40 60 L 50 54 Z" fill="#ffd166" stroke="#000" strokeWidth="1" />
+      <Circle cx="50" cy="48" r="1" fill="#fff" />
+      <Circle cx="50" cy="60" r="1" fill="#fff" />
+      {/* clock-rune marks on cloak */}
+      <Circle cx="50" cy="34" r="5" fill="none" stroke="#fff" strokeWidth="1" opacity="0.7" />
+      <Path d="M 50 30 L 50 34 L 53 36" stroke="#fff" strokeWidth="0.8" opacity="0.7" />
+      <Circle cx="32" cy="76" r="3" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.55" />
+      <Circle cx="68" cy="76" r="3" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.55" />
+      {/* iron hood trim */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30" stroke="#fff" strokeWidth="2.2" fill="none" />
+      {/* deep hood */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30 L 64 44 L 36 44 Z" fill="#000" />
+      {/* three eye slits */}
+      <Path d="M 36 36 L 44 32 L 44 38 L 36 40 Z" fill="#4cc9ff" />
+      <Path d="M 64 36 L 56 32 L 56 38 L 64 40 Z" fill="#4cc9ff" />
+      <Circle cx="50" cy="34" r="2" fill="#fff" />
+      <Circle cx="50" cy="34" r="1" fill="#4cc9ff" />
+      {/* drifting time-particles */}
+      <Circle cx="14" cy="60" r="1.5" fill="#4cc9ff" opacity="0.7" />
+      <Circle cx="86" cy="60" r="1.5" fill="#4cc9ff" opacity="0.7" />
+      <Circle cx="10" cy="44" r="1" fill="#fff" opacity="0.5" />
+      <Circle cx="90" cy="44" r="1" fill="#fff" opacity="0.5" />
+    </Svg>
+  );
+});
+
+// Mythic Tank — Iron God on Throne. Throne base, 9-spike crown, orbiting orbs.
+const MythicTankSvg = React.memo(function MythicTankSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const a1 = burning ? '#a8f8c8' : '#4a4060';
+  const a2 = burning ? '#2e8c50' : '#0a0410';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}a`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={a1} />
+          <Stop offset="1" stopColor={a2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}eye`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.3" stopColor="#ffd166" />
+          <Stop offset="0.8" stopColor="#ff6f1f" />
+          <Stop offset="1" stopColor="#3a0a00" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="97" rx="48" ry="5" fill="#000" opacity="0.85" />
+      {/* throne backrest behind */}
+      <Path d="M 6 60 L 6 8 L 18 0 L 38 0 L 30 14 L 30 90 L 6 90 Z" fill="#1a1424" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 94 60 L 94 8 L 82 0 L 62 0 L 70 14 L 70 90 L 94 90 Z" fill="#1a1424" stroke="#000" strokeWidth="1.5" />
+      {/* throne crystals on backrest */}
+      <Polygon points="14,12 10,20 18,20" fill="#ffd166" stroke="#000" strokeWidth="0.6" />
+      <Polygon points="86,12 90,20 82,20" fill="#ffd166" stroke="#000" strokeWidth="0.6" />
+      {/* gold trim along throne */}
+      <Path d="M 6 8 L 18 0 L 38 0 L 30 14" stroke="#ffd166" strokeWidth="1.5" fill="none" />
+      <Path d="M 94 8 L 82 0 L 62 0 L 70 14" stroke="#ffd166" strokeWidth="1.5" fill="none" />
+      {/* main body — broader, throne-anchored */}
+      <Path d="M 22 36 L 78 36 L 84 90 L 16 90 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="3" />
+      {/* pauldrons with crystal embeds */}
+      <Path d="M 0 50 Q -2 26 22 22 L 36 50 L 28 72 L 4 68 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="2.5" />
+      <Path d="M 100 50 Q 102 26 78 22 L 64 50 L 72 72 L 96 68 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="2.5" />
+      <Polygon points="14,42 8,50 14,58 20,50" fill="#ffd166" stroke="#000" strokeWidth="1" />
+      <Polygon points="86,42 92,50 86,58 80,50" fill="#ffd166" stroke="#000" strokeWidth="1" />
+      <Path d="M 14 42 L 14 58 M 8 50 L 20 50" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+      <Path d="M 86 42 L 86 58 M 80 50 L 92 50" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+      {/* chest plate with cosmic sigil */}
+      <Path d="M 30 42 L 70 42 L 72 82 L 28 82 Z" fill="#1a1424" stroke="#000" strokeWidth="2" />
+      <Path d="M 36 50 L 64 50 L 60 76 L 40 76 Z" fill="none" stroke="#ffd166" strokeWidth="1.5" />
+      <Polygon points="50,52 55,60 50,68 45,60" fill="#ffd166" />
+      <Circle cx="50" cy="60" r="1.5" fill="#000" />
+      <Path d="M 36 60 L 64 60" stroke="#ffd166" strokeWidth="0.8" opacity="0.7" />
+      {/* helmet with 9 spike crown */}
+      <Path d="M 22 38 L 28 10 L 72 10 L 78 38 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="3" />
+      <Polygon points="28,10 26,-2 32,8" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="34,8 32,-6 38,4" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="40,4 38,-10 44,0" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="46,2 44,-14 50,-4" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="50,-4 48,-16 52,-16 54,-4" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="54,2 56,-14 50,-4" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="60,4 62,-10 56,0" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="66,8 68,-6 62,4" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Polygon points="72,10 74,-2 68,8" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      {/* cyclops eye (single huge) */}
+      <Ellipse cx="50" cy="26" rx="14" ry="7" fill="#000" stroke="#000" strokeWidth="1.5" />
+      <Circle cx="50" cy="26" r="6" fill={`url(#${id}eye)`} />
+      <Ellipse cx="50" cy="26" rx="2" ry="5" fill="#000" />
+      {/* gold trim on helmet */}
+      <Path d="M 22 35 Q 50 33 78 35 L 78 38 Q 50 36 22 38 Z" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      {/* 6 orbiting orbs */}
+      <Circle cx="8" cy="34" r="2.5" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="92" cy="34" r="2.5" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="4" cy="60" r="2" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="96" cy="60" r="2" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="8" cy="80" r="2.5" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="92" cy="80" r="2.5" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="8" cy="34" r="1" fill="#fff" />
+      <Circle cx="92" cy="34" r="1" fill="#fff" />
+    </Svg>
+  );
+});
+
+// Mythic Swarm — Cosmic Brood. Body is a starfield, multiple eyes, void tears.
+const MythicSwarmSvg = React.memo(function MythicSwarmSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#1a0a3a';
+  const b2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${id}b`} cx="0.4" cy="0.35" r="0.65">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </RadialGradient>
+        <RadialGradient id={`${id}o`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#4cc9ff" />
+          <Stop offset="1" stopColor="#0a1a3a" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="92" rx="38" ry="4.5" fill="#4cc9ff" opacity="0.3" />
+      {/* writhing tentacles */}
+      <Path d="M 14 50 Q -2 30 4 12 Q 14 24 18 40" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 18 70 Q -2 76 -4 92 Q 12 86 20 80" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 86 50 Q 102 30 96 12 Q 86 24 82 40" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 82 70 Q 102 76 104 92 Q 88 86 80 80" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      {/* tentacle tips */}
+      <Circle cx="4" cy="12" r="2.5" fill="#4cc9ff" opacity="0.7" />
+      <Circle cx="-4" cy="92" r="2.5" fill="#4cc9ff" opacity="0.7" />
+      <Circle cx="96" cy="12" r="2.5" fill="#4cc9ff" opacity="0.7" />
+      <Circle cx="104" cy="92" r="2.5" fill="#4cc9ff" opacity="0.7" />
+      {/* body — starfield interior */}
+      <Ellipse cx="50" cy="55" rx="36" ry="30" fill={`url(#${id}b)`} stroke="#fff" strokeWidth="2" opacity="0.95" />
+      {/* stars inside body */}
+      <Circle cx="32" cy="42" r="1" fill="#fff" />
+      <Circle cx="42" cy="48" r="0.7" fill="#fff" />
+      <Circle cx="60" cy="46" r="0.8" fill="#fff" />
+      <Circle cx="68" cy="42" r="1.1" fill="#fff" />
+      <Circle cx="30" cy="60" r="0.7" fill="#fff" />
+      <Circle cx="40" cy="68" r="0.9" fill="#fff" />
+      <Circle cx="58" cy="68" r="0.8" fill="#fff" />
+      <Circle cx="70" cy="60" r="1" fill="#fff" />
+      <Circle cx="22" cy="50" r="0.7" fill="#4cc9ff" />
+      <Circle cx="78" cy="50" r="0.7" fill="#4cc9ff" />
+      <Circle cx="50" cy="76" r="0.8" fill="#fff" />
+      {/* nebula swirls */}
+      <Path d="M 28 52 Q 36 48 32 60" stroke="#4cc9ff" strokeWidth="1" fill="none" opacity="0.6" />
+      <Path d="M 72 52 Q 64 48 68 60" stroke="#9e7afc" strokeWidth="1" fill="none" opacity="0.6" />
+      {/* void tear lines around body */}
+      <Path d="M 86 30 L 96 24" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
+      <Path d="M 14 30 L 4 24" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
+      <Path d="M 50 14 L 50 4" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
+      <Polygon points="86,30 96,24 92,30" fill="#fff" opacity="0.4" />
+      <Polygon points="14,30 4,24 8,30" fill="#fff" opacity="0.4" />
+      <Polygon points="50,14 50,4 53,10" fill="#fff" opacity="0.4" />
+      {/* nine eyes scattered across body */}
+      <Circle cx="36" cy="38" r="3" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="64" cy="38" r="3" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="22" cy="55" r="2.5" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="78" cy="55" r="2.5" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="36" cy="70" r="2.5" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="64" cy="70" r="2.5" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="50" cy="32" r="2.5" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="50" cy="78" r="2" fill={`url(#${id}o)`} stroke="#fff" strokeWidth="0.4" />
+      {/* central larger eye */}
+      <Circle cx="50" cy="55" r="9" fill="#000" stroke="#fff" strokeWidth="1.2" />
+      <Circle cx="50" cy="55" r="6" fill={`url(#${id}o)`} />
+      <Ellipse cx="50" cy="55" rx="1.5" ry="4" fill="#000" />
+      <Circle cx="48" cy="53" r="1" fill="#fff" />
+      {/* eye highlights */}
+      <Circle cx="36" cy="38" r="0.6" fill="#fff" />
+      <Circle cx="64" cy="38" r="0.6" fill="#fff" />
+      {/* mouth — black void rip */}
+      <Path d="M 30 84 Q 50 96 70 84 Q 60 90 50 90 Q 40 90 30 84 Z" fill="#000" />
+      <Path d="M 30 84 Q 50 96 70 84" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.7" />
+    </Svg>
+  );
+});
+
+// ───── World Ender (wave 50 boss) — the apocalypse incarnate ────────────────
+
+const WorldEnderBossSvg = React.memo(function WorldEnderBossSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#1a0a3a';
+  const b2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${id}b`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </RadialGradient>
+        <RadialGradient id={`${id}eye`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.3" stopColor="#ffd166" />
+          <Stop offset="0.7" stopColor="#ff4d6d" />
+          <Stop offset="1" stopColor="#3a0050" />
+        </RadialGradient>
+        <RadialGradient id={`${id}core`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.2" stopColor="#ffd166" />
+          <Stop offset="0.5" stopColor="#ff4d6d" />
+          <Stop offset="0.8" stopColor="#9e7afc" />
+          <Stop offset="1" stopColor="#000" />
+        </RadialGradient>
+        <RadialGradient id={`${id}aura`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#9e7afc" opacity="0.55" />
+          <Stop offset="1" stopColor="#9e7afc" opacity="0" />
+        </RadialGradient>
+      </Defs>
+      {/* cosmic horror aura */}
+      <Circle cx="50" cy="50" r="50" fill={`url(#${id}aura)`} />
+      <Ellipse cx="50" cy="96" rx="50" ry="6" fill="#3a0050" opacity="0.8" />
+      <Ellipse cx="50" cy="96" rx="40" ry="3" fill="#000" opacity="0.95" />
+      {/* reality tear marks radiating outward */}
+      <Path d="M 50 4 L 50 -4" stroke="#fff" strokeWidth="2" opacity="0.8" />
+      <Path d="M 14 12 L 6 4" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
+      <Path d="M 86 12 L 94 4" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
+      <Path d="M 6 50 L -2 50" stroke="#fff" strokeWidth="1.5" opacity="0.6" />
+      <Path d="M 94 50 L 102 50" stroke="#fff" strokeWidth="1.5" opacity="0.6" />
+      <Polygon points="50,-4 48,2 52,2" fill="#fff" opacity="0.5" />
+      <Polygon points="6,4 12,10 8,12" fill="#fff" opacity="0.5" />
+      <Polygon points="94,4 88,10 92,12" fill="#fff" opacity="0.5" />
+      {/* eight writhing void tentacles (long) */}
+      <Path d="M 18 56 Q -8 42 -4 14 Q 0 38 16 48" stroke={b2} strokeWidth="4.5" fill="none" strokeLinecap="round" />
+      <Path d="M 14 76 Q -8 84 -10 100 Q 6 92 20 84" stroke={b2} strokeWidth="4.5" fill="none" strokeLinecap="round" />
+      <Path d="M 82 56 Q 108 42 104 14 Q 100 38 84 48" stroke={b2} strokeWidth="4.5" fill="none" strokeLinecap="round" />
+      <Path d="M 86 76 Q 108 84 110 100 Q 94 92 80 84" stroke={b2} strokeWidth="4.5" fill="none" strokeLinecap="round" />
+      <Path d="M 38 92 Q 30 104 38 110" stroke={b2} strokeWidth="3.5" fill="none" strokeLinecap="round" />
+      <Path d="M 62 92 Q 70 104 62 110" stroke={b2} strokeWidth="3.5" fill="none" strokeLinecap="round" />
+      <Path d="M 50 92 Q 50 110 54 116" stroke={b2} strokeWidth="3.5" fill="none" strokeLinecap="round" />
+      {/* tentacle tip eyes */}
+      <Circle cx="-4" cy="14" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.6" />
+      <Circle cx="-10" cy="100" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.6" />
+      <Circle cx="104" cy="14" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.6" />
+      <Circle cx="110" cy="100" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.6" />
+      {/* crown of broken reality shards */}
+      <Polygon points="22,22 16,-2 30,16" fill="#fff" opacity="0.85" />
+      <Polygon points="34,12 28,-8 42,4" fill="#fff" opacity="0.85" />
+      <Polygon points="46,8 42,-12 52,-6" fill="#fff" opacity="0.85" />
+      <Polygon points="54,8 50,-12 58,-6" fill="#9e7afc" opacity="0.85" />
+      <Polygon points="66,12 58,4 72,-8" fill="#fff" opacity="0.85" />
+      <Polygon points="78,22 70,16 84,-2" fill="#fff" opacity="0.85" />
+      {/* body — vast cosmic horror */}
+      <Circle cx="50" cy="55" r="40" fill={`url(#${id}b)`} stroke="#fff" strokeWidth="3" opacity="0.95" />
+      {/* starfield inside body */}
+      <Circle cx="28" cy="42" r="1" fill="#fff" />
+      <Circle cx="40" cy="38" r="0.8" fill="#fff" />
+      <Circle cx="60" cy="38" r="0.8" fill="#fff" />
+      <Circle cx="72" cy="42" r="1" fill="#fff" />
+      <Circle cx="32" cy="58" r="0.8" fill="#fff" />
+      <Circle cx="68" cy="58" r="0.8" fill="#fff" />
+      <Circle cx="28" cy="72" r="0.7" fill="#fff" />
+      <Circle cx="72" cy="72" r="0.7" fill="#fff" />
+      <Circle cx="22" cy="55" r="0.8" fill="#4cc9ff" />
+      <Circle cx="78" cy="55" r="0.8" fill="#4cc9ff" />
+      <Circle cx="50" cy="86" r="0.9" fill="#fff" />
+      <Circle cx="42" cy="84" r="0.6" fill="#fff" />
+      <Circle cx="58" cy="84" r="0.6" fill="#fff" />
+      {/* nebula clouds inside body */}
+      <Path d="M 24 50 Q 38 46 30 64" stroke="#9e7afc" strokeWidth="1.2" fill="none" opacity="0.6" />
+      <Path d="M 76 50 Q 62 46 70 64" stroke="#ff4d6d" strokeWidth="1.2" fill="none" opacity="0.6" />
+      {/* eyes covering the body — 12 total + central core */}
+      <Circle cx="34" cy="34" r="3.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="66" cy="34" r="3.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="22" cy="50" r="3" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="78" cy="50" r="3" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="26" cy="68" r="2.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="74" cy="68" r="2.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="34" cy="80" r="2.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="66" cy="80" r="2.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      <Circle cx="38" cy="62" r="2" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.3" />
+      <Circle cx="62" cy="62" r="2" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.3" />
+      <Circle cx="50" cy="32" r="3" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.5" />
+      <Circle cx="50" cy="78" r="2.5" fill={`url(#${id}eye)`} stroke="#fff" strokeWidth="0.4" />
+      {/* eye pupils */}
+      <Ellipse cx="34" cy="34" rx="0.8" ry="2" fill="#000" />
+      <Ellipse cx="66" cy="34" rx="0.8" ry="2" fill="#000" />
+      <Ellipse cx="22" cy="50" rx="0.6" ry="1.8" fill="#000" />
+      <Ellipse cx="78" cy="50" rx="0.6" ry="1.8" fill="#000" />
+      <Ellipse cx="50" cy="32" rx="0.6" ry="1.5" fill="#000" />
+      {/* central singularity core */}
+      <Circle cx="50" cy="55" r="14" fill="#000" stroke="#fff" strokeWidth="2" />
+      <Circle cx="50" cy="55" r="12" fill={`url(#${id}core)`} />
+      <Circle cx="50" cy="55" r="4" fill="#000" />
+      <Circle cx="50" cy="55" r="4" fill="none" stroke="#fff" strokeWidth="0.6" />
+      {/* accretion ring */}
+      <Ellipse cx="50" cy="55" rx="16" ry="3" fill="none" stroke="#9e7afc" strokeWidth="0.8" opacity="0.75" />
+      <Ellipse cx="50" cy="55" rx="14" ry="2" fill="none" stroke="#fff" strokeWidth="0.4" opacity="0.55" />
+      {/* mouth — black hole maw at bottom */}
+      <Ellipse cx="50" cy="88" rx="14" ry="5" fill="#000" stroke="#fff" strokeWidth="1" />
+      <Polygon points="40,86 44,94 48,86" fill="#fff" />
+      <Polygon points="48,86 52,95 56,86" fill="#fff" />
+      <Polygon points="56,86 60,94 64,86" fill="#fff" />
+    </Svg>
+  );
+});
+
+// ───── World Ender Mega (wave 50 mega) — twin-headed apocalypse ─────────────
+
+const WorldEnderMegaSvg = React.memo(function WorldEnderMegaSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const r1 = burning ? '#a8f8c8' : '#0a0418';
+  const r2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${id}b`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor={r1} />
+          <Stop offset="1" stopColor={r2} />
+        </RadialGradient>
+        <RadialGradient id={`${id}eye`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#ff4d6d" />
+          <Stop offset="1" stopColor="#3a0050" />
+        </RadialGradient>
+        <RadialGradient id={`${id}core`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.2" stopColor="#9e7afc" />
+          <Stop offset="0.6" stopColor="#ff4d6d" />
+          <Stop offset="1" stopColor="#000" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="97" rx="50" ry="5" fill="#000" opacity="0.95" />
+      {/* outer void halo */}
+      <Circle cx="50" cy="50" r="48" fill="none" stroke="#9e7afc" strokeWidth="0.8" opacity="0.55" strokeDasharray="3 2" />
+      {/* writhing void tentacles — 6 long */}
+      <Path d="M 14 40 Q -8 24 -6 4" stroke={r2} strokeWidth="5" fill="none" strokeLinecap="round" />
+      <Path d="M 8 64 Q -10 70 -8 92" stroke={r2} strokeWidth="5" fill="none" strokeLinecap="round" />
+      <Path d="M 86 40 Q 108 24 106 4" stroke={r2} strokeWidth="5" fill="none" strokeLinecap="round" />
+      <Path d="M 92 64 Q 110 70 108 92" stroke={r2} strokeWidth="5" fill="none" strokeLinecap="round" />
+      <Path d="M 32 92 Q 24 104 30 110" stroke={r2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 68 92 Q 76 104 70 110" stroke={r2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Circle cx="-6" cy="4" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.5" />
+      <Circle cx="-8" cy="92" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.5" />
+      <Circle cx="106" cy="4" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.5" />
+      <Circle cx="108" cy="92" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.5" />
+      {/* shoulder horn spires */}
+      <Polygon points="10,42 4,12 18,38" fill="#000" stroke="#9e7afc" strokeWidth="0.5" />
+      <Polygon points="90,42 96,12 82,38" fill="#000" stroke="#9e7afc" strokeWidth="0.5" />
+      {/* main body — vast cosmic mass */}
+      <Path
+        d="M 18 38 Q 14 18 30 18
+           L 38 16 L 50 4 L 62 16 L 70 18
+           Q 86 18 82 38
+           L 90 56 L 84 84 L 70 94 L 50 92 L 30 94 L 16 84 L 10 56 Z"
+        fill={`url(#${id}b)`} stroke="#fff" strokeWidth="2.8"
+      />
+      {/* stars inside body */}
+      <Circle cx="30" cy="36" r="1.2" fill="#fff" />
+      <Circle cx="70" cy="36" r="1.2" fill="#fff" />
+      <Circle cx="40" cy="30" r="0.8" fill="#fff" />
+      <Circle cx="60" cy="30" r="0.8" fill="#fff" />
+      <Circle cx="50" cy="20" r="1" fill="#fff" />
+      <Circle cx="22" cy="60" r="0.9" fill="#fff" />
+      <Circle cx="78" cy="60" r="0.9" fill="#fff" />
+      <Circle cx="26" cy="78" r="0.8" fill="#fff" />
+      <Circle cx="74" cy="78" r="0.8" fill="#fff" />
+      <Circle cx="18" cy="48" r="0.7" fill="#4cc9ff" />
+      <Circle cx="82" cy="48" r="0.7" fill="#4cc9ff" />
+      <Circle cx="50" cy="74" r="0.7" fill="#9e7afc" />
+      <Circle cx="40" cy="68" r="0.8" fill="#fff" />
+      <Circle cx="60" cy="68" r="0.8" fill="#fff" />
+      <Circle cx="34" cy="44" r="0.7" fill="#4cc9ff" />
+      <Circle cx="66" cy="44" r="0.7" fill="#4cc9ff" />
+      {/* nebula swirls */}
+      <Path d="M 20 50 Q 30 46 26 60" stroke="#9e7afc" strokeWidth="1" fill="none" opacity="0.6" />
+      <Path d="M 80 50 Q 70 46 74 60" stroke="#ff4d6d" strokeWidth="1" fill="none" opacity="0.6" />
+      {/* TWO heads — left and right */}
+      {/* left head: skull-faced, bone */}
+      <Ellipse cx="32" cy="34" rx="14" ry="16" fill="#e8e0c8" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 24 24 L 28 32" stroke="#000" strokeWidth="0.6" />
+      <Path d="M 38 22 L 36 28" stroke="#000" strokeWidth="0.6" />
+      <Ellipse cx="28" cy="34" rx="3" ry="3.5" fill="#000" />
+      <Ellipse cx="36" cy="34" rx="3" ry="3.5" fill="#000" />
+      <Circle cx="28" cy="34" r="1.5" fill="#ff4d6d" />
+      <Circle cx="36" cy="34" r="1.5" fill="#ff4d6d" />
+      <Circle cx="28" cy="34" r="0.5" fill="#fff" />
+      <Circle cx="36" cy="34" r="0.5" fill="#fff" />
+      <Polygon points="32,40 30,44 34,44" fill="#000" />
+      <Rect x="26" y="46" width="12" height="3" fill="#e8e0c8" stroke="#000" strokeWidth="0.5" />
+      <Line x1="29" y1="46" x2="29" y2="49" stroke="#000" strokeWidth="0.4" />
+      <Line x1="32" y1="46" x2="32" y2="49" stroke="#000" strokeWidth="0.4" />
+      <Line x1="35" y1="46" x2="35" y2="49" stroke="#000" strokeWidth="0.4" />
+      {/* horns on left head */}
+      <Polygon points="22,24 14,4 26,16" fill="#000" />
+      <Polygon points="40,18 44,4 38,18" fill="#000" />
+      {/* right head: mirror with crown of shards */}
+      <Ellipse cx="68" cy="34" rx="14" ry="16" fill="#e8e0c8" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 76 24 L 72 32" stroke="#000" strokeWidth="0.6" />
+      <Path d="M 62 22 L 64 28" stroke="#000" strokeWidth="0.6" />
+      <Ellipse cx="64" cy="34" rx="3" ry="3.5" fill="#000" />
+      <Ellipse cx="72" cy="34" rx="3" ry="3.5" fill="#000" />
+      <Circle cx="64" cy="34" r="1.5" fill="#ff4d6d" />
+      <Circle cx="72" cy="34" r="1.5" fill="#ff4d6d" />
+      <Circle cx="64" cy="34" r="0.5" fill="#fff" />
+      <Circle cx="72" cy="34" r="0.5" fill="#fff" />
+      <Polygon points="68,40 66,44 70,44" fill="#000" />
+      <Rect x="62" y="46" width="12" height="3" fill="#e8e0c8" stroke="#000" strokeWidth="0.5" />
+      <Line x1="65" y1="46" x2="65" y2="49" stroke="#000" strokeWidth="0.4" />
+      <Line x1="68" y1="46" x2="68" y2="49" stroke="#000" strokeWidth="0.4" />
+      <Line x1="71" y1="46" x2="71" y2="49" stroke="#000" strokeWidth="0.4" />
+      {/* horns on right head */}
+      <Polygon points="78,24 86,4 74,16" fill="#000" />
+      <Polygon points="60,18 56,4 62,18" fill="#000" />
+      {/* central chest singularity core */}
+      <Circle cx="50" cy="64" r="14" fill="#000" stroke="#fff" strokeWidth="2.2" />
+      <Circle cx="50" cy="64" r="11" fill={`url(#${id}core)`} />
+      <Circle cx="50" cy="64" r="3" fill="#000" />
+      <Ellipse cx="50" cy="64" rx="16" ry="3" fill="none" stroke="#9e7afc" strokeWidth="0.7" opacity="0.7" />
+      <Ellipse cx="50" cy="64" rx="14" ry="2" fill="none" stroke="#fff" strokeWidth="0.4" opacity="0.55" />
+      {/* third smaller mouth at bottom */}
+      <Ellipse cx="50" cy="86" rx="10" ry="3" fill="#000" stroke="#fff" strokeWidth="0.8" />
+      <Polygon points="44,84 46,90 48,84" fill="#fff" />
+      <Polygon points="50,84 52,90 54,84" fill="#fff" />
+      <Polygon points="56,84 58,90 60,84" fill="#fff" />
+      {/* connecting bone joints between heads */}
+      <Path d="M 44 38 Q 50 42 56 38" stroke="#e8e0c8" strokeWidth="2" fill="none" />
+      <Circle cx="50" cy="40" r="1.5" fill="#e8e0c8" stroke="#000" strokeWidth="0.4" />
+    </Svg>
+  );
+});
+
 
 function ProjectileView({ p }) {
   const len = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
@@ -3590,30 +4136,36 @@ function WaveBanner({ banner, time }) {
       transform: [{ translateY: slide }],
     }}>
       <Text style={{
-        color: banner.boss ? '#ff4d6d'
+        color: banner.finalWave ? '#fff'
+          : banner.boss ? '#ff4d6d'
+          : banner.mythic ? '#ff6f1f'
           : banner.apex ? '#5cf28a'
           : banner.champion ? '#ffd166'
           : banner.elite ? '#b08bff'
           : '#4cc9ff',
-        fontSize: 14, fontWeight: '700',
+        fontSize: banner.finalWave ? 16 : 14, fontWeight: '700',
         letterSpacing: 6,
       }}>
-        {banner.boss ? '⚠  BOSS WAVE  ⚠'
+        {banner.finalWave ? '✦  THE FINAL WAVE  ✦'
+          : banner.boss ? '⚠  BOSS WAVE  ⚠'
+          : banner.mythic ? '✦  MYTHIC WAVE  ✦'
           : banner.apex ? '◆  APEX WAVE  ◆'
           : banner.champion ? '☠  CHAMPION WAVE  ☠'
           : banner.elite ? 'ELITE WAVE'
           : 'INCOMING'}
       </Text>
       <Text style={{
-        color: '#fff', fontSize: 56, fontWeight: '900',
+        color: '#fff', fontSize: banner.finalWave ? 64 : 56, fontWeight: '900',
         letterSpacing: 4,
-        textShadowColor: banner.boss ? '#ff4d6d'
+        textShadowColor: banner.finalWave ? '#ff4d6d'
+          : banner.boss ? '#ff4d6d'
+          : banner.mythic ? '#ff6f1f'
           : banner.apex ? '#5cf28a'
           : banner.champion ? '#ffd166'
           : banner.elite ? '#b08bff'
           : '#4cc9ff',
         textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 18,
+        textShadowRadius: banner.finalWave ? 28 : 18,
       }}>
         WAVE {banner.wave}
       </Text>
@@ -3774,15 +4326,16 @@ function step(dt, s, onEnd) {
     const subPath = def.flying
       ? [SPAWN, GOAL] // flyers go direct
       : bfsCheckpoints(s.grid, SPAWN) || [SPAWN, GOAL];
-    // Tier 0 = base (W1-10), 1 = elite (W11-20), 2 = champion (W21-30), 3 = apex (W31+).
-    // Bosses/mega use their bossVariant slot for skin selection, not tier.
+    // Tier 0 = base (W1-10), 1 = elite (W11-20), 2 = champion (W21-30),
+    // 3 = apex (W31-40), 4 = mythic (W41+). Bosses/mega use bossVariant slot.
     const tier = sp.type === 'boss' || sp.type === 'mega' ? 0
+      : s.wave >= 41 ? 4
       : s.wave >= 31 ? 3
       : s.wave >= 21 ? 2
       : s.wave >= 11 ? 1
       : 0;
     const elite = tier >= 1;
-    // Boss skins by milestone wave.
+    // Boss + mega skins by milestone wave.
     let bossVariant = null;
     if (sp.type === 'boss') {
       bossVariant = s.wave === 20 ? 'void'
@@ -3790,6 +4343,8 @@ function step(dt, s, onEnd) {
         : s.wave === 40 ? 'destroyer'
         : s.wave === 50 ? 'ender'
         : 'demon';
+    } else if (sp.type === 'mega') {
+      bossVariant = s.wave === 50 ? 'ender-mega' : 'colossus';
     }
     s.enemies.push({
       id: s.nextEnemyId++,
