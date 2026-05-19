@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Svg, {
+  Path, Circle, Ellipse, Rect, G, LinearGradient, RadialGradient,
+  Stop, Defs, Polygon, Line,
+} from 'react-native-svg';
 import {
   StyleSheet,
   Text,
@@ -1130,7 +1134,7 @@ function Game({ onEnd }) {
           {s.candidates.map((t) => <CandidateView key={`c${t.id}`} t={t} time={s.time} />)}
 
           {/* enemies */}
-          {s.enemies.map((e) => <EnemyView key={`e${e.id}`} e={e} />)}
+          {s.enemies.map((e) => <EnemyView key={`e${e.id}`} e={e} time={s.time} />)}
 
           {/* projectiles */}
           {s.projectiles.map((p) => <ProjectileView key={`pr${p.id}`} p={p} />)}
@@ -1745,28 +1749,52 @@ function CandidateView({ t, time }) {
   );
 }
 
-function EnemyView({ e }) {
+// Per-enemy idle motion params (bob, sway).
+const BOB_PARAMS = {
+  grunt:  { yHz: 3.5, yAmp: 1.6, xHz: 0,   xAmp: 0 },
+  runner: { yHz: 7,   yAmp: 1.2, xHz: 0,   xAmp: 0 },
+  tank:   { yHz: 1.2, yAmp: 0.8, xHz: 0,   xAmp: 0 },
+  swarm:  { yHz: 6,   yAmp: 1.0, xHz: 9,   xAmp: 1.8 },
+  flyer:  { yHz: 5,   yAmp: 2.6, xHz: 0,   xAmp: 0 },
+  boss:   { yHz: 1.5, yAmp: 2.0, xHz: 0,   xAmp: 0 },
+  mega:   { yHz: 0.9, yAmp: 2.6, xHz: 0.5, xAmp: 1.2 },
+};
+
+function EnemyView({ e, time }) {
   const def = ENEMIES[e.type];
   const size = TILE * def.size;
   const slowed = e.effects.some((ef) => ef.type === 'slow');
   const burning = e.effects.some((ef) => ef.type === 'poison');
-  const baseColor = burning ? '#5cf28a' : def.color;
+  const b = BOB_PARAMS[e.type] || BOB_PARAMS.grunt;
+  const phase = (e.id * 0.91) % (Math.PI * 2);
+  const bobY = Math.sin(time * b.yHz + phase) * b.yAmp;
+  const bobX = b.xAmp ? Math.sin(time * b.xHz + phase + 1) * b.xAmp : 0;
+  // Wing flap drives a different cycle for flyer
+  const flap = def.flying ? Math.sin(time * 11 + phase) : 0;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
-      left: e.c * TILE + (TILE - size) / 2, top: e.r * TILE + (TILE - size) / 2,
+      left: e.c * TILE + (TILE - size) / 2,
+      top: e.r * TILE + (TILE - size) / 2,
       width: size, height: size,
     }}>
-      <EnemyBody type={e.type} size={size} color={baseColor} slowed={slowed} flying={def.flying} />
-      {def.flying && (
-        <Text style={{ position: 'absolute', top: -2, left: size * 0.3, color: '#fff', fontSize: 10 }}>✈</Text>
+      <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }] }}>
+        <CreatureSvg type={e.type} size={size} burning={burning} flap={flap} />
+      </View>
+      {slowed && (
+        <View style={{
+          position: 'absolute', left: -3, top: -3,
+          width: size + 6, height: size + 6, borderRadius: size,
+          borderWidth: 2, borderColor: '#4cc9ff',
+          opacity: 0.9,
+        }} />
       )}
       <View style={{
-        position: 'absolute', top: -4, left: 0, width: size, height: 2,
+        position: 'absolute', top: -6, left: 0, width: size, height: 3,
         backgroundColor: '#000a', borderRadius: 2,
       }}>
         <View style={{
-          width: Math.max(0, size * (e.hp / e.maxHp)), height: 2,
+          width: Math.max(0, size * (e.hp / e.maxHp)), height: 3,
           backgroundColor: '#5cf28a', borderRadius: 2,
         }} />
       </View>
@@ -1774,219 +1802,363 @@ function EnemyView({ e }) {
   );
 }
 
-// Distinct silhouettes per enemy type, all built from plain Views so we don't
-// need a vector library. Each body fills the bounding `size` square.
-function EnemyBody({ type, size, color, slowed, flying }) {
-  const slowRing = slowed ? {
-    position: 'absolute',
-    left: -2, top: -2, width: size + 4, height: size + 4,
-    borderRadius: size, borderWidth: 2, borderColor: '#4cc9ff',
-  } : null;
-  const opacity = flying ? 0.88 : 1;
-
-  if (type === 'grunt') {
-    // round purple blob with darker rim
-    return (
-      <>
-        <View style={{
-          width: size, height: size, borderRadius: size / 2,
-          backgroundColor: color, opacity,
-          borderWidth: 1.5, borderColor: '#0008',
-        }}>
-          <View style={{
-            position: 'absolute', left: size * 0.22, top: size * 0.2,
-            width: size * 0.25, height: size * 0.18, borderRadius: size,
-            backgroundColor: '#fff', opacity: 0.55,
-          }} />
-        </View>
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  if (type === 'runner') {
-    // forward-pointing arrow (rotated square + triangle approximation)
-    return (
-      <>
-        <View style={{
-          width: size, height: size, opacity,
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <View style={{
-            width: size * 0.75, height: size * 0.75, backgroundColor: color,
-            transform: [{ rotate: '45deg' }],
-            borderWidth: 1.5, borderColor: '#0008',
-          }} />
-          <View style={{
-            position: 'absolute', width: size * 0.3, height: size * 0.3,
-            backgroundColor: '#fff', opacity: 0.6,
-            transform: [{ rotate: '45deg' }, { translateX: -size * 0.12 }, { translateY: -size * 0.12 }],
-          }} />
-        </View>
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  if (type === 'tank') {
-    // squat armored hex — rounded rectangle with two side plates
-    return (
-      <>
-        <View style={{
-          width: size, height: size * 0.85, marginTop: size * 0.075,
-          backgroundColor: color, borderRadius: size * 0.18, opacity,
-          borderWidth: 2, borderColor: '#0009',
-        }}>
-          {/* rivets */}
-          <View style={{
-            position: 'absolute', left: size * 0.18, top: size * 0.15,
-            width: 3, height: 3, borderRadius: 3, backgroundColor: '#fff8',
-          }} />
-          <View style={{
-            position: 'absolute', right: size * 0.18, top: size * 0.15,
-            width: 3, height: 3, borderRadius: 3, backgroundColor: '#fff8',
-          }} />
-          <View style={{
-            position: 'absolute', left: size * 0.4, bottom: size * 0.15,
-            width: size * 0.2, height: 2, backgroundColor: '#fff5',
-          }} />
-        </View>
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  if (type === 'swarm') {
-    // cluster: main blob + 3 satellite dots
-    return (
-      <>
-        <View style={{
-          position: 'absolute', left: size * 0.18, top: size * 0.18,
-          width: size * 0.64, height: size * 0.64, borderRadius: size,
-          backgroundColor: color, opacity,
-          borderWidth: 1, borderColor: '#0008',
-        }} />
-        <View style={{
-          position: 'absolute', left: 0, top: size * 0.55,
-          width: size * 0.3, height: size * 0.3, borderRadius: size,
-          backgroundColor: color, opacity: opacity * 0.85,
-          borderWidth: 1, borderColor: '#0006',
-        }} />
-        <View style={{
-          position: 'absolute', right: 0, top: size * 0.1,
-          width: size * 0.28, height: size * 0.28, borderRadius: size,
-          backgroundColor: color, opacity: opacity * 0.85,
-          borderWidth: 1, borderColor: '#0006',
-        }} />
-        <View style={{
-          position: 'absolute', right: size * 0.15, bottom: 0,
-          width: size * 0.25, height: size * 0.25, borderRadius: size,
-          backgroundColor: color, opacity: opacity * 0.85,
-          borderWidth: 1, borderColor: '#0006',
-        }} />
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  if (type === 'flyer') {
-    // diamond body with thin wing slivers on left/right
-    return (
-      <>
-        <View style={{
-          position: 'absolute',
-          left: -size * 0.15, top: size * 0.4,
-          width: size * 0.5, height: size * 0.18, borderRadius: size,
-          backgroundColor: color, opacity: 0.5,
-        }} />
-        <View style={{
-          position: 'absolute',
-          right: -size * 0.15, top: size * 0.4,
-          width: size * 0.5, height: size * 0.18, borderRadius: size,
-          backgroundColor: color, opacity: 0.5,
-        }} />
-        <View style={{
-          width: size, height: size, opacity,
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <View style={{
-            width: size * 0.6, height: size * 0.6, backgroundColor: color,
-            transform: [{ rotate: '45deg' }],
-            borderWidth: 1.5, borderColor: '#0008',
-          }} />
-        </View>
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  if (type === 'boss') {
-    // big disc with crown spikes around the top
-    return (
-      <>
-        {/* crown spikes */}
-        {[0, 1, 2, 3, 4].map((i) => (
-          <View key={i} style={{
-            position: 'absolute',
-            left: size * (0.15 + i * 0.175) - 3,
-            top: -size * 0.05,
-            width: 6, height: size * 0.22,
-            backgroundColor: '#ffd166',
-            borderRadius: 2,
-            transform: [{ rotate: `${(i - 2) * 12}deg` }],
-          }} />
-        ))}
-        <View style={{
-          width: size, height: size, borderRadius: size / 2,
-          backgroundColor: color, opacity,
-          borderWidth: 2, borderColor: '#ffd166',
-        }}>
-          <View style={{
-            position: 'absolute', left: size * 0.3, top: size * 0.35,
-            width: size * 0.4, height: size * 0.12, borderRadius: 2,
-            backgroundColor: '#000a',
-          }} />
-        </View>
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  if (type === 'mega') {
-    // huge angular menace — square with cross slash
-    return (
-      <>
-        <View style={{
-          width: size, height: size, opacity,
-          backgroundColor: color, borderRadius: size * 0.12,
-          borderWidth: 3, borderColor: '#ffd166',
-          alignItems: 'center', justifyContent: 'center',
-        }}>
-          <View style={{
-            position: 'absolute',
-            width: size * 0.7, height: 3,
-            backgroundColor: '#ffd166',
-            transform: [{ rotate: '45deg' }],
-          }} />
-          <View style={{
-            position: 'absolute',
-            width: size * 0.7, height: 3,
-            backgroundColor: '#ffd166',
-            transform: [{ rotate: '-45deg' }],
-          }} />
-          <View style={{
-            position: 'absolute',
-            width: size * 0.32, height: size * 0.32, borderRadius: size,
-            backgroundColor: '#000',
-            opacity: 0.5,
-          }} />
-        </View>
-        {slowRing && <View style={slowRing} />}
-      </>
-    );
-  }
-  // fallback (unknown type)
-  return (
-    <View style={{
-      width: size, height: size, borderRadius: size / 2,
-      backgroundColor: color, opacity,
-    }} />
-  );
+function CreatureSvg({ type, size, burning, flap }) {
+  if (type === 'grunt')  return <GruntSvg size={size} burning={burning} />;
+  if (type === 'runner') return <RunnerSvg size={size} burning={burning} />;
+  if (type === 'tank')   return <TankSvg size={size} burning={burning} />;
+  if (type === 'swarm')  return <SwarmSvg size={size} burning={burning} />;
+  if (type === 'flyer')  return <FlyerSvg size={size} burning={burning} flap={flap} />;
+  if (type === 'boss')   return <BossSvg size={size} burning={burning} />;
+  if (type === 'mega')   return <MegaSvg size={size} burning={burning} />;
+  return null;
 }
+
+// All creatures render in a 100x100 viewBox. Each id-prefix makes
+// gradient ids unique even if multiple of the same type are on screen.
+let gradId = 0;
+const nextGid = () => `g${++gradId}`;
+
+const GruntSvg = React.memo(function GruntSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const body1 = burning ? '#a8f8c8' : '#d4c8ff';
+  const body2 = burning ? '#2e8c50' : '#5a3d8c';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={body1} />
+          <Stop offset="1" stopColor={body2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}e`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff7a8" />
+          <Stop offset="0.6" stopColor="#ffd166" />
+          <Stop offset="1" stopColor="#ff8800" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="93" rx="28" ry="3.5" fill="#000" opacity="0.45" />
+      {/* horns */}
+      <Polygon points="22,30 30,6 36,32" fill="#2a1840" />
+      <Polygon points="78,30 70,6 64,32" fill="#2a1840" />
+      {/* ears */}
+      <Polygon points="14,55 4,48 16,68" fill={body2} stroke="#1a0c2e" strokeWidth="1.5" />
+      <Polygon points="86,55 96,48 84,68" fill={body2} stroke="#1a0c2e" strokeWidth="1.5" />
+      {/* body */}
+      <Circle cx="50" cy="55" r="34" fill={`url(#${id}b)`} stroke="#1a0c2e" strokeWidth="2.5" />
+      <Ellipse cx="50" cy="72" rx="22" ry="11" fill="#fff" opacity="0.13" />
+      {/* eye sockets */}
+      <Ellipse cx="38" cy="50" rx="8" ry="7" fill="#0a0510" />
+      <Ellipse cx="62" cy="50" rx="8" ry="7" fill="#0a0510" />
+      {/* eyes glow */}
+      <Circle cx="38" cy="49" r="5.5" fill={`url(#${id}e)`} />
+      <Circle cx="62" cy="49" r="5.5" fill={`url(#${id}e)`} />
+      <Circle cx="38" cy="50" r="2" fill="#000" />
+      <Circle cx="62" cy="50" r="2" fill="#000" />
+      {/* brow */}
+      <Path d="M 28 40 L 44 44" stroke="#1a0c2e" strokeWidth="2.5" strokeLinecap="round" />
+      <Path d="M 72 40 L 56 44" stroke="#1a0c2e" strokeWidth="2.5" strokeLinecap="round" />
+      {/* mouth */}
+      <Path d="M 34 68 Q 50 80 66 68 Q 60 72 50 72 Q 40 72 34 68 Z" fill="#0a0510" />
+      <Polygon points="42,69 44,77 46,69" fill="#fff" />
+      <Polygon points="54,69 56,77 58,69" fill="#fff" />
+    </Svg>
+  );
+});
+
+const RunnerSvg = React.memo(function RunnerSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const c1 = burning ? '#a8f8c8' : '#ffe19a';
+  const c2 = burning ? '#2e8c50' : '#a07020';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c1} />
+          <Stop offset="1" stopColor={c2} />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="93" rx="22" ry="3" fill="#000" opacity="0.4" />
+      {/* cloak silhouette: tall hood narrowing at top, flared at bottom */}
+      <Path
+        d="M 50 4 C 60 8 66 18 70 30 L 78 58 L 76 86 L 24 86 L 22 58 L 30 30 C 34 18 40 8 50 4 Z"
+        fill={`url(#${id}c)`}
+        stroke="#3a2806"
+        strokeWidth="2"
+      />
+      {/* outer cloak fold lines */}
+      <Path d="M 36 30 L 30 70" stroke="#3a2806" strokeWidth="1" opacity="0.5" />
+      <Path d="M 64 30 L 70 70" stroke="#3a2806" strokeWidth="1" opacity="0.5" />
+      <Path d="M 50 30 L 50 78" stroke="#3a2806" strokeWidth="1" opacity="0.4" />
+      {/* shadow inside hood */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30 L 64 50 L 36 50 Z" fill="#0a0510" />
+      {/* glowing eye slits */}
+      <Path d="M 36 40 L 46 36 L 46 42 L 36 44 Z" fill="#ff4d6d" />
+      <Path d="M 64 40 L 54 36 L 54 42 L 64 44 Z" fill="#ff4d6d" />
+      <Path d="M 39 39 L 44 38" stroke="#fff" strokeWidth="1" opacity="0.8" />
+      <Path d="M 61 39 L 56 38" stroke="#fff" strokeWidth="1" opacity="0.8" />
+      {/* belt */}
+      <Rect x="26" y="62" width="48" height="6" fill="#3a2806" />
+      <Rect x="46" y="61" width="8" height="8" fill="#ffd166" stroke="#3a2806" strokeWidth="0.8" />
+      {/* small dagger hilt at side */}
+      <Rect x="68" y="64" width="3" height="14" fill="#3a2806" />
+      <Rect x="65" y="62" width="9" height="3" fill="#ffd166" />
+    </Svg>
+  );
+});
+
+const TankSvg = React.memo(function TankSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const a1 = burning ? '#a8f8c8' : '#a8b4d0';
+  const a2 = burning ? '#2e8c50' : '#3d4660';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}a`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={a1} />
+          <Stop offset="1" stopColor={a2} />
+        </LinearGradient>
+        <LinearGradient id={`${id}h`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={a1} />
+          <Stop offset="1" stopColor="#5a6480" />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="94" rx="38" ry="4" fill="#000" opacity="0.55" />
+      {/* pauldrons */}
+      <Path d="M 6 50 Q 4 32 22 28 L 36 50 L 30 68 L 8 64 Z" fill={`url(#${id}a)`} stroke="#1a2034" strokeWidth="2" />
+      <Path d="M 94 50 Q 96 32 78 28 L 64 50 L 70 68 L 92 64 Z" fill={`url(#${id}a)`} stroke="#1a2034" strokeWidth="2" />
+      {/* spike on each pauldron */}
+      <Polygon points="14,38 18,22 22,40" fill="#1a2034" />
+      <Polygon points="86,38 82,22 78,40" fill="#1a2034" />
+      {/* torso */}
+      <Path d="M 26 36 L 74 36 L 80 82 L 72 92 L 28 92 L 20 82 Z" fill={`url(#${id}a)`} stroke="#1a2034" strokeWidth="2.5" />
+      {/* chest plate */}
+      <Path d="M 38 44 L 62 44 L 60 76 L 40 76 Z" fill="#5a6480" stroke="#1a2034" strokeWidth="1.5" />
+      <Path d="M 50 44 L 50 76" stroke="#1a2034" strokeWidth="1.5" />
+      {/* helmet */}
+      <Path d="M 26 38 L 32 14 L 68 14 L 74 38 Z" fill={`url(#${id}h)`} stroke="#1a2034" strokeWidth="2.5" />
+      {/* helmet crest */}
+      <Path d="M 50 14 L 45 4 L 55 4 Z" fill="#7a1d2e" />
+      <Path d="M 46 4 L 46 -2 L 54 -2 L 54 4 Z" fill="#ff4d6d" />
+      {/* visor */}
+      <Rect x="28" y="24" width="44" height="8" fill="#0a0510" />
+      <Rect x="32" y="26" width="36" height="3" fill="#ff4d6d" opacity="0.9" />
+      <Circle cx="38" cy="27.5" r="1.3" fill="#fff" />
+      <Circle cx="62" cy="27.5" r="1.3" fill="#fff" />
+      {/* rivets */}
+      <Circle cx="30" cy="48" r="1.8" fill="#1a2034" />
+      <Circle cx="70" cy="48" r="1.8" fill="#1a2034" />
+      <Circle cx="30" cy="80" r="1.8" fill="#1a2034" />
+      <Circle cx="70" cy="80" r="1.8" fill="#1a2034" />
+    </Svg>
+  );
+});
+
+const SwarmSvg = React.memo(function SwarmSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#ffafc4';
+  const b2 = burning ? '#2e8c50' : '#a04060';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${id}b`} cx="0.4" cy="0.35" r="0.65">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="92" rx="32" ry="3.5" fill="#000" opacity="0.4" />
+      {/* 6 legs */}
+      <Path d="M 22 52 Q 8 38 6 30" stroke={b2} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <Path d="M 20 62 Q 4 60 2 64" stroke={b2} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <Path d="M 24 72 Q 10 82 8 90" stroke={b2} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <Path d="M 78 52 Q 92 38 94 30" stroke={b2} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <Path d="M 80 62 Q 96 60 98 64" stroke={b2} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      <Path d="M 76 72 Q 90 82 92 90" stroke={b2} strokeWidth="3.2" fill="none" strokeLinecap="round" />
+      {/* body */}
+      <Ellipse cx="50" cy="55" rx="32" ry="28" fill={`url(#${id}b)`} stroke="#5a1830" strokeWidth="2" />
+      {/* segments */}
+      <Path d="M 22 55 Q 50 62 78 55" stroke="#5a1830" strokeWidth="1.2" fill="none" opacity="0.6" />
+      <Path d="M 24 65 Q 50 72 76 65" stroke="#5a1830" strokeWidth="1.2" fill="none" opacity="0.5" />
+      {/* highlight */}
+      <Ellipse cx="40" cy="40" rx="14" ry="9" fill="#fff" opacity="0.35" />
+      {/* mandibles */}
+      <Path d="M 38 76 Q 36 88 42 82" stroke="#5a1830" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <Path d="M 62 76 Q 64 88 58 82" stroke="#5a1830" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      {/* big eye */}
+      <Circle cx="50" cy="52" r="14" fill="#fff" stroke="#5a1830" strokeWidth="1.5" />
+      <Circle cx="50" cy="52" r="11" fill="#0b1020" />
+      <Circle cx="50" cy="52" r="6" fill="#ff4d6d" />
+      <Circle cx="47" cy="50" r="2.5" fill="#fff" />
+    </Svg>
+  );
+});
+
+const FlyerSvg = React.memo(function FlyerSvg({ size, burning, flap }) {
+  const id = useRef(nextGid()).current;
+  const c1 = burning ? '#a8f8c8' : '#a8f0a8';
+  const c2 = burning ? '#2e8c50' : '#406040';
+  // wing angle from -8 to +8 degrees
+  const wing = (flap || 0) * 12;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c1} />
+          <Stop offset="1" stopColor={c2} />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="92" rx="20" ry="3" fill="#000" opacity="0.3" />
+      {/* wings - left */}
+      <G rotation={-wing} originX="35" originY="40">
+        <Path d="M 35 40 Q 5 30 0 55 Q 18 50 35 55 Z" fill={c2} stroke="#1a2a1a" strokeWidth="1.5" />
+        <Path d="M 12 42 L 22 50" stroke="#1a2a1a" strokeWidth="1" />
+        <Path d="M 6 50 L 20 55" stroke="#1a2a1a" strokeWidth="1" />
+      </G>
+      {/* wings - right */}
+      <G rotation={wing} originX="65" originY="40">
+        <Path d="M 65 40 Q 95 30 100 55 Q 82 50 65 55 Z" fill={c2} stroke="#1a2a1a" strokeWidth="1.5" />
+        <Path d="M 88 42 L 78 50" stroke="#1a2a1a" strokeWidth="1" />
+        <Path d="M 94 50 L 80 55" stroke="#1a2a1a" strokeWidth="1" />
+      </G>
+      {/* body */}
+      <Ellipse cx="50" cy="52" rx="22" ry="26" fill={`url(#${id}b)`} stroke="#1a2a1a" strokeWidth="2" />
+      {/* pointed ears */}
+      <Polygon points="38,30 32,16 44,28" fill={c2} stroke="#1a2a1a" strokeWidth="1" />
+      <Polygon points="62,30 68,16 56,28" fill={c2} stroke="#1a2a1a" strokeWidth="1" />
+      {/* eyes */}
+      <Circle cx="42" cy="48" r="4.5" fill="#ffd166" />
+      <Circle cx="58" cy="48" r="4.5" fill="#ffd166" />
+      <Circle cx="42" cy="49" r="2" fill="#000" />
+      <Circle cx="58" cy="49" r="2" fill="#000" />
+      {/* fanged mouth */}
+      <Path d="M 42 62 Q 50 70 58 62 Q 54 65 50 65 Q 46 65 42 62 Z" fill="#0a0510" />
+      <Polygon points="46,62 47,68 48,62" fill="#fff" />
+      <Polygon points="52,62 53,68 54,62" fill="#fff" />
+    </Svg>
+  );
+});
+
+const BossSvg = React.memo(function BossSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#ff8095';
+  const b2 = burning ? '#2e8c50' : '#7a1d2e';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}e`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.3" stopColor="#ffd166" />
+          <Stop offset="0.8" stopColor="#ff4500" />
+          <Stop offset="1" stopColor="#a00000" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="95" rx="42" ry="4.5" fill="#000" opacity="0.6" />
+      {/* cape behind */}
+      <Path d="M 18 60 L 6 96 L 30 92 L 32 64 Z" fill="#3a0a18" stroke="#1a0510" strokeWidth="1.5" />
+      <Path d="M 82 60 L 94 96 L 70 92 L 68 64 Z" fill="#3a0a18" stroke="#1a0510" strokeWidth="1.5" />
+      {/* horn crown — 5 spikes plus 2 outer curves */}
+      <Path d="M 12 38 Q 4 12 22 30 Z" fill="#0a0510" />
+      <Polygon points="24,25 18,2 32,22" fill="#0a0510" />
+      <Polygon points="38,18 32,0 44,16" fill="#0a0510" />
+      <Polygon points="50,14 46,-4 54,-4 50,14" fill="#0a0510" />
+      <Polygon points="62,18 56,16 68,0" fill="#0a0510" />
+      <Polygon points="76,25 68,22 82,2" fill="#0a0510" />
+      <Path d="M 88 38 Q 96 12 78 30 Z" fill="#0a0510" />
+      {/* body */}
+      <Circle cx="50" cy="55" r="38" fill={`url(#${id}b)`} stroke="#1a0510" strokeWidth="3" />
+      <Ellipse cx="50" cy="72" rx="24" ry="11" fill="#fff" opacity="0.13" />
+      {/* gold crown band */}
+      <Path d="M 16 30 Q 50 24 84 30 L 84 36 Q 50 30 16 36 Z" fill="#ffd166" stroke="#7a5a0a" strokeWidth="1.5" />
+      <Circle cx="50" cy="32" r="3" fill="#ff4d6d" stroke="#7a5a0a" strokeWidth="1" />
+      <Circle cx="32" cy="33" r="2" fill="#4cc9ff" stroke="#7a5a0a" strokeWidth="0.8" />
+      <Circle cx="68" cy="33" r="2" fill="#5cf28a" stroke="#7a5a0a" strokeWidth="0.8" />
+      {/* eye sockets */}
+      <Ellipse cx="36" cy="52" rx="11" ry="8" fill="#0a0510" />
+      <Ellipse cx="64" cy="52" rx="11" ry="8" fill="#0a0510" />
+      {/* glowing eyes */}
+      <Circle cx="36" cy="51" r="7" fill={`url(#${id}e)`} />
+      <Circle cx="64" cy="51" r="7" fill={`url(#${id}e)`} />
+      <Ellipse cx="36" cy="51" rx="2" ry="4" fill="#000" />
+      <Ellipse cx="64" cy="51" rx="2" ry="4" fill="#000" />
+      {/* scowl brows */}
+      <Path d="M 24 40 L 44 46" stroke="#1a0510" strokeWidth="3.5" strokeLinecap="round" />
+      <Path d="M 76 40 L 56 46" stroke="#1a0510" strokeWidth="3.5" strokeLinecap="round" />
+      {/* fanged mouth */}
+      <Path d="M 28 68 Q 50 86 72 68 Q 64 76 50 76 Q 36 76 28 68 Z" fill="#0a0510" />
+      <Polygon points="36,69 39,82 42,69" fill="#fff" />
+      <Polygon points="44,70 47,84 50,70" fill="#fff" />
+      <Polygon points="50,70 53,84 56,70" fill="#fff" />
+      <Polygon points="58,69 61,82 64,69" fill="#fff" />
+      {/* scar across cheek */}
+      <Path d="M 70 56 L 76 64" stroke="#1a0510" strokeWidth="1.8" />
+      <Path d="M 72 54 L 78 62" stroke="#fff" strokeWidth="0.8" opacity="0.5" />
+    </Svg>
+  );
+});
+
+const MegaSvg = React.memo(function MegaSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const r1 = burning ? '#a8f8c8' : '#3a0a18';
+  const r2 = burning ? '#2e8c50' : '#0a0510';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}r`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={r1} />
+          <Stop offset="1" stopColor={r2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}eye`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#ff4d6d" />
+          <Stop offset="1" stopColor="#5a0010" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="96" rx="46" ry="4" fill="#000" opacity="0.7" />
+      {/* tattered cloak */}
+      <Path
+        d="M 50 4 L 88 28 L 96 80 L 84 96 L 70 88 L 60 96 L 50 88 L 40 96 L 30 88 L 16 96 L 4 80 L 12 28 Z"
+        fill={`url(#${id}r)`}
+        stroke="#0a0000"
+        strokeWidth="2.5"
+      />
+      {/* cloak inner lining */}
+      <Path
+        d="M 50 12 L 80 32 L 80 70 L 20 70 L 20 32 Z"
+        fill="#0a0000"
+      />
+      {/* skull face */}
+      <Ellipse cx="50" cy="48" rx="22" ry="24" fill="#e8e0c8" stroke="#0a0000" strokeWidth="2" />
+      {/* skull cracks */}
+      <Path d="M 38 30 L 42 42 L 38 50" stroke="#0a0000" strokeWidth="1" fill="none" />
+      <Path d="M 60 28 L 62 38" stroke="#0a0000" strokeWidth="1" fill="none" />
+      {/* eye sockets — deep black with red glow */}
+      <Ellipse cx="40" cy="46" rx="6.5" ry="7" fill="#0a0000" />
+      <Ellipse cx="60" cy="46" rx="6.5" ry="7" fill="#0a0000" />
+      <Circle cx="40" cy="46" r="4" fill={`url(#${id}eye)`} />
+      <Circle cx="60" cy="46" r="4" fill={`url(#${id}eye)`} />
+      <Circle cx="40" cy="46" r="1.5" fill="#fff" />
+      <Circle cx="60" cy="46" r="1.5" fill="#fff" />
+      {/* nose hole */}
+      <Polygon points="50,54 47,60 53,60" fill="#0a0000" />
+      {/* teeth grin */}
+      <Rect x="38" y="62" width="24" height="6" fill="#e8e0c8" stroke="#0a0000" strokeWidth="1" />
+      <Line x1="42" y1="62" x2="42" y2="68" stroke="#0a0000" strokeWidth="0.8" />
+      <Line x1="46" y1="62" x2="46" y2="68" stroke="#0a0000" strokeWidth="0.8" />
+      <Line x1="50" y1="62" x2="50" y2="68" stroke="#0a0000" strokeWidth="0.8" />
+      <Line x1="54" y1="62" x2="54" y2="68" stroke="#0a0000" strokeWidth="0.8" />
+      <Line x1="58" y1="62" x2="58" y2="68" stroke="#0a0000" strokeWidth="0.8" />
+      {/* hood horns */}
+      <Polygon points="20,28 8,2 30,22" fill="#0a0000" />
+      <Polygon points="80,28 92,2 70,22" fill="#0a0000" />
+      {/* shoulder spikes */}
+      <Polygon points="14,44 4,52 16,54" fill="#0a0000" />
+      <Polygon points="86,44 96,52 84,54" fill="#0a0000" />
+    </Svg>
+  );
+});
+
 
 function ProjectileView({ p }) {
   const len = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
