@@ -1030,12 +1030,15 @@ function Game({ onEnd }) {
     const totalEnemies = queue.length;
     const isBossWave = s.wave % 10 === 0;
     const bossNames = { 10: 'DEMON LORD', 20: 'VOID KING', 30: 'BLOOD TYRANT', 40: 'DESTROYER', 50: 'WORLD ENDER' };
+    const champion = s.wave >= 21 && !isBossWave;
+    const elite = s.wave >= 11 && s.wave <= 20 && !isBossWave;
     s.waveBanner = {
       wave: s.wave,
       total: totalEnemies,
       boss: isBossWave,
       bossName: bossNames[s.wave] || null,
-      elite: s.wave >= 11 && !isBossWave,
+      elite,
+      champion,
       start: s.time,
       until: s.time + 2.4,
     };
@@ -1787,7 +1790,7 @@ function EnemyView({ e, time }) {
           size={size}
           burning={burning}
           flap={flap}
-          elite={e.elite}
+          tier={e.tier || 0}
           bossVariant={e.bossVariant}
         />
       </View>
@@ -1812,22 +1815,39 @@ function EnemyView({ e, time }) {
   );
 }
 
-function CreatureSvg({ type, size, burning, flap, elite, bossVariant }) {
-  if (type === 'grunt')  return elite ? <EliteGruntSvg size={size} burning={burning} />
-                                      : <GruntSvg size={size} burning={burning} />;
-  if (type === 'runner') return elite ? <EliteRunnerSvg size={size} burning={burning} />
-                                      : <RunnerSvg size={size} burning={burning} />;
-  if (type === 'tank')   return elite ? <EliteTankSvg size={size} burning={burning} />
-                                      : <TankSvg size={size} burning={burning} />;
-  if (type === 'swarm')  return elite ? <EliteSwarmSvg size={size} burning={burning} />
-                                      : <SwarmSvg size={size} burning={burning} />;
-  if (type === 'flyer')  return elite ? <EliteFlyerSvg size={size} burning={burning} flap={flap} />
-                                      : <FlyerSvg size={size} burning={burning} flap={flap} />;
+function CreatureSvg({ type, size, burning, flap, tier, bossVariant }) {
+  const t = tier || 0;
+  if (type === 'grunt') {
+    if (t === 2) return <ChampionGruntSvg size={size} burning={burning} />;
+    if (t === 1) return <EliteGruntSvg size={size} burning={burning} />;
+    return <GruntSvg size={size} burning={burning} />;
+  }
+  if (type === 'runner') {
+    if (t === 2) return <ChampionRunnerSvg size={size} burning={burning} />;
+    if (t === 1) return <EliteRunnerSvg size={size} burning={burning} />;
+    return <RunnerSvg size={size} burning={burning} />;
+  }
+  if (type === 'tank') {
+    if (t === 2) return <ChampionTankSvg size={size} burning={burning} />;
+    if (t === 1) return <EliteTankSvg size={size} burning={burning} />;
+    return <TankSvg size={size} burning={burning} />;
+  }
+  if (type === 'swarm') {
+    if (t === 2) return <ChampionSwarmSvg size={size} burning={burning} />;
+    if (t === 1) return <EliteSwarmSvg size={size} burning={burning} />;
+    return <SwarmSvg size={size} burning={burning} />;
+  }
+  if (type === 'flyer') {
+    // Champion flyer is just the elite flyer for now.
+    if (t >= 1) return <EliteFlyerSvg size={size} burning={burning} flap={flap} />;
+    return <FlyerSvg size={size} burning={burning} flap={flap} />;
+  }
   if (type === 'boss') {
+    if (bossVariant === 'blood') return <BloodBossSvg size={size} burning={burning} />;
     if (bossVariant === 'void') return <VoidBossSvg size={size} burning={burning} />;
     return <BossSvg size={size} burning={burning} />;
   }
-  if (type === 'mega')   return <MegaSvg size={size} burning={burning} />;
+  if (type === 'mega') return <MegaSvg size={size} burning={burning} />;
   return null;
 }
 
@@ -2545,6 +2565,417 @@ const VoidBossSvg = React.memo(function VoidBossSvg({ size, burning }) {
   );
 });
 
+// ───── Champion variants (waves 21+) — blood-cursed by the coming tyrant ────
+
+// Champion Grunt — Bloodfang Berserker. Skull half-mask, axe glimpse, blood drip.
+const ChampionGruntSvg = React.memo(function ChampionGruntSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const body1 = burning ? '#a8f8c8' : '#603048';
+  const body2 = burning ? '#2e8c50' : '#1a0a14';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={body1} />
+          <Stop offset="1" stopColor={body2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}e`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.4" stopColor="#ff4d6d" />
+          <Stop offset="1" stopColor="#5a0010" />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="93" rx="32" ry="4" fill="#000" opacity="0.65" />
+      {/* axe blade visible behind shoulder */}
+      <Path d="M 78 40 L 96 30 L 96 50 L 82 56 Z" fill="#8a98b8" stroke="#000" strokeWidth="1.5" />
+      <Path d="M 84 42 L 90 38" stroke="#fff" strokeWidth="0.8" opacity="0.6" />
+      <Rect x="76" y="38" width="3" height="42" fill="#3a2806" stroke="#000" strokeWidth="0.8" />
+      {/* twin horns + 2 smaller side spikes */}
+      <Polygon points="22,30 28,2 36,32" fill="#0a0510" />
+      <Polygon points="78,30 72,2 64,32" fill="#0a0510" />
+      <Polygon points="18,42 12,28 22,40" fill="#0a0510" />
+      <Polygon points="82,42 88,28 78,40" fill="#0a0510" />
+      {/* ears with multiple piercings */}
+      <Polygon points="14,55 4,48 16,68" fill={body2} stroke="#0a0510" strokeWidth="1.5" />
+      <Polygon points="86,55 96,48 84,68" fill={body2} stroke="#0a0510" strokeWidth="1.5" />
+      <Circle cx="10" cy="56" r="1.5" fill="#ffd166" />
+      <Circle cx="10" cy="62" r="1.5" fill="#ffd166" />
+      <Circle cx="90" cy="56" r="1.5" fill="#ffd166" />
+      <Circle cx="90" cy="62" r="1.5" fill="#ffd166" />
+      {/* body */}
+      <Circle cx="50" cy="55" r="34" fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="3.2" />
+      <Ellipse cx="50" cy="72" rx="22" ry="11" fill="#fff" opacity="0.08" />
+      {/* skull half-mask covering upper face */}
+      <Path d="M 18 36 Q 50 28 82 36 L 78 60 Q 50 64 22 60 Z"
+            fill="#e8e0c8" stroke="#0a0510" strokeWidth="1.8" />
+      <Path d="M 18 36 Q 50 28 82 36 L 78 60 Q 50 64 22 60 Z"
+            fill="#7a1d2e" opacity="0.25" />
+      {/* skull crack lines */}
+      <Path d="M 32 42 L 28 50 L 32 54" stroke="#0a0510" strokeWidth="0.8" fill="none" />
+      <Path d="M 68 42 L 72 50" stroke="#0a0510" strokeWidth="0.8" fill="none" />
+      <Path d="M 50 28 L 50 36" stroke="#0a0510" strokeWidth="1" fill="none" />
+      {/* eye holes in mask with red glow */}
+      <Ellipse cx="38" cy="48" rx="8" ry="7" fill="#0a0000" />
+      <Ellipse cx="62" cy="48" rx="8" ry="7" fill="#0a0000" />
+      <Circle cx="38" cy="47" r="5.5" fill={`url(#${id}e)`} />
+      <Circle cx="62" cy="47" r="5.5" fill={`url(#${id}e)`} />
+      <Ellipse cx="38" cy="48" rx="1.5" ry="3.5" fill="#000" />
+      <Ellipse cx="62" cy="48" rx="1.5" ry="3.5" fill="#000" />
+      {/* nose hole in mask */}
+      <Polygon points="50,52 47,58 53,58" fill="#0a0000" />
+      {/* blood drip from mask */}
+      <Path d="M 32 58 Q 30 70 32 78" stroke="#7a1d2e" strokeWidth="1.5" fill="none" />
+      <Circle cx="32" cy="80" r="1.5" fill="#7a1d2e" />
+      <Path d="M 68 58 Q 70 68 69 76" stroke="#7a1d2e" strokeWidth="1.5" fill="none" />
+      <Circle cx="69" cy="78" r="1.2" fill="#7a1d2e" />
+      {/* mouth below mask — snarling */}
+      <Path d="M 32 70 Q 50 82 68 70 Q 60 76 50 76 Q 40 76 32 70 Z" fill="#0a0000" />
+      <Polygon points="36,70 39,80 42,70" fill="#fff" />
+      <Polygon points="48,70 50,82 52,70" fill="#fff" />
+      <Polygon points="58,70 61,80 64,70" fill="#fff" />
+      {/* shoulder bone spikes */}
+      <Polygon points="14,65 6,72 18,70" fill="#e8e0c8" stroke="#0a0510" strokeWidth="0.8" />
+      <Polygon points="86,65 94,72 82,70" fill="#e8e0c8" stroke="#0a0510" strokeWidth="0.8" />
+    </Svg>
+  );
+});
+
+// Champion Runner — Phantom Strider. Tattered cloak, red runes, 4 daggers.
+const ChampionRunnerSvg = React.memo(function ChampionRunnerSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const c1 = burning ? '#a8f8c8' : '#1a0a14';
+  const c2 = burning ? '#2e8c50' : '#000';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}c`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={c1} />
+          <Stop offset="1" stopColor={c2} />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="93" rx="25" ry="3.4" fill="#000" opacity="0.55" />
+      {/* phantom mist behind */}
+      <Ellipse cx="50" cy="60" rx="40" ry="8" fill="#7a1d2e" opacity="0.25" />
+      <Ellipse cx="30" cy="78" rx="20" ry="4" fill="#7a1d2e" opacity="0.2" />
+      <Ellipse cx="70" cy="78" rx="20" ry="4" fill="#7a1d2e" opacity="0.2" />
+      {/* tattered cloak silhouette */}
+      <Path
+        d="M 50 4
+           C 60 8 66 18 70 30
+           L 82 60
+           L 86 82
+           L 78 78 L 76 88 L 70 84 L 64 92 L 56 86 L 50 90 L 44 86 L 36 92 L 30 84 L 24 88 L 22 78 L 14 82
+           L 18 60
+           L 30 30
+           C 34 18 40 8 50 4 Z"
+        fill={`url(#${id}c)`}
+        stroke="#000"
+        strokeWidth="2.2"
+      />
+      {/* blood-red runes on cloak */}
+      <Path d="M 38 50 L 42 46 L 42 56 L 38 60 Z" fill="#7a1d2e" />
+      <Path d="M 62 50 L 58 46 L 58 56 L 62 60 Z" fill="#7a1d2e" />
+      <Path d="M 50 64 L 46 68 L 54 68 Z" fill="#7a1d2e" />
+      <Path d="M 28 70 L 32 74 L 28 78" stroke="#7a1d2e" strokeWidth="1.5" fill="none" />
+      <Path d="M 72 70 L 68 74 L 72 78" stroke="#7a1d2e" strokeWidth="1.5" fill="none" />
+      {/* iron hood trim */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30" stroke="#a8b4d0" strokeWidth="2.4" fill="none" />
+      {/* spikes on hood trim */}
+      <Polygon points="34,28 32,22 38,28" fill="#a8b4d0" />
+      <Polygon points="50,20 47,12 53,12" fill="#a8b4d0" />
+      <Polygon points="66,28 68,22 62,28" fill="#a8b4d0" />
+      {/* abyssal hood shadow */}
+      <Path d="M 32 30 C 38 22 44 18 50 18 C 56 18 62 22 68 30 L 64 54 L 36 54 Z" fill="#000" />
+      {/* burning red eye slits */}
+      <Path d="M 36 40 L 46 36 L 46 42 L 36 44 Z" fill="#ff4d6d" />
+      <Path d="M 64 40 L 54 36 L 54 42 L 64 44 Z" fill="#ff4d6d" />
+      <Circle cx="42" cy="40" r="1.5" fill="#fff" />
+      <Circle cx="58" cy="40" r="1.5" fill="#fff" />
+      {/* tear-streaks of blood from eyes */}
+      <Path d="M 42 44 L 40 52" stroke="#7a1d2e" strokeWidth="1.2" />
+      <Path d="M 58 44 L 60 52" stroke="#7a1d2e" strokeWidth="1.2" />
+      {/* belt with skull */}
+      <Rect x="22" y="60" width="56" height="6" fill="#000" />
+      <Circle cx="50" cy="63" r="4" fill="#e8e0c8" stroke="#000" strokeWidth="0.8" />
+      <Circle cx="48.5" cy="62.5" r="0.8" fill="#7a1d2e" />
+      <Circle cx="51.5" cy="62.5" r="0.8" fill="#7a1d2e" />
+      {/* 4 dagger hilts — two each side */}
+      <Rect x="16" y="62" width="3" height="14" fill="#000" />
+      <Rect x="13" y="60" width="9" height="3" fill="#a8b4d0" />
+      <Rect x="22" y="68" width="3" height="14" fill="#000" />
+      <Rect x="19" y="66" width="9" height="3" fill="#7a1d2e" />
+      <Rect x="81" y="62" width="3" height="14" fill="#000" />
+      <Rect x="78" y="60" width="9" height="3" fill="#a8b4d0" />
+      <Rect x="75" y="68" width="3" height="14" fill="#000" />
+      <Rect x="72" y="66" width="9" height="3" fill="#7a1d2e" />
+    </Svg>
+  );
+});
+
+// Champion Tank — Hellforged Juggernaut. Crowned helm, brutal armor, war hammer.
+const ChampionTankSvg = React.memo(function ChampionTankSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const a1 = burning ? '#a8f8c8' : '#404a60';
+  const a2 = burning ? '#2e8c50' : '#0a0e1c';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}a`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={a1} />
+          <Stop offset="1" stopColor={a2} />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx="50" cy="95" rx="42" ry="5" fill="#000" opacity="0.75" />
+      {/* war hammer behind right shoulder */}
+      <Rect x="78" y="32" width="3" height="62" fill="#3a2806" stroke="#000" strokeWidth="0.5" />
+      <Rect x="72" y="22" width="14" height="14" fill={a1} stroke="#000" strokeWidth="1.5" />
+      <Polygon points="72,22 68,29 72,36" fill={a1} stroke="#000" strokeWidth="1.5" />
+      <Polygon points="86,22 90,29 86,36" fill={a1} stroke="#000" strokeWidth="1.5" />
+      <Circle cx="79" cy="29" r="2" fill="#7a1d2e" />
+      {/* pauldrons with multiple long spikes */}
+      <Path d="M 2 50 Q 0 28 22 24 L 36 50 L 30 72 L 4 68 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="2.5" />
+      <Path d="M 98 50 Q 100 28 78 24 L 64 50 L 70 72 L 96 68 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="2.5" />
+      <Polygon points="8,36 12,12 16,38" fill="#000" />
+      <Polygon points="16,28 20,4 22,30" fill="#000" />
+      <Polygon points="24,22 26,-4 30,24" fill="#000" />
+      <Polygon points="92,36 88,12 84,38" fill="#000" />
+      <Polygon points="84,28 80,4 78,30" fill="#000" />
+      <Polygon points="76,22 74,-4 70,24" fill="#000" />
+      {/* torso wider, more menacing */}
+      <Path d="M 22 36 L 78 36 L 84 86 L 74 96 L 26 96 L 16 86 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="3" />
+      {/* horned chest plate with demon skull */}
+      <Path d="M 34 44 L 66 44 L 64 82 L 36 82 Z" fill="#1a2034" stroke="#000" strokeWidth="1.8" />
+      <Polygon points="34,44 30,38 38,42" fill="#000" />
+      <Polygon points="66,44 70,38 62,42" fill="#000" />
+      {/* demon skull on chest */}
+      <Ellipse cx="50" cy="58" rx="11" ry="9" fill="#e8e0c8" stroke="#000" strokeWidth="1.2" />
+      <Polygon points="42,52 38,42 46,50" fill="#e8e0c8" stroke="#000" strokeWidth="1" />
+      <Polygon points="58,52 62,42 54,50" fill="#e8e0c8" stroke="#000" strokeWidth="1" />
+      <Ellipse cx="46" cy="58" rx="2.5" ry="3" fill="#ff4d6d" />
+      <Ellipse cx="54" cy="58" rx="2.5" ry="3" fill="#ff4d6d" />
+      <Polygon points="50,62 47,67 53,67" fill="#0a0510" />
+      <Rect x="45" y="68" width="10" height="2" fill="#0a0510" />
+      <Line x1="46" y1="68" x2="46" y2="74" stroke="#0a0510" strokeWidth="0.6" />
+      <Line x1="50" y1="68" x2="50" y2="74" stroke="#0a0510" strokeWidth="0.6" />
+      <Line x1="54" y1="68" x2="54" y2="74" stroke="#0a0510" strokeWidth="0.6" />
+      {/* helmet — crowned with massive central horn */}
+      <Path d="M 22 38 L 28 10 L 72 10 L 78 38 Z" fill={`url(#${id}a)`} stroke="#000" strokeWidth="3" />
+      <Polygon points="50,10 45,-10 55,-10" fill="#000" />
+      <Polygon points="38,10 35,-2 41,8" fill="#000" />
+      <Polygon points="62,10 65,-2 59,8" fill="#000" />
+      <Polygon points="28,10 24,2 32,8" fill="#000" />
+      <Polygon points="72,10 76,2 68,8" fill="#000" />
+      {/* visor — deep red glow */}
+      <Rect x="24" y="22" width="52" height="10" fill="#0a0000" />
+      <Rect x="28" y="24" width="44" height="3" fill="#ff4d6d" />
+      <Circle cx="36" cy="25.5" r="1.8" fill="#fff" />
+      <Circle cx="64" cy="25.5" r="1.8" fill="#fff" />
+      <Rect x="34" y="28" width="32" height="2" fill="#7a1d2e" />
+      {/* gold trim band on helmet */}
+      <Path d="M 25 35 Q 50 33 75 35 L 75 38 Q 50 36 25 38 Z" fill="#ffd166" stroke="#000" strokeWidth="0.8" />
+      {/* battle damage and rivets */}
+      <Path d="M 36 78 L 32 86 L 38 92" stroke="#000" strokeWidth="1.2" fill="none" />
+      <Circle cx="28" cy="48" r="2.2" fill="#000" />
+      <Circle cx="72" cy="48" r="2.2" fill="#000" />
+      <Circle cx="32" cy="88" r="2.2" fill="#000" />
+      <Circle cx="68" cy="88" r="2.2" fill="#000" />
+    </Svg>
+  );
+});
+
+// Champion Swarm — Hivemother. Huge glowing veins, multiple stingers, brood egg.
+const ChampionSwarmSvg = React.memo(function ChampionSwarmSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#7a1d2e';
+  const b2 = burning ? '#2e8c50' : '#1a0008';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <RadialGradient id={`${id}b`} cx="0.4" cy="0.35" r="0.65">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx="50" cy="92" rx="36" ry="4" fill="#000" opacity="0.6" />
+      {/* 8 legs — six standard plus two big claws on front */}
+      <Path d="M 22 52 Q 4 32 0 22" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 20 62 Q 0 58 -2 62" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 24 72 Q 6 82 4 96" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 78 52 Q 96 32 100 22" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 80 62 Q 100 58 102 62" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <Path d="M 76 72 Q 94 82 96 96" stroke={b2} strokeWidth="4" fill="none" strokeLinecap="round" />
+      {/* front claws */}
+      <Path d="M 28 46 Q 12 30 16 14" stroke={b2} strokeWidth="5" fill="none" strokeLinecap="round" />
+      <Path d="M 72 46 Q 88 30 84 14" stroke={b2} strokeWidth="5" fill="none" strokeLinecap="round" />
+      <Polygon points="12,14 18,8 18,18" fill={b2} stroke="#000" strokeWidth="0.8" />
+      <Polygon points="88,14 82,8 82,18" fill={b2} stroke="#000" strokeWidth="0.8" />
+      {/* leg joint spikes */}
+      <Polygon points="2,22 4,16 8,24" fill="#0a0008" />
+      <Polygon points="98,22 96,16 92,24" fill="#0a0008" />
+      {/* three stingers (rear) */}
+      <Path d="M 40 84 Q 36 96 42 100" stroke={b2} strokeWidth="3" fill="none" />
+      <Polygon points="40,98 44,104 38,96" fill={b2} stroke="#000" strokeWidth="0.6" />
+      <Path d="M 50 84 Q 50 98 52 102" stroke={b2} strokeWidth="3" fill="none" />
+      <Polygon points="50,100 54,106 48,98" fill={b2} stroke="#000" strokeWidth="0.6" />
+      <Path d="M 60 84 Q 64 96 58 100" stroke={b2} strokeWidth="3" fill="none" />
+      <Polygon points="60,98 56,104 62,96" fill={b2} stroke="#000" strokeWidth="0.6" />
+      {/* body — fatter than elite */}
+      <Ellipse cx="50" cy="55" rx="34" ry="30" fill={`url(#${id}b)`} stroke="#000" strokeWidth="3" />
+      {/* glowing veins through body */}
+      <Path d="M 24 50 Q 36 56 28 70" stroke="#ff4d6d" strokeWidth="1.5" fill="none" opacity="0.85" />
+      <Path d="M 76 50 Q 64 56 72 70" stroke="#ff4d6d" strokeWidth="1.5" fill="none" opacity="0.85" />
+      <Path d="M 50 30 L 50 76" stroke="#ff4d6d" strokeWidth="1" fill="none" opacity="0.7" />
+      <Path d="M 30 38 Q 40 50 30 62" stroke="#ff4d6d" strokeWidth="0.8" fill="none" opacity="0.6" />
+      <Path d="M 70 38 Q 60 50 70 62" stroke="#ff4d6d" strokeWidth="0.8" fill="none" opacity="0.6" />
+      {/* carapace plates */}
+      <Path d="M 22 52 Q 50 60 78 52" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.8" />
+      <Path d="M 24 64 Q 50 72 76 64" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.7" />
+      <Path d="M 26 74 Q 50 80 74 74" stroke="#000" strokeWidth="1.5" fill="none" opacity="0.6" />
+      {/* back spikes — bigger */}
+      <Polygon points="34,30 36,16 40,32" fill="#0a0008" />
+      <Polygon points="46,26 50,12 54,26" fill="#0a0008" />
+      <Polygon points="60,30 62,16 66,32" fill="#0a0008" />
+      {/* highlight */}
+      <Ellipse cx="40" cy="40" rx="10" ry="6" fill="#fff" opacity="0.2" />
+      {/* brood egg visible on belly */}
+      <Ellipse cx="50" cy="72" rx="6" ry="9" fill="#e8e0c8" stroke="#000" strokeWidth="1" opacity="0.9" />
+      <Path d="M 47 68 L 52 76" stroke="#7a1d2e" strokeWidth="0.8" />
+      {/* mandibles */}
+      <Path d="M 34 76 Q 28 94 40 86" stroke="#0a0008" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+      <Path d="M 66 76 Q 72 94 60 86" stroke="#0a0008" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+      {/* venom drips */}
+      <Circle cx="36" cy="92" r="2" fill="#5cf28a" />
+      <Circle cx="64" cy="92" r="2" fill="#5cf28a" />
+      {/* compound eye cluster — one big eye plus 4 smaller around */}
+      <Circle cx="50" cy="52" r="16" fill="#fff" stroke="#000" strokeWidth="2.5" />
+      <Circle cx="50" cy="52" r="13" fill="#0b1020" />
+      <Circle cx="50" cy="52" r="9" fill="#ff4d6d" />
+      <Ellipse cx="50" cy="52" rx="2.5" ry="9" fill="#0a0510" />
+      <Circle cx="47" cy="48" r="2.2" fill="#fff" />
+      {/* small ocelli around */}
+      <Circle cx="34" cy="46" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.6" />
+      <Circle cx="66" cy="46" r="2.5" fill="#ff4d6d" stroke="#000" strokeWidth="0.6" />
+      <Circle cx="38" cy="38" r="2" fill="#ff4d6d" stroke="#000" strokeWidth="0.5" />
+      <Circle cx="62" cy="38" r="2" fill="#ff4d6d" stroke="#000" strokeWidth="0.5" />
+    </Svg>
+  );
+});
+
+// ───── Blood Tyrant (wave 30 boss) ─────────────────────────────────────────
+
+const BloodBossSvg = React.memo(function BloodBossSvg({ size, burning }) {
+  const id = useRef(nextGid()).current;
+  const b1 = burning ? '#a8f8c8' : '#a82038';
+  const b2 = burning ? '#2e8c50' : '#3a0010';
+  return (
+    <Svg width={size} height={size} viewBox="0 0 100 100">
+      <Defs>
+        <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor={b1} />
+          <Stop offset="1" stopColor={b2} />
+        </LinearGradient>
+        <RadialGradient id={`${id}e`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#fff" />
+          <Stop offset="0.3" stopColor="#ffd166" />
+          <Stop offset="0.7" stopColor="#ff4d6d" />
+          <Stop offset="1" stopColor="#3a0010" />
+        </RadialGradient>
+        <RadialGradient id={`${id}p`} cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#ff4d6d" opacity="0.5" />
+          <Stop offset="1" stopColor="#7a1d2e" opacity="0" />
+        </RadialGradient>
+      </Defs>
+      {/* blood pool aura */}
+      <Ellipse cx="50" cy="95" rx="50" ry="8" fill={`url(#${id}p)`} />
+      <Ellipse cx="50" cy="95" rx="44" ry="5" fill="#7a1d2e" opacity="0.7" />
+      <Ellipse cx="50" cy="96" rx="38" ry="3" fill="#3a0010" opacity="0.9" />
+      {/* dripping blood from base */}
+      <Path d="M 22 92 Q 20 100 24 104" stroke="#7a1d2e" strokeWidth="2" fill="none" />
+      <Circle cx="24" cy="106" r="1.5" fill="#7a1d2e" />
+      <Path d="M 78 92 Q 80 100 76 104" stroke="#7a1d2e" strokeWidth="2" fill="none" />
+      <Circle cx="76" cy="106" r="1.5" fill="#7a1d2e" />
+      {/* tattered black-red cape behind */}
+      <Path
+        d="M 10 56 L -2 96 L 14 92 L 8 80 L 20 88 L 22 60 Z"
+        fill="#3a0010" stroke="#0a0000" strokeWidth="1.5"
+      />
+      <Path
+        d="M 90 56 L 102 96 L 86 92 L 92 80 L 80 88 L 78 60 Z"
+        fill="#3a0010" stroke="#0a0000" strokeWidth="1.5"
+      />
+      {/* massive curved goat horns */}
+      <Path
+        d="M 18 30 Q 0 14 -2 34 Q 6 36 16 36 Z"
+        fill="#0a0000" stroke="#7a1d2e" strokeWidth="0.5"
+      />
+      <Path
+        d="M 82 30 Q 100 14 102 34 Q 94 36 84 36 Z"
+        fill="#0a0000" stroke="#7a1d2e" strokeWidth="0.5"
+      />
+      {/* central spike crown */}
+      <Polygon points="32,22 28,4 40,20" fill="#0a0000" />
+      <Polygon points="42,16 38,-2 48,16" fill="#0a0000" />
+      <Polygon points="50,12 45,-6 55,-6 50,12" fill="#0a0000" />
+      <Polygon points="58,16 52,16 62,-2" fill="#0a0000" />
+      <Polygon points="68,22 60,20 72,4" fill="#0a0000" />
+      {/* body — wider, more imposing */}
+      <Circle cx="50" cy="55" r="40" fill={`url(#${id}b)`} stroke="#0a0000" strokeWidth="3.5" />
+      <Ellipse cx="50" cy="74" rx="26" ry="12" fill="#fff" opacity="0.1" />
+      {/* bone armor plates on shoulders */}
+      <Path d="M 12 50 Q 8 38 18 36 L 26 48 L 22 60 Z" fill="#e8e0c8" stroke="#0a0000" strokeWidth="1.5" />
+      <Path d="M 88 50 Q 92 38 82 36 L 74 48 L 78 60 Z" fill="#e8e0c8" stroke="#0a0000" strokeWidth="1.5" />
+      <Polygon points="14,44 8,38 18,42" fill="#0a0000" />
+      <Polygon points="86,44 92,38 82,42" fill="#0a0000" />
+      {/* exposed ribcage on chest */}
+      <Path d="M 36 60 L 40 80 M 44 60 L 46 82 M 50 60 L 50 84 M 56 60 L 54 82 M 64 60 L 60 80"
+            stroke="#e8e0c8" strokeWidth="1.5" fill="none" />
+      <Path d="M 34 60 Q 50 64 66 60" stroke="#e8e0c8" strokeWidth="2" fill="none" />
+      {/* bone necklace of severed heads */}
+      <Path d="M 24 76 Q 50 88 76 76" stroke="#e8e0c8" strokeWidth="1.5" fill="none" />
+      <Circle cx="34" cy="82" r="3" fill="#e8e0c8" stroke="#0a0000" strokeWidth="0.6" />
+      <Circle cx="33" cy="81" r="0.5" fill="#7a1d2e" />
+      <Circle cx="35" cy="81" r="0.5" fill="#7a1d2e" />
+      <Circle cx="50" cy="86" r="3.5" fill="#e8e0c8" stroke="#0a0000" strokeWidth="0.6" />
+      <Circle cx="49" cy="85" r="0.6" fill="#7a1d2e" />
+      <Circle cx="51" cy="85" r="0.6" fill="#7a1d2e" />
+      <Circle cx="66" cy="82" r="3" fill="#e8e0c8" stroke="#0a0000" strokeWidth="0.6" />
+      <Circle cx="65" cy="81" r="0.5" fill="#7a1d2e" />
+      <Circle cx="67" cy="81" r="0.5" fill="#7a1d2e" />
+      {/* eye sockets */}
+      <Ellipse cx="36" cy="48" rx="12" ry="9" fill="#0a0000" />
+      <Ellipse cx="64" cy="48" rx="12" ry="9" fill="#0a0000" />
+      {/* glowing fiery eyes */}
+      <Circle cx="36" cy="48" r="7.5" fill={`url(#${id}e)`} />
+      <Circle cx="64" cy="48" r="7.5" fill={`url(#${id}e)`} />
+      <Ellipse cx="36" cy="48" rx="2.5" ry="6" fill="#000" />
+      <Ellipse cx="64" cy="48" rx="2.5" ry="6" fill="#000" />
+      {/* blood tears */}
+      <Path d="M 36 54 Q 34 64 38 70" stroke="#7a1d2e" strokeWidth="2.2" fill="none" />
+      <Circle cx="38" cy="72" r="1.5" fill="#7a1d2e" />
+      <Path d="M 64 54 Q 66 64 62 70" stroke="#7a1d2e" strokeWidth="2.2" fill="none" />
+      <Circle cx="62" cy="72" r="1.5" fill="#7a1d2e" />
+      {/* fierce brow ridges */}
+      <Path d="M 22 36 L 46 44" stroke="#0a0000" strokeWidth="4" strokeLinecap="round" />
+      <Path d="M 78 36 L 54 44" stroke="#0a0000" strokeWidth="4" strokeLinecap="round" />
+      {/* gaping fanged mouth */}
+      <Path d="M 26 64 Q 50 90 74 64 Q 64 76 50 76 Q 36 76 26 64 Z" fill="#0a0000" />
+      <Polygon points="32,64 36,82 40,64" fill="#fff" />
+      <Polygon points="42,65 45,84 48,65" fill="#fff" />
+      <Polygon points="50,65 52,86 56,65" fill="#fff" />
+      <Polygon points="58,64 62,84 65,64" fill="#fff" />
+      <Polygon points="68,64 72,82 76,64" fill="#fff" />
+      {/* blood drip from mouth */}
+      <Path d="M 50 80 Q 49 90 51 96" stroke="#7a1d2e" strokeWidth="2" fill="none" />
+      {/* tongue */}
+      <Path d="M 44 72 Q 50 80 56 72" fill="#7a1d2e" stroke="#0a0000" strokeWidth="0.8" />
+      {/* glowing battle scars */}
+      <Path d="M 76 58 L 88 70" stroke="#0a0000" strokeWidth="2.5" />
+      <Path d="M 76 58 L 88 70" stroke="#ff4d6d" strokeWidth="0.8" opacity="0.7" />
+      <Path d="M 80 50 L 90 56" stroke="#0a0000" strokeWidth="1.8" />
+    </Svg>
+  );
+});
+
 
 function ProjectileView({ p }) {
   const len = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
@@ -2655,16 +3086,25 @@ function WaveBanner({ banner, time }) {
       transform: [{ translateY: slide }],
     }}>
       <Text style={{
-        color: banner.boss ? '#ff4d6d' : banner.elite ? '#b08bff' : '#4cc9ff',
+        color: banner.boss ? '#ff4d6d'
+          : banner.champion ? '#ffd166'
+          : banner.elite ? '#b08bff'
+          : '#4cc9ff',
         fontSize: 14, fontWeight: '700',
         letterSpacing: 6,
       }}>
-        {banner.boss ? '⚠  BOSS WAVE  ⚠' : banner.elite ? 'ELITE WAVE' : 'INCOMING'}
+        {banner.boss ? '⚠  BOSS WAVE  ⚠'
+          : banner.champion ? '☠  CHAMPION WAVE  ☠'
+          : banner.elite ? 'ELITE WAVE'
+          : 'INCOMING'}
       </Text>
       <Text style={{
         color: '#fff', fontSize: 56, fontWeight: '900',
         letterSpacing: 4,
-        textShadowColor: banner.boss ? '#ff4d6d' : banner.elite ? '#b08bff' : '#4cc9ff',
+        textShadowColor: banner.boss ? '#ff4d6d'
+          : banner.champion ? '#ffd166'
+          : banner.elite ? '#b08bff'
+          : '#4cc9ff',
         textShadowOffset: { width: 0, height: 0 },
         textShadowRadius: 18,
       }}>
@@ -2827,8 +3267,13 @@ function step(dt, s, onEnd) {
     const subPath = def.flying
       ? [SPAWN, GOAL] // flyers go direct
       : bfsCheckpoints(s.grid, SPAWN) || [SPAWN, GOAL];
-    // Elite variant for normal enemies once we hit wave 11+.
-    const elite = s.wave >= 11 && sp.type !== 'boss' && sp.type !== 'mega';
+    // Tier 0 = base (W1-10), 1 = elite (W11-20), 2 = champion (W21+).
+    // Bosses/mega use their bossVariant slot for skin selection, not tier.
+    const tier = sp.type === 'boss' || sp.type === 'mega' ? 0
+      : s.wave >= 21 ? 2
+      : s.wave >= 11 ? 1
+      : 0;
+    const elite = tier >= 1;
     // Boss skins by milestone wave.
     let bossVariant = null;
     if (sp.type === 'boss') {
@@ -2846,6 +3291,7 @@ function step(dt, s, onEnd) {
       armor: def.armor,
       subPath, pathIdx: 0,
       effects: [],
+      tier,
       elite,
       bossVariant,
       spawnWave: s.wave,
