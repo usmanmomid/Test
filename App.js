@@ -517,11 +517,81 @@ export default function App() {
 }
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
+// Lobby background: drifting motes + slowly tumbling crystals.
+const LOBBY_DUST = (() => {
+  let seed = 12345;
+  const rand = () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return Array.from({ length: 24 }, (_, i) => ({
+    x0: rand(),
+    y0: rand(),
+    drift: 0.2 + rand() * 0.5,
+    phase: rand() * Math.PI * 2,
+    size: 1 + rand() * 2.5,
+    color: i % 3 === 0 ? '#fff7a8' : i % 3 === 1 ? '#a8d0ff' : '#ffb0e0',
+  }));
+})();
+
+function LobbyBackground({ width, height }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let raf;
+    const loop = () => { setTick((t) => (t + 1) % 1e9); raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const t = tick / 60;
+  return (
+    <View pointerEvents="none" style={{
+      position: 'absolute', left: 0, top: 0, width, height, overflow: 'hidden',
+    }}>
+      {/* large soft crystal silhouettes drifting behind everything */}
+      {[
+        { x: width * 0.15, y: height * 0.18, size: 90, color: '#4cc9ff', rate: 0.35 },
+        { x: width * 0.78, y: height * 0.42, size: 110, color: '#ff4d6d', rate: -0.25 },
+        { x: width * 0.5,  y: height * 0.8,  size: 130, color: '#5cf28a', rate: 0.18 },
+        { x: width * 0.85, y: height * 0.12, size: 60,  color: '#b08bff', rate: -0.5 },
+      ].map((c, i) => (
+        <View key={i} style={{
+          position: 'absolute',
+          left: c.x - c.size / 2,
+          top: c.y - c.size / 2 + Math.sin(t * 0.5 + i) * 8,
+          width: c.size, height: c.size, borderRadius: 8,
+          backgroundColor: c.color,
+          opacity: 0.07,
+          transform: [{ rotate: `${(t * c.rate * 20 + i * 30) % 360}deg` }, { scale: 0.95 + 0.05 * Math.sin(t + i) }],
+        }} />
+      ))}
+      {/* drifting motes */}
+      {LOBBY_DUST.map((d, i) => {
+        const y = ((d.y0 * height) - t * d.drift * 14) % height;
+        const adjY = y < 0 ? y + height : y;
+        const x = d.x0 * width + 12 * Math.sin(t * 0.6 + d.phase);
+        const opacity = 0.4 + 0.4 * Math.sin(t * 1.2 + d.phase);
+        return (
+          <View key={`ld${i}`} style={{
+            position: 'absolute',
+            left: x, top: adjY,
+            width: d.size, height: d.size, borderRadius: d.size,
+            backgroundColor: d.color,
+            opacity: opacity * 0.5,
+          }} />
+        );
+      })}
+    </View>
+  );
+}
+
 function LobbyScreen({ stats, onStartSolo }) {
   const [recipeBookOpen, setRecipeBookOpen] = useState(false);
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
+      <LobbyBackground width={VIEWPORT_W} height={VIEWPORT_H + 200} />
       <View style={styles.lobbyHeader}>
         <View style={styles.lobbyCrystalRow}>
           <Text style={[styles.lobbyCrystal, { color: '#ff4d6d' }]}>◆</Text>
@@ -698,6 +768,7 @@ function Game({ onEnd }) {
       candidates: [],              // 5 placements this round before Choose Action
       enemies: [],
       projectiles: [],
+      fx: [],
       path: bfsCheckpoints(emptyGrid(), SPAWN),
       wave: 0,
       playerLevel: 1,
@@ -708,6 +779,7 @@ function Game({ onEnd }) {
       nextEnemyId: 1,
       nextProjectileId: 1,
       nextTowerId: 1,
+      nextFxId: 1,
       gold: STARTING_GOLD,
       lives: STARTING_LIVES,
       score: 0,
@@ -950,6 +1022,16 @@ function Game({ onEnd }) {
     }
     s.spawnQueue = queue;
     s.inspect = null;
+    // Wave-start banner: stored separately from `flash` so it can render big.
+    const totalEnemies = queue.length;
+    const isBossWave = s.wave % 10 === 0;
+    s.waveBanner = {
+      wave: s.wave,
+      total: totalEnemies,
+      boss: isBossWave,
+      start: s.time,
+      until: s.time + 2.2,
+    };
     force();
   };
 
@@ -1053,6 +1135,9 @@ function Game({ onEnd }) {
           {/* projectiles */}
           {s.projectiles.map((p) => <ProjectileView key={`pr${p.id}`} p={p} />)}
 
+          {/* visual effects (muzzle, impact, death) */}
+          <FxLayer fx={s.fx} time={s.time} />
+
           {/* animated torches on top of everything (so they cast over walls) */}
           <TorchLayer time={s.time} />
         </View>
@@ -1065,6 +1150,8 @@ function Game({ onEnd }) {
             {s.tiltAngle === 0 ? '2D' : s.tiltAngle === 30 ? '2.5D' : '3D'}
           </Text>
         </TouchableOpacity>
+
+        <WaveBanner banner={s.waveBanner} time={s.time} />
 
         {flashing && (
           <View pointerEvents="none" style={styles.flashWrap}>
@@ -1663,18 +1750,14 @@ function EnemyView({ e }) {
   const size = TILE * def.size;
   const slowed = e.effects.some((ef) => ef.type === 'slow');
   const burning = e.effects.some((ef) => ef.type === 'poison');
+  const baseColor = burning ? '#5cf28a' : def.color;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
       left: e.c * TILE + (TILE - size) / 2, top: e.r * TILE + (TILE - size) / 2,
       width: size, height: size,
     }}>
-      <View style={{
-        width: size, height: size, borderRadius: size / 2,
-        backgroundColor: burning ? '#5cf28a' : def.color,
-        borderWidth: slowed ? 2 : 0, borderColor: '#4cc9ff',
-        opacity: def.flying ? 0.85 : 1,
-      }} />
+      <EnemyBody type={e.type} size={size} color={baseColor} slowed={slowed} flying={def.flying} />
       {def.flying && (
         <Text style={{ position: 'absolute', top: -2, left: size * 0.3, color: '#fff', fontSize: 10 }}>✈</Text>
       )}
@@ -1691,6 +1774,220 @@ function EnemyView({ e }) {
   );
 }
 
+// Distinct silhouettes per enemy type, all built from plain Views so we don't
+// need a vector library. Each body fills the bounding `size` square.
+function EnemyBody({ type, size, color, slowed, flying }) {
+  const slowRing = slowed ? {
+    position: 'absolute',
+    left: -2, top: -2, width: size + 4, height: size + 4,
+    borderRadius: size, borderWidth: 2, borderColor: '#4cc9ff',
+  } : null;
+  const opacity = flying ? 0.88 : 1;
+
+  if (type === 'grunt') {
+    // round purple blob with darker rim
+    return (
+      <>
+        <View style={{
+          width: size, height: size, borderRadius: size / 2,
+          backgroundColor: color, opacity,
+          borderWidth: 1.5, borderColor: '#0008',
+        }}>
+          <View style={{
+            position: 'absolute', left: size * 0.22, top: size * 0.2,
+            width: size * 0.25, height: size * 0.18, borderRadius: size,
+            backgroundColor: '#fff', opacity: 0.55,
+          }} />
+        </View>
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  if (type === 'runner') {
+    // forward-pointing arrow (rotated square + triangle approximation)
+    return (
+      <>
+        <View style={{
+          width: size, height: size, opacity,
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <View style={{
+            width: size * 0.75, height: size * 0.75, backgroundColor: color,
+            transform: [{ rotate: '45deg' }],
+            borderWidth: 1.5, borderColor: '#0008',
+          }} />
+          <View style={{
+            position: 'absolute', width: size * 0.3, height: size * 0.3,
+            backgroundColor: '#fff', opacity: 0.6,
+            transform: [{ rotate: '45deg' }, { translateX: -size * 0.12 }, { translateY: -size * 0.12 }],
+          }} />
+        </View>
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  if (type === 'tank') {
+    // squat armored hex — rounded rectangle with two side plates
+    return (
+      <>
+        <View style={{
+          width: size, height: size * 0.85, marginTop: size * 0.075,
+          backgroundColor: color, borderRadius: size * 0.18, opacity,
+          borderWidth: 2, borderColor: '#0009',
+        }}>
+          {/* rivets */}
+          <View style={{
+            position: 'absolute', left: size * 0.18, top: size * 0.15,
+            width: 3, height: 3, borderRadius: 3, backgroundColor: '#fff8',
+          }} />
+          <View style={{
+            position: 'absolute', right: size * 0.18, top: size * 0.15,
+            width: 3, height: 3, borderRadius: 3, backgroundColor: '#fff8',
+          }} />
+          <View style={{
+            position: 'absolute', left: size * 0.4, bottom: size * 0.15,
+            width: size * 0.2, height: 2, backgroundColor: '#fff5',
+          }} />
+        </View>
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  if (type === 'swarm') {
+    // cluster: main blob + 3 satellite dots
+    return (
+      <>
+        <View style={{
+          position: 'absolute', left: size * 0.18, top: size * 0.18,
+          width: size * 0.64, height: size * 0.64, borderRadius: size,
+          backgroundColor: color, opacity,
+          borderWidth: 1, borderColor: '#0008',
+        }} />
+        <View style={{
+          position: 'absolute', left: 0, top: size * 0.55,
+          width: size * 0.3, height: size * 0.3, borderRadius: size,
+          backgroundColor: color, opacity: opacity * 0.85,
+          borderWidth: 1, borderColor: '#0006',
+        }} />
+        <View style={{
+          position: 'absolute', right: 0, top: size * 0.1,
+          width: size * 0.28, height: size * 0.28, borderRadius: size,
+          backgroundColor: color, opacity: opacity * 0.85,
+          borderWidth: 1, borderColor: '#0006',
+        }} />
+        <View style={{
+          position: 'absolute', right: size * 0.15, bottom: 0,
+          width: size * 0.25, height: size * 0.25, borderRadius: size,
+          backgroundColor: color, opacity: opacity * 0.85,
+          borderWidth: 1, borderColor: '#0006',
+        }} />
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  if (type === 'flyer') {
+    // diamond body with thin wing slivers on left/right
+    return (
+      <>
+        <View style={{
+          position: 'absolute',
+          left: -size * 0.15, top: size * 0.4,
+          width: size * 0.5, height: size * 0.18, borderRadius: size,
+          backgroundColor: color, opacity: 0.5,
+        }} />
+        <View style={{
+          position: 'absolute',
+          right: -size * 0.15, top: size * 0.4,
+          width: size * 0.5, height: size * 0.18, borderRadius: size,
+          backgroundColor: color, opacity: 0.5,
+        }} />
+        <View style={{
+          width: size, height: size, opacity,
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <View style={{
+            width: size * 0.6, height: size * 0.6, backgroundColor: color,
+            transform: [{ rotate: '45deg' }],
+            borderWidth: 1.5, borderColor: '#0008',
+          }} />
+        </View>
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  if (type === 'boss') {
+    // big disc with crown spikes around the top
+    return (
+      <>
+        {/* crown spikes */}
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View key={i} style={{
+            position: 'absolute',
+            left: size * (0.15 + i * 0.175) - 3,
+            top: -size * 0.05,
+            width: 6, height: size * 0.22,
+            backgroundColor: '#ffd166',
+            borderRadius: 2,
+            transform: [{ rotate: `${(i - 2) * 12}deg` }],
+          }} />
+        ))}
+        <View style={{
+          width: size, height: size, borderRadius: size / 2,
+          backgroundColor: color, opacity,
+          borderWidth: 2, borderColor: '#ffd166',
+        }}>
+          <View style={{
+            position: 'absolute', left: size * 0.3, top: size * 0.35,
+            width: size * 0.4, height: size * 0.12, borderRadius: 2,
+            backgroundColor: '#000a',
+          }} />
+        </View>
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  if (type === 'mega') {
+    // huge angular menace — square with cross slash
+    return (
+      <>
+        <View style={{
+          width: size, height: size, opacity,
+          backgroundColor: color, borderRadius: size * 0.12,
+          borderWidth: 3, borderColor: '#ffd166',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <View style={{
+            position: 'absolute',
+            width: size * 0.7, height: 3,
+            backgroundColor: '#ffd166',
+            transform: [{ rotate: '45deg' }],
+          }} />
+          <View style={{
+            position: 'absolute',
+            width: size * 0.7, height: 3,
+            backgroundColor: '#ffd166',
+            transform: [{ rotate: '-45deg' }],
+          }} />
+          <View style={{
+            position: 'absolute',
+            width: size * 0.32, height: size * 0.32, borderRadius: size,
+            backgroundColor: '#000',
+            opacity: 0.5,
+          }} />
+        </View>
+        {slowRing && <View style={slowRing} />}
+      </>
+    );
+  }
+  // fallback (unknown type)
+  return (
+    <View style={{
+      width: size, height: size, borderRadius: size / 2,
+      backgroundColor: color, opacity,
+    }} />
+  );
+}
+
 function ProjectileView({ p }) {
   const len = Math.hypot(p.toX - p.fromX, p.toY - p.fromY);
   const angle = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
@@ -1704,6 +2001,123 @@ function ProjectileView({ p }) {
       backgroundColor: p.color, opacity: 0.9,
       transform: [{ rotate: `${angle}rad` }],
     }} />
+  );
+}
+
+// Visual effects: muzzle flashes, impact sparks, death bursts.
+function FxLayer({ fx, time }) {
+  return (
+    <>
+      {fx.map((f) => {
+        const life = f.until - f.start;
+        const t = (time - f.start) / life;
+        if (t < 0 || t > 1) return null;
+        if (f.type === 'muzzle') {
+          const size = 8 + 18 * (1 - t);
+          const opacity = 1 - t;
+          return (
+            <View key={`fx${f.id}`} pointerEvents="none" style={{
+              position: 'absolute',
+              left: f.x - size / 2, top: f.y - size / 2,
+              width: size, height: size, borderRadius: size,
+              backgroundColor: '#fff',
+              opacity: opacity * 0.85,
+              shadowColor: f.color, shadowOpacity: opacity,
+              shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+            }} />
+          );
+        }
+        if (f.type === 'impact') {
+          // expanding ring + bright core
+          const ringSize = 6 + 22 * t;
+          const ringOp = (1 - t) * 0.9;
+          const coreSize = 6 * (1 - t);
+          return (
+            <View key={`fx${f.id}`} pointerEvents="none" style={{ position: 'absolute', left: f.x, top: f.y }}>
+              <View style={{
+                position: 'absolute',
+                left: -ringSize / 2, top: -ringSize / 2,
+                width: ringSize, height: ringSize, borderRadius: ringSize,
+                borderWidth: 2, borderColor: f.color,
+                opacity: ringOp,
+              }} />
+              {coreSize > 0.5 && (
+                <View style={{
+                  position: 'absolute',
+                  left: -coreSize / 2, top: -coreSize / 2,
+                  width: coreSize, height: coreSize, borderRadius: coreSize,
+                  backgroundColor: '#fff',
+                  opacity: (1 - t),
+                }} />
+              )}
+            </View>
+          );
+        }
+        if (f.type === 'death') {
+          // particle flies outward with simple drag + gravity
+          const elapsed = time - f.start;
+          const drag = Math.exp(-2.5 * elapsed);
+          const px = f.x + f.vx * elapsed * drag;
+          const py = f.y + f.vy * elapsed * drag + 40 * elapsed * elapsed;
+          const size = 3 + 2 * (1 - t);
+          const opacity = (1 - t) * (1 - t);
+          return (
+            <View key={`fx${f.id}`} pointerEvents="none" style={{
+              position: 'absolute',
+              left: px - size / 2, top: py - size / 2,
+              width: size, height: size, borderRadius: size,
+              backgroundColor: f.color,
+              opacity,
+            }} />
+          );
+        }
+        return null;
+      })}
+    </>
+  );
+}
+
+// Big wave-start banner — fades in, holds, fades out.
+function WaveBanner({ banner, time }) {
+  if (!banner || time > banner.until) return null;
+  const life = banner.until - banner.start;
+  const t = (time - banner.start) / life;
+  // ease: in for first 20%, hold middle, out for last 30%
+  let opacity;
+  if (t < 0.2) opacity = t / 0.2;
+  else if (t < 0.7) opacity = 1;
+  else opacity = (1 - t) / 0.3;
+  const slide = (1 - opacity) * 30;
+  return (
+    <View pointerEvents="none" style={{
+      position: 'absolute',
+      left: 0, right: 0, top: VIEWPORT_H * 0.35,
+      alignItems: 'center',
+      opacity,
+      transform: [{ translateY: slide }],
+    }}>
+      <Text style={{
+        color: banner.boss ? '#ff4d6d' : '#4cc9ff',
+        fontSize: 14, fontWeight: '700',
+        letterSpacing: 6,
+      }}>
+        {banner.boss ? '⚠  BOSS WAVE  ⚠' : 'INCOMING'}
+      </Text>
+      <Text style={{
+        color: '#fff', fontSize: 56, fontWeight: '900',
+        letterSpacing: 4,
+        textShadowColor: banner.boss ? '#ff4d6d' : '#4cc9ff',
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 18,
+      }}>
+        WAVE {banner.wave}
+      </Text>
+      <Text style={{
+        color: '#9aa3c7', fontSize: 12, letterSpacing: 3, marginTop: 4,
+      }}>
+        {banner.total} ENEMIES
+      </Text>
+    </View>
   );
 }
 
@@ -1914,6 +2328,7 @@ function step(dt, s, onEnd) {
   }
 
   s.projectiles = s.projectiles.filter((p) => p.until > s.time);
+  s.fx = s.fx.filter((f) => f.until > s.time);
 
   // Resolve deaths & rewards
   const goldAuraActive = s.towers.some((t) => {
@@ -1930,6 +2345,24 @@ function step(dt, s, onEnd) {
       if (e.subPath && e.pathIdx < e.subPath.length) {
         s.gold += wavePerKill * goldMul;
         s.score += wavePerKill * 4;
+        // Death burst: 8 particles radiating outward
+        const def = ENEMIES[e.type];
+        const burstCount = e.type === 'boss' || e.type === 'mega' ? 16 : 8;
+        for (let i = 0; i < burstCount; i++) {
+          const angle = (i / burstCount) * Math.PI * 2 + Math.random() * 0.4;
+          const speed = 30 + Math.random() * 50;
+          s.fx.push({
+            id: s.nextFxId++,
+            type: 'death',
+            x: e.c * TILE + TILE / 2,
+            y: e.r * TILE + TILE / 2,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            color: def.color,
+            start: s.time,
+            until: s.time + 0.55,
+          });
+        }
       }
     } else {
       alive.push(e);
@@ -1962,7 +2395,27 @@ function step(dt, s, onEnd) {
 }
 
 function fireAt(tower, inRange, stats, color, s) {
+  // Muzzle flash at tower
+  s.fx.push({
+    id: s.nextFxId++,
+    type: 'muzzle',
+    x: tower.c * TILE + TILE / 2,
+    y: tower.r * TILE + TILE / 2,
+    color,
+    start: s.time,
+    until: s.time + 0.16,
+  });
   const handleHit = (enemy, dmg) => {
+    // Impact sparks at enemy
+    s.fx.push({
+      id: s.nextFxId++,
+      type: 'impact',
+      x: enemy.c * TILE + TILE / 2,
+      y: enemy.r * TILE + TILE / 2,
+      color,
+      start: s.time,
+      until: s.time + 0.28,
+    });
     const effectiveArmor = Math.max(0, enemy.armor - (stats.armorBreak || 0));
     const reduced = dmg * (100 / (100 + effectiveArmor * 6));
     enemy.hp -= reduced;
