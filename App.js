@@ -127,17 +127,22 @@ const BOSS_GOLD_BONUS = {
   10: 250, 20: 1000, 30: 2500, 40: 6000, 50: 15000,
 };
 
-// ─── Gems (8 families, with letter codes per doc) ───────────────────────────
+// ─── Gems (8 families) ──────────────────────────────────────────────────────
+// `letter` is the on-board label prefix: first letter of the gem name, except
+// Aquamarine which is Q to avoid clashing with Amethyst.
 const GEMS = {
-  sapphire:   { id: 'sapphire',   code: 'B', name: 'Sapphire',   color: '#4cc9ff', ability: 'Slow / control' },
-  diamond:    { id: 'diamond',    code: 'D', name: 'Diamond',    color: '#e6f1ff', ability: 'High raw damage' },
-  opal:       { id: 'opal',       code: 'E', name: 'Opal',       color: '#ffd4f0', ability: 'Aura / reveal' },
-  emerald:    { id: 'emerald',    code: 'G', name: 'Emerald',    color: '#5cf28a', ability: 'Poison DoT' },
-  amethyst:   { id: 'amethyst',   code: 'P', name: 'Amethyst',   color: '#b08bff', ability: 'Armor break' },
-  aquamarine: { id: 'aquamarine', code: 'Q', name: 'Aquamarine', color: '#7be5d1', ability: 'Fast attack' },
-  ruby:       { id: 'ruby',       code: 'R', name: 'Ruby',       color: '#ff4d6d', ability: 'Splash' },
-  topaz:      { id: 'topaz',      code: 'Y', name: 'Topaz',      color: '#ffd166', ability: 'Split shot' },
+  sapphire:   { id: 'sapphire',   letter: 'S', name: 'Sapphire',   color: '#4cc9ff', ability: 'Slow / control' },
+  diamond:    { id: 'diamond',    letter: 'D', name: 'Diamond',    color: '#e6f1ff', ability: 'High raw damage' },
+  opal:       { id: 'opal',       letter: 'O', name: 'Opal',       color: '#ffd4f0', ability: 'Aura / reveal' },
+  emerald:    { id: 'emerald',    letter: 'E', name: 'Emerald',    color: '#5cf28a', ability: 'Poison DoT' },
+  amethyst:   { id: 'amethyst',   letter: 'A', name: 'Amethyst',   color: '#b08bff', ability: 'Armor break' },
+  aquamarine: { id: 'aquamarine', letter: 'Q', name: 'Aquamarine', color: '#7be5d1', ability: 'Fast attack' },
+  ruby:       { id: 'ruby',       letter: 'R', name: 'Ruby',       color: '#ff4d6d', ability: 'Splash' },
+  topaz:      { id: 'topaz',      letter: 'T', name: 'Topaz',      color: '#ffd166', ability: 'Split shot' },
 };
+function gemLabel(gemType, t) {
+  return `${GEMS[gemType].letter}${t}`;
+}
 const GEM_IDS = Object.keys(GEMS);
 const rollGemType = () => GEM_IDS[Math.floor(Math.random() * GEM_IDS.length)];
 
@@ -711,6 +716,7 @@ function Game({ onEnd }) {
       flash: null,
       pan: { x: 0, y: 0 },
       scale: INITIAL_SCALE,
+      tiltAngle: 0,    // 0 = top-down, 50 = isometric pseudo-3D
     };
   }
   const [, setTick] = useState(0);
@@ -966,7 +972,12 @@ function Game({ onEnd }) {
   };
 
   const toggleSpeed = () => { s.speed = s.speed === 1 ? 2 : s.speed === 2 ? 3 : 1; force(); };
-  const recenter = () => { s.pan.x = 0; s.pan.y = 0; s.scale = INITIAL_SCALE; force(); };
+  const recenter = () => { s.pan.x = 0; s.pan.y = 0; s.scale = INITIAL_SCALE; s.tiltAngle = 0; force(); };
+  const toggleTilt = () => {
+    // Cycle 0 → 30 → 50 (pseudo-3D iso) → back to 0
+    s.tiltAngle = s.tiltAngle === 0 ? 30 : s.tiltAngle === 30 ? 50 : 0;
+    force();
+  };
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const inspectCandidate = s.inspect ? s.candidates.find((c) => c.id === s.inspect) : null;
@@ -995,7 +1006,7 @@ function Game({ onEnd }) {
       </View>
 
       <View
-        style={{ width: VIEWPORT_W, height: VIEWPORT_H, backgroundColor: '#0a0e1c', overflow: 'hidden' }}
+        style={{ width: VIEWPORT_W, height: VIEWPORT_H, backgroundColor: '#06081a', overflow: 'hidden' }}
         {...panResponder.panHandlers}
       >
         <View
@@ -1004,11 +1015,16 @@ function Game({ onEnd }) {
             position: 'absolute',
             left: boardLeft, top: boardTop,
             width: BOARD_W, height: BOARD_H,
-            backgroundColor: '#0f1530',
-            borderRadius: 4,
-            transform: [{ scale: s.scale }],
+            transform: [
+              { perspective: 1200 },
+              { rotateX: `${s.tiltAngle}deg` },
+              { scale: s.scale },
+            ],
           }}
         >
+          {/* dungeon chrome: gradient, tile grid, stone frame, torches, crystals */}
+          <BoardChrome />
+
           {/* path tint */}
           {s.path && s.path.map((p, i) => (
             <View key={`p${i}`} pointerEvents="none" style={{
@@ -1042,6 +1058,11 @@ function Game({ onEnd }) {
 
         <TouchableOpacity onPress={recenter} style={styles.recenterBtn}>
           <Text style={styles.recenterText}>⤢</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleTilt} style={styles.tiltBtn}>
+          <Text style={styles.tiltBtnText}>
+            {s.tiltAngle === 0 ? '2D' : s.tiltAngle === 30 ? '2.5D' : '3D'}
+          </Text>
         </TouchableOpacity>
 
         {flashing && (
@@ -1095,6 +1116,198 @@ function Game({ onEnd }) {
 }
 
 // ─── Tower / candidate / enemy / projectile render ───────────────────────────
+// ─── Board chrome (gradient, tile grid, stone frame, torches, crystals) ────
+// Pure decoration. Memoized so the 60fps loop doesn't re-render this.
+const WALL_THICKNESS = TILE * 1.2;
+const CRYSTAL_MARGIN = TILE * 2.6;
+
+const GRADIENT_STRIPS = 14;
+const STRIP_W = BOARD_W / GRADIENT_STRIPS;
+function lerp(a, b, t) { return Math.round(a + (b - a) * t); }
+function gradColor(t) {
+  // dark blue → deep purple
+  const r = lerp(0x1a, 0x4a, t);
+  const g = lerp(0x26, 0x24, t);
+  const b = lerp(0x55, 0x62, t);
+  return `rgb(${r},${g},${b})`;
+}
+
+// Decorative crystal — small rotated diamond with glow.
+function DecoCrystal({ left, top, size, color, rot }) {
+  return (
+    <View pointerEvents="none" style={{
+      position: 'absolute', left, top, width: size, height: size,
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      <View style={{
+        width: size * 1.6, height: size * 1.6, borderRadius: size,
+        backgroundColor: color, opacity: 0.18,
+      }} />
+      <View style={{
+        position: 'absolute',
+        width: size, height: size,
+        backgroundColor: color,
+        borderRadius: 3,
+        transform: [{ rotate: `${rot}deg` }, { scaleY: 1.4 }],
+        shadowColor: color, shadowOpacity: 0.9,
+        shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+      }} />
+    </View>
+  );
+}
+
+// Deterministic crystal placements outside the board frame.
+const CRYSTAL_SPECS = (() => {
+  const specs = [];
+  const sides = [
+    { x0: -CRYSTAL_MARGIN, x1: -WALL_THICKNESS * 1.2, y0: 0, y1: BOARD_H, color: '#4cc9ff' },           // left  blue
+    { x0: BOARD_W + WALL_THICKNESS * 1.2, x1: BOARD_W + CRYSTAL_MARGIN, y0: 0, y1: BOARD_H, color: '#b08bff' }, // right purple
+    { x0: 0, x1: BOARD_W, y0: -CRYSTAL_MARGIN, y1: -WALL_THICKNESS * 1.2, color: '#7a5cff', mixed: true },     // top
+    { x0: 0, x1: BOARD_W, y0: BOARD_H + WALL_THICKNESS * 1.2, y1: BOARD_H + CRYSTAL_MARGIN, color: '#b08bff', mixed: true }, // bottom
+  ];
+  // Pseudo-random but deterministic (Mulberry32)
+  let seed = 1234567;
+  const rand = () => {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  sides.forEach((side, idx) => {
+    const n = idx < 2 ? 14 : 10;
+    for (let i = 0; i < n; i++) {
+      const x = side.x0 + rand() * (side.x1 - side.x0);
+      const y = side.y0 + rand() * (side.y1 - side.y0);
+      const size = TILE * (0.5 + rand() * 0.6);
+      const rot = rand() * 60 - 30;
+      let color = side.color;
+      if (side.mixed) {
+        const tFrac = (x - 0) / BOARD_W;
+        const r = lerp(0x4c, 0xb0, tFrac);
+        const g = lerp(0xc9, 0x8b, tFrac);
+        const b = lerp(0xff, 0xff, tFrac);
+        color = `rgb(${r},${g},${b})`;
+      }
+      specs.push({ left: x, top: y, size, color, rot });
+    }
+  });
+  return specs;
+})();
+
+const TORCH_SPECS = [
+  // 4 corners
+  { left: -WALL_THICKNESS / 2 - 6, top: -WALL_THICKNESS / 2 - 6 },
+  { left: BOARD_W + WALL_THICKNESS / 2 - 6, top: -WALL_THICKNESS / 2 - 6 },
+  { left: -WALL_THICKNESS / 2 - 6, top: BOARD_H + WALL_THICKNESS / 2 - 6 },
+  { left: BOARD_W + WALL_THICKNESS / 2 - 6, top: BOARD_H + WALL_THICKNESS / 2 - 6 },
+  // 4 mid-edges
+  { left: BOARD_W / 2 - 6, top: -WALL_THICKNESS / 2 - 6 },
+  { left: BOARD_W / 2 - 6, top: BOARD_H + WALL_THICKNESS / 2 - 6 },
+  { left: -WALL_THICKNESS / 2 - 6, top: BOARD_H / 2 - 6 },
+  { left: BOARD_W + WALL_THICKNESS / 2 - 6, top: BOARD_H / 2 - 6 },
+  // 4 quarter points on top/bottom
+  { left: BOARD_W * 0.25 - 6, top: -WALL_THICKNESS / 2 - 6 },
+  { left: BOARD_W * 0.75 - 6, top: -WALL_THICKNESS / 2 - 6 },
+  { left: BOARD_W * 0.25 - 6, top: BOARD_H + WALL_THICKNESS / 2 - 6 },
+  { left: BOARD_W * 0.75 - 6, top: BOARD_H + WALL_THICKNESS / 2 - 6 },
+];
+
+const BoardChrome = React.memo(function BoardChrome() {
+  return (
+    <>
+      {/* Vertical gradient strips (blue → purple) */}
+      {Array.from({ length: GRADIENT_STRIPS }).map((_, i) => (
+        <View key={`gr${i}`} pointerEvents="none" style={{
+          position: 'absolute',
+          left: i * STRIP_W, top: 0,
+          width: STRIP_W + 1, height: BOARD_H,
+          backgroundColor: gradColor(i / (GRADIENT_STRIPS - 1)),
+        }} />
+      ))}
+
+      {/* Subtle tile grid (vertical lines + horizontal lines) */}
+      {Array.from({ length: COLS + 1 }).map((_, i) => (
+        <View key={`gv${i}`} pointerEvents="none" style={{
+          position: 'absolute',
+          left: i * TILE, top: 0,
+          width: 1, height: BOARD_H,
+          backgroundColor: '#00000040',
+        }} />
+      ))}
+      {Array.from({ length: ROWS + 1 }).map((_, i) => (
+        <View key={`gh${i}`} pointerEvents="none" style={{
+          position: 'absolute',
+          left: 0, top: i * TILE,
+          width: BOARD_W, height: 1,
+          backgroundColor: '#00000040',
+        }} />
+      ))}
+
+      {/* Decorative crystals outside the play area */}
+      {CRYSTAL_SPECS.map((c, i) => <DecoCrystal key={`dc${i}`} {...c} />)}
+
+      {/* Stone wall frame */}
+      <View pointerEvents="none" style={{
+        position: 'absolute',
+        left: -WALL_THICKNESS, top: -WALL_THICKNESS,
+        width: BOARD_W + WALL_THICKNESS * 2,
+        height: BOARD_H + WALL_THICKNESS * 2,
+        borderWidth: WALL_THICKNESS,
+        borderColor: '#28233f',
+        borderRadius: 6,
+      }} />
+      {/* Inner highlight (slight bevel) */}
+      <View pointerEvents="none" style={{
+        position: 'absolute',
+        left: -2, top: -2,
+        width: BOARD_W + 4, height: BOARD_H + 4,
+        borderWidth: 2,
+        borderColor: '#4a4060',
+        borderRadius: 4,
+      }} />
+      {/* Outer highlight */}
+      <View pointerEvents="none" style={{
+        position: 'absolute',
+        left: -WALL_THICKNESS - 1, top: -WALL_THICKNESS - 1,
+        width: BOARD_W + WALL_THICKNESS * 2 + 2,
+        height: BOARD_H + WALL_THICKNESS * 2 + 2,
+        borderWidth: 1,
+        borderColor: '#1a1530',
+        borderRadius: 7,
+      }} />
+
+      {/* Torches at corners and mid-edges */}
+      {TORCH_SPECS.map((pos, i) => (
+        <View key={`to${i}`} pointerEvents="none" style={{
+          position: 'absolute',
+          left: pos.left, top: pos.top,
+          width: 12, height: 12, borderRadius: 6,
+          backgroundColor: '#ffb24a',
+          borderWidth: 1, borderColor: '#ffd166',
+          shadowColor: '#ffaa44',
+          shadowOpacity: 1, shadowRadius: 14,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 8,
+        }}>
+          {/* inner flame core */}
+          <View style={{
+            position: 'absolute',
+            left: 3, top: 3, width: 6, height: 6, borderRadius: 3,
+            backgroundColor: '#fff7a8',
+          }} />
+        </View>
+      ))}
+
+      {/* Vignette: subtle dark corners */}
+      <View pointerEvents="none" style={{
+        position: 'absolute',
+        left: 0, top: 0, width: BOARD_W, height: BOARD_H,
+        backgroundColor: '#00000026',
+      }} />
+    </>
+  );
+});
+
 function Marker({ pt, label, color }) {
   return (
     <View pointerEvents="none" style={[styles.marker, { left: pt.c * TILE, top: pt.r * TILE, backgroundColor: color }]}>
@@ -1103,18 +1316,81 @@ function Marker({ pt, label, color }) {
   );
 }
 
+// Pseudo-3D rock — deterministic random variant by id so the same rock
+// keeps the same shape across renders.
+function RockView({ t }) {
+  const seed = (t.id * 2654435761) >>> 0;
+  const variant = seed % 4;
+  const rot = ((seed >> 4) & 0x3F) - 32; // -32..+31 degrees
+  const baseColors = ['#4a4a5e', '#4f4860', '#3f4458', '#52516a'];
+  const highlightColors = ['#8c8aa8', '#9a90b0', '#7e8aa0', '#a09ab8'];
+  const shadowColors = ['#22222e', '#26222e', '#1e2230', '#2a2738'];
+  const base = baseColors[variant];
+  const hi = highlightColors[variant];
+  const sh = shadowColors[variant];
+  const spikeAngle = ((seed >> 10) & 0xFF) - 128;
+  const showSpike = variant !== 0;
+  return (
+    <View pointerEvents="none" style={{
+      position: 'absolute', left: t.c * TILE, top: t.r * TILE,
+      width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
+    }}>
+      {/* shadow under stone */}
+      <View style={{
+        position: 'absolute', left: TILE * 0.15, top: TILE * 0.55,
+        width: TILE * 0.7, height: TILE * 0.28,
+        borderRadius: TILE * 0.4,
+        backgroundColor: '#000', opacity: 0.45,
+      }} />
+      {/* main rock body, rotated for variation */}
+      <View style={{
+        width: TILE * 0.78, height: TILE * 0.78,
+        transform: [{ rotate: `${rot}deg` }],
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        {/* dark base */}
+        <View style={{
+          position: 'absolute', width: '100%', height: '100%',
+          backgroundColor: sh,
+          borderRadius: variant === 0 ? TILE * 0.3 : 4,
+        }} />
+        {/* main face */}
+        <View style={{
+          position: 'absolute',
+          left: 0, top: 0, right: TILE * 0.05, bottom: TILE * 0.12,
+          backgroundColor: base,
+          borderRadius: variant === 0 ? TILE * 0.3 : 3,
+        }} />
+        {/* top-left highlight facet */}
+        <View style={{
+          position: 'absolute',
+          left: 0, top: 0,
+          width: '55%', height: '55%',
+          backgroundColor: hi,
+          opacity: 0.7,
+          borderTopLeftRadius: variant === 0 ? TILE * 0.3 : 3,
+          borderBottomRightRadius: 8,
+        }} />
+        {/* small dark facet (chipped corner) */}
+        {showSpike && (
+          <View style={{
+            position: 'absolute',
+            right: 1, top: TILE * 0.18,
+            width: '32%', height: '32%',
+            backgroundColor: sh,
+            transform: [{ rotate: `${spikeAngle}deg` }],
+            borderRadius: 2,
+            opacity: 0.85,
+          }} />
+        )}
+      </View>
+    </View>
+  );
+}
+
 function TowerView({ t }) {
   if (t.kind === 'rock') {
-    return (
-      <View pointerEvents="none" style={{
-        position: 'absolute',
-        left: t.c * TILE + TILE * 0.15, top: t.r * TILE + TILE * 0.15,
-        width: TILE * 0.7, height: TILE * 0.7,
-        backgroundColor: '#5a627f',
-        borderRadius: 3,
-        borderWidth: 1, borderColor: '#7c84a8',
-      }} />
-    );
+    return <RockView t={t} />;
   }
   if (t.kind === 'special') {
     const recipe = SPECIAL_BY_ID[t.specialId];
@@ -1148,16 +1424,34 @@ function TowerView({ t }) {
             transform: [{ rotate: '45deg' }], borderRadius: 3,
           }} />
         </View>
-        <Text style={{ position: 'absolute', color: '#fff', fontSize: TILE * 0.45, fontWeight: '900',
-          textShadowColor: '#000a', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 }}>
-          {tierLevel >= 6 ? '✦' : '★'}
-        </Text>
+        {/* Full special tower name written below the tile */}
+        <View style={{
+          position: 'absolute',
+          left: -TILE * 0.6, right: -TILE * 0.6,
+          bottom: -TILE * 0.45,
+          alignItems: 'center',
+        }}>
+          <View style={{
+            backgroundColor: '#000c',
+            paddingHorizontal: 4, paddingVertical: 1,
+            borderRadius: 3,
+            borderWidth: 1, borderColor: recipe.accent + 'aa',
+          }}>
+            <Text numberOfLines={1} style={{
+              color: '#fff',
+              fontSize: TILE * 0.32,
+              fontWeight: '800',
+              letterSpacing: 0.3,
+            }}>
+              {recipe.name}
+            </Text>
+          </View>
+        </View>
       </View>
     );
   }
   // Gem
   const g = GEMS[t.gemType];
-  const tBlock = tier(t.tier);
   const isAscendant = t.tier === 6;
   return (
     <View pointerEvents="none" style={{
@@ -1193,9 +1487,9 @@ function TowerView({ t }) {
       }} />
       <Text style={{
         position: 'absolute', color: t.tier >= 3 ? '#0b1020' : '#fff',
-        fontSize: TILE * 0.22, fontWeight: '900',
+        fontSize: TILE * 0.34, fontWeight: '900',
       }}>
-        {tBlock.short}
+        {gemLabel(t.gemType, t.tier)}
       </Text>
     </View>
   );
@@ -1203,7 +1497,6 @@ function TowerView({ t }) {
 
 function CandidateView({ t, time }) {
   const g = GEMS[t.gemType];
-  const tBlock = tier(t.tier);
   const pulse = 0.55 + 0.35 * Math.sin(time * 6);
   return (
     <View pointerEvents="none" style={{
@@ -1226,8 +1519,8 @@ function CandidateView({ t, time }) {
         shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
       }} />
       <Text style={{ position: 'absolute', color: t.tier >= 3 ? '#0b1020' : '#fff',
-        fontSize: TILE * 0.22, fontWeight: '900' }}>
-        {tBlock.short}
+        fontSize: TILE * 0.34, fontWeight: '900' }}>
+        {gemLabel(t.gemType, t.tier)}
       </Text>
     </View>
   );
@@ -1695,6 +1988,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#2a335f',
   },
   recenterText: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  tiltBtn: {
+    position: 'absolute', right: 12, bottom: 64,
+    width: 44, height: 44, backgroundColor: '#161c33e0',
+    borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: '#2a335f',
+  },
+  tiltBtnText: { color: '#ffd166', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
 
   bottomBar: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 12, alignItems: 'center' },
   phaseBadge: {
