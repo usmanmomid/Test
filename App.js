@@ -1766,23 +1766,32 @@ function SpawnPortal({ pt, time }) {
             <Stop offset="1" stopColor="#000" stopOpacity="1" />
           </RadialGradient>
           <RadialGradient id="portalGlow" cx="0.7" cy="0.5" r="0.6">
-            <Stop offset="0" stopColor="#ff4d6d" stopOpacity={0.45 * flicker} />
+            <Stop offset="0" stopColor="#ff4d6d" stopOpacity={0.55 * flicker} />
             <Stop offset="1" stopColor="#ff4d6d" stopOpacity="0" />
           </RadialGradient>
           <LinearGradient id="portalStone" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#4a4060" />
-            <Stop offset="1" stopColor="#1a1530" />
+            <Stop offset="0" stopColor="#7a6e90" />
+            <Stop offset="0.15" stopColor="#4a4060" />
+            <Stop offset="1" stopColor="#0a0510" />
           </LinearGradient>
+          <RadialGradient id="portalShadow" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.8" />
+            <Stop offset="1" stopColor="#000" stopOpacity="0" />
+          </RadialGradient>
         </Defs>
         {/* outer red glow */}
         <Rect x="0" y="0" width="66" height="66" fill="url(#portalGlow)" />
+        {/* heavy ground shadow at base */}
+        <Ellipse cx="33" cy="62" rx="32" ry="4" fill="url(#portalShadow)" />
         {/* stone arch frame — rectangle with rounded top forming an arch shape */}
         <Path
           d="M 8 60 L 8 30 Q 8 12 33 12 Q 58 12 58 30 L 58 60 Z"
           fill="url(#portalStone)"
           stroke="#0a0510"
-          strokeWidth="1.5"
+          strokeWidth="1.8"
         />
+        {/* rim light on outer arch edge */}
+        <Path d="M 8 30 Q 8 12 33 12 Q 58 12 58 30" stroke="#a8b4d0" strokeWidth="0.8" fill="none" opacity="0.5" />
         {/* arch inner — actual portal opening (dark + red glow) */}
         <Path
           d="M 14 58 L 14 32 Q 14 18 33 18 Q 52 18 52 32 L 52 58 Z"
@@ -1828,20 +1837,29 @@ function CastleKeep({ pt, time }) {
       <Svg width={size} height={size} viewBox="0 0 66 66">
         <Defs>
           <LinearGradient id="castleStone" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#7a8aa8" />
-            <Stop offset="1" stopColor="#3a4060" />
-          </LinearGradient>
-          <LinearGradient id="castleTower" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#8a98b8" />
+            <Stop offset="0" stopColor="#a8b4d0" />
+            <Stop offset="0.1" stopColor="#8a98b8" />
+            <Stop offset="0.6" stopColor="#5a6a8c" />
             <Stop offset="1" stopColor="#2a3050" />
           </LinearGradient>
-          <LinearGradient id="castleRoof" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#5cf28a" />
-            <Stop offset="1" stopColor="#1a6a30" />
+          <LinearGradient id="castleTower" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#b8c4d8" />
+            <Stop offset="0.1" stopColor="#8a98b8" />
+            <Stop offset="0.6" stopColor="#5a6a8c" />
+            <Stop offset="1" stopColor="#1a2034" />
           </LinearGradient>
+          <LinearGradient id="castleRoof" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#a8f8c8" />
+            <Stop offset="0.2" stopColor="#5cf28a" />
+            <Stop offset="1" stopColor="#0a4a20" />
+          </LinearGradient>
+          <RadialGradient id="castleShadow" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.7" />
+            <Stop offset="1" stopColor="#000" stopOpacity="0" />
+          </RadialGradient>
         </Defs>
-        {/* base shadow */}
-        <Ellipse cx="33" cy="62" rx="30" ry="3" fill="#000" opacity="0.5" />
+        {/* heavy base shadow */}
+        <Ellipse cx="33" cy="62" rx="34" ry="5" fill="url(#castleShadow)" />
         {/* main keep — central rectangle */}
         <Rect x="22" y="22" width="22" height="38" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1.5" />
         {/* main keep merlons (battlements) */}
@@ -1857,14 +1875,22 @@ function CastleKeep({ pt, time }) {
         <Rect x="18" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
         {/* left tower roof */}
         <Polygon points="6,20 24,20 15,4" fill="url(#castleRoof)" stroke="#0a0510" strokeWidth="1.5" />
-        <Path d="M 6 20 L 15 4" stroke="#fff" strokeWidth="0.6" opacity="0.4" />
+        <Path d="M 6 20 L 15 4" stroke="#fff" strokeWidth="1" opacity="0.6" />
+        <Path d="M 15 4 L 24 20" stroke="#0a0510" strokeWidth="0.6" opacity="0.6" />
+        {/* left tower rim light */}
+        <Path d="M 8 22 L 8 60" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.55" />
         {/* right tower */}
         <Rect x="44" y="20" width="14" height="40" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="1.5" />
         <Rect x="45" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
         <Rect x="50" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
         <Rect x="55" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
         <Polygon points="42,20 60,20 51,4" fill="url(#castleRoof)" stroke="#0a0510" strokeWidth="1.5" />
-        <Path d="M 42 20 L 51 4" stroke="#fff" strokeWidth="0.6" opacity="0.4" />
+        <Path d="M 42 20 L 51 4" stroke="#fff" strokeWidth="1" opacity="0.6" />
+        <Path d="M 51 4 L 60 20" stroke="#0a0510" strokeWidth="0.6" opacity="0.6" />
+        {/* right tower rim light */}
+        <Path d="M 44 22 L 44 60" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.55" />
+        {/* central keep rim light */}
+        <Path d="M 22 24 L 22 60" stroke="#cfd5e6" strokeWidth="0.6" opacity="0.45" />
         {/* gate */}
         <Path d="M 28 60 L 28 44 Q 28 38 33 38 Q 38 38 38 44 L 38 60 Z" fill="#0a0510" stroke="#0a0510" strokeWidth="1" />
         {/* gate portcullis bars */}
@@ -1925,20 +1951,29 @@ function CheckpointTorch({ pt, time, i }) {
             <Stop offset="1" stopColor="#ffd166" stopOpacity="0" />
           </RadialGradient>
           <LinearGradient id={`tp${i}`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#5a4d76" />
+            <Stop offset="0" stopColor="#8a7da8" />
+            <Stop offset="0.15" stopColor="#5a4d76" />
             <Stop offset="1" stopColor="#1a1530" />
           </LinearGradient>
+          <RadialGradient id={`ts${i}`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.8" />
+            <Stop offset="1" stopColor="#000" stopOpacity="0" />
+          </RadialGradient>
         </Defs>
         {/* warm light pool */}
         <Rect x="0" y="0" width="35" height="35" fill={`url(#tg${i})`} />
-        {/* shadow under base */}
-        <Ellipse cx="17.5" cy="33" rx="9" ry="1.5" fill="#000" opacity="0.5" />
+        {/* heavy ground shadow under base */}
+        <Ellipse cx="17.5" cy="33" rx="12" ry="2.5" fill={`url(#ts${i})`} />
         {/* stone pedestal base */}
-        <Path d="M 11 33 L 24 33 L 22 28 L 13 28 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.8" />
+        <Path d="M 11 33 L 24 33 L 22 28 L 13 28 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.9" />
+        <Path d="M 13 28 L 22 28" stroke="#a8b4d0" strokeWidth="0.5" opacity="0.65" />
         {/* pedestal mid */}
-        <Rect x="14" y="20" width="7" height="8" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.8" />
+        <Rect x="14" y="20" width="7" height="8" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.9" />
+        {/* mid rim light */}
+        <Path d="M 14.5 20.5 L 14.5 27.5" stroke="#a8b4d0" strokeWidth="0.4" opacity="0.6" />
         {/* pedestal top */}
-        <Path d="M 12 20 L 23 20 L 22 16 L 13 16 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.8" />
+        <Path d="M 12 20 L 23 20 L 22 16 L 13 16 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.9" />
+        <Path d="M 13 16 L 22 16" stroke="#a8b4d0" strokeWidth="0.5" opacity="0.7" />
         {/* iron torch shaft */}
         <Rect x="16.5" y="10" width="2" height="8" fill="#3a2806" stroke="#0a0510" strokeWidth="0.4" />
         {/* torch bowl */}
@@ -2072,8 +2107,9 @@ function GemSvg({ gemType, tier }) {
       <Svg width={px} height={px} viewBox="0 0 100 100">
         <Defs>
           <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={light} />
-            <Stop offset="0.5" stopColor={light} />
+            <Stop offset="0" stopColor="rgba(255,255,255,0.4)" />
+            <Stop offset="0.18" stopColor={light} />
+            <Stop offset="0.6" stopColor={light} />
             <Stop offset="1" stopColor={dark} />
           </LinearGradient>
           <RadialGradient id={`${id}halo`} cx="0.5" cy="0.5" r="0.5">
@@ -2084,7 +2120,14 @@ function GemSvg({ gemType, tier }) {
             <Stop offset="0" stopColor="#fff7a8" />
             <Stop offset="1" stopColor="#ffd166" />
           </LinearGradient>
+          <RadialGradient id={`${id}shadow`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.7" />
+            <Stop offset="1" stopColor="#000" stopOpacity="0" />
+          </RadialGradient>
         </Defs>
+
+        {/* Kingdom-Rush drop shadow — bigger and darker for higher tiers */}
+        <Ellipse cx="50" cy="93" rx={20 + tier * 4} ry={3 + tier * 0.4} fill={`url(#${id}shadow)`} />
 
         {/* TIER 5 & 6 outer halo */}
         {tier >= 4 && <Circle cx="50" cy="50" r="48" fill={`url(#${id}halo)`} />}
@@ -5609,10 +5652,11 @@ const styles = StyleSheet.create({
   diffBtn: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#181430',
-    borderRadius: 10, padding: 12,
-    borderWidth: 1.5,
+    borderRadius: 12, padding: 13,
+    borderWidth: 2.5,
+    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
   },
-  diffName: { fontSize: 16, fontWeight: '900', letterSpacing: 1.5 },
+  diffName: { fontSize: 17, fontWeight: '900', letterSpacing: 1.8 },
   diffShort: { color: '#9aa3c7', fontSize: 11, fontStyle: 'italic' },
   diffTagline: { color: '#cfd5e6', fontSize: 11, marginTop: 2 },
   diffStats: { color: '#6f7798', fontSize: 9.5, marginTop: 4, letterSpacing: 0.5 },
@@ -5721,11 +5765,12 @@ const styles = StyleSheet.create({
 
   modalBackdrop: { flex: 1, backgroundColor: '#000c', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
   modalCard: {
-    backgroundColor: '#161c33', borderRadius: 20,
-    padding: 22, paddingTop: 26,
+    backgroundColor: '#161c33', borderRadius: 18,
+    padding: 22, paddingTop: 28,
     width: '100%', maxWidth: 420,
-    borderWidth: 1.5, borderColor: '#2f3a66',
-    shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 22, shadowOffset: { width: 0, height: 12 },
+    borderWidth: 2, borderColor: '#3a4a7a',
+    borderTopWidth: 4, borderTopColor: '#ffd166',
+    shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 26, shadowOffset: { width: 0, height: 14 },
   },
   modalCloseX: {
     position: 'absolute', top: 8, right: 8,
@@ -5749,12 +5794,13 @@ const styles = StyleSheet.create({
 
   actionRowBtn: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#0f1530', padding: 12, borderRadius: 12,
-    borderWidth: 1.5,
+    backgroundColor: '#0f1530', padding: 14, borderRadius: 14,
+    borderWidth: 2,
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
   },
-  actionRowLabel: { fontSize: 14, fontWeight: '900', letterSpacing: 1.5 },
+  actionRowLabel: { fontSize: 15, fontWeight: '900', letterSpacing: 1.8 },
   actionRowDesc: { color: '#9aa3c7', fontSize: 12, marginTop: 3 },
-  actionRowArrow: { fontSize: 18, fontWeight: '900', marginLeft: 8 },
+  actionRowArrow: { fontSize: 20, fontWeight: '900', marginLeft: 8 },
 
   specialIcon: {
     width: 36, height: 36, borderRadius: 18, borderWidth: 2,
