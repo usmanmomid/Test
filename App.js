@@ -2261,7 +2261,15 @@ function CastleKeep({ pt, time }) {
 // ───── Checkpoint torch post — stone pedestal with flickering flame ────────
 function CheckpointTorch({ pt, time, i }) {
   const phase = (i || 0) * 1.7;
+  // Three independent flicker drivers
   const flicker = 0.75 + 0.25 * Math.sin(time * 7 + phase) * Math.sin(time * 13 + phase * 1.3);
+  const flicker2 = 0.85 + 0.15 * Math.sin(time * 9 + phase + 0.7);
+  // Three rising embers with offset phases
+  const emberY = (time * 5 + phase) % 12;
+  const emberY2 = (time * 5 + phase + 4) % 12;
+  const emberY3 = (time * 5 + phase + 8) % 12;
+  // Subtle smoke wisp
+  const smokeY = (time * 4 + phase) % 15;
   const size = TILE * 1.6;
   const left = pt.c * TILE - TILE * 0.3;
   const top = pt.r * TILE - TILE * 0.6;
@@ -2269,53 +2277,138 @@ function CheckpointTorch({ pt, time, i }) {
     <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
       <Svg width={size} height={size} viewBox="0 0 35 35">
         <Defs>
-          <RadialGradient id={`tg${i}`} cx="0.5" cy="0.3" r="0.7">
-            <Stop offset="0" stopColor="#ffd166" stopOpacity={flicker} />
-            <Stop offset="1" stopColor="#ffd166" stopOpacity="0" />
-          </RadialGradient>
-          <LinearGradient id={`tp${i}`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#8a7da8" />
-            <Stop offset="0.15" stopColor="#5a4d76" />
-            <Stop offset="1" stopColor="#1a1530" />
+          {/* warm stone — same palette as castle/portal */}
+          <LinearGradient id={`tStone${i}`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#d8c098" />
+            <Stop offset="0.15" stopColor="#a08868" />
+            <Stop offset="0.6" stopColor="#604838" />
+            <Stop offset="1" stopColor="#3a1a14" />
           </LinearGradient>
-          <RadialGradient id={`ts${i}`} cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor="#000" stopOpacity="0.8" />
+          {/* darker stone for inset panel */}
+          <LinearGradient id={`tStoneDark${i}`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#5a4030" />
+            <Stop offset="1" stopColor="#1a0c08" />
+          </LinearGradient>
+          {/* iron bowl */}
+          <LinearGradient id={`tIron${i}`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#5a6470" />
+            <Stop offset="0.5" stopColor="#2a3040" />
+            <Stop offset="1" stopColor="#0a0e18" />
+          </LinearGradient>
+          {/* warm light pool */}
+          <RadialGradient id={`tLight${i}`} cx="0.5" cy="0.4" r="0.65">
+            <Stop offset="0" stopColor="#ffd166" stopOpacity={flicker * 0.85} />
+            <Stop offset="0.5" stopColor="#ff8a4d" stopOpacity={flicker * 0.45} />
+            <Stop offset="1" stopColor="#ff6f1f" stopOpacity="0" />
+          </RadialGradient>
+          {/* ground shadow */}
+          <RadialGradient id={`tShadow${i}`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.9" />
             <Stop offset="1" stopColor="#000" stopOpacity="0" />
           </RadialGradient>
         </Defs>
+
         {/* warm light pool */}
-        <Rect x="0" y="0" width="35" height="35" fill={`url(#tg${i})`} />
-        {/* heavy ground shadow under base */}
-        <Ellipse cx="17.5" cy="33" rx="12" ry="2.5" fill={`url(#ts${i})`} />
-        {/* stone pedestal base */}
-        <Path d="M 11 33 L 24 33 L 22 28 L 13 28 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.9" />
-        <Path d="M 13 28 L 22 28" stroke="#a8b4d0" strokeWidth="0.5" opacity="0.65" />
-        {/* pedestal mid */}
-        <Rect x="14" y="20" width="7" height="8" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.9" />
-        {/* mid rim light */}
-        <Path d="M 14.5 20.5 L 14.5 27.5" stroke="#a8b4d0" strokeWidth="0.4" opacity="0.6" />
-        {/* pedestal top */}
-        <Path d="M 12 20 L 23 20 L 22 16 L 13 16 Z" fill={`url(#tp${i})`} stroke="#0a0510" strokeWidth="0.9" />
-        <Path d="M 13 16 L 22 16" stroke="#a8b4d0" strokeWidth="0.5" opacity="0.7" />
-        {/* iron torch shaft */}
-        <Rect x="16.5" y="10" width="2" height="8" fill="#3a2806" stroke="#0a0510" strokeWidth="0.4" />
-        {/* torch bowl */}
-        <Path d="M 13 10 L 22 10 L 21 6 L 14 6 Z" fill="#3a2806" stroke="#0a0510" strokeWidth="0.6" />
-        {/* flame */}
+        <Rect x="0" y="0" width="35" height="35" fill={`url(#tLight${i})`} />
+
+        {/* heavy ground shadow */}
+        <Ellipse cx="17.5" cy="32.8" rx="11" ry="2" fill={`url(#tShadow${i})`} />
+
+        {/* === PEDESTAL BASE STEP (widest, capped) === */}
+        <Path d="M 8 32 L 27 32 L 25 28 L 10 28 Z" fill={`url(#tStone${i})`} stroke="#1a0c08" strokeWidth="0.9" />
+        <Path d="M 10 28 L 25 28" stroke="#e8c898" strokeWidth="0.5" opacity="0.75" />
+        {/* decorative carved row */}
+        <Path d="M 12 30 L 13 29 L 14 30 L 15 29 L 16 30 L 17 29 L 18 30 L 19 29 L 20 30 L 21 29 L 22 30 L 23 29"
+              stroke="#1a0c08" strokeWidth="0.35" fill="none" opacity="0.7" />
+
+        {/* === PEDESTAL MIDDLE (carved face panel) === */}
+        <Rect x="11" y="20" width="13" height="8" fill={`url(#tStone${i})`} stroke="#1a0c08" strokeWidth="0.9" />
+        {/* mid rim light on left edge */}
+        <Path d="M 11.5 20.5 L 11.5 27.5" stroke="#e8c898" strokeWidth="0.5" opacity="0.7" />
+        {/* recessed carved panel */}
+        <Rect x="13" y="22" width="9" height="4.5" fill={`url(#tStoneDark${i})`} stroke="#1a0c08" strokeWidth="0.4" />
+        {/* gold rune (+) */}
+        <Path d="M 15 24 L 20 24 M 17.5 22.5 L 17.5 26" stroke="#ffd166" strokeWidth="0.65" fill="none"
+              opacity={0.95 * flicker2} />
+        <Circle cx="17.5" cy="24.2" r="1.8" fill="#ffd166" opacity={0.2 * flicker2} />
+        {/* iron band between mid and top */}
+        <Path d="M 11 20 L 24 20" stroke={`url(#tIron${i})`} strokeWidth="1.2" />
+        <Circle cx="12.5" cy="20" r="0.5" fill="#7a8090" />
+        <Circle cx="22.5" cy="20" r="0.5" fill="#7a8090" />
+
+        {/* === PEDESTAL UPPER CAP === */}
+        <Path d="M 9 20 L 26 20 L 24 17 L 11 17 Z" fill={`url(#tStone${i})`} stroke="#1a0c08" strokeWidth="0.9" />
+        <Path d="M 11 17 L 24 17" stroke="#e8c898" strokeWidth="0.5" opacity="0.78" />
+
+        {/* === BRAZIER BOWL === */}
+        {/* bowl shadow on cap */}
+        <Ellipse cx="17.5" cy="16.5" rx="7" ry="1.3" fill="#1a0c08" opacity="0.6" />
+        {/* main bowl body */}
+        <Path d="M 9 16 Q 9 11.5 17.5 11.5 Q 26 11.5 26 16 L 24 18.5 L 11 18.5 Z"
+              fill={`url(#tIron${i})`} stroke="#0a0510" strokeWidth="0.9" />
+        {/* horizontal iron band on bowl */}
+        <Path d="M 9 15 Q 17.5 16 26 15" stroke="#0a0510" strokeWidth="0.7" fill="none" />
+        {/* rivets on band */}
+        <Circle cx="11" cy="15.5" r="0.4" fill="#7a8090" />
+        <Circle cx="17.5" cy="16" r="0.4" fill="#7a8090" />
+        <Circle cx="24" cy="15.5" r="0.4" fill="#7a8090" />
+        {/* bowl top rim */}
+        <Ellipse cx="17.5" cy="11.5" rx="8.5" ry="1.5" fill="#3a3848" stroke="#0a0510" strokeWidth="0.6" />
+        {/* rim light on bowl top */}
+        <Ellipse cx="17.5" cy="11" rx="7.5" ry="0.8" fill="none" stroke="#a8b4d0" strokeWidth="0.4" opacity="0.7" />
+        {/* iron mounting brackets on bowl sides */}
+        <Path d="M 9 13 L 7 14 L 8 16" stroke={`url(#tIron${i})`} strokeWidth="0.8" fill="none" />
+        <Path d="M 26 13 L 28 14 L 27 16" stroke={`url(#tIron${i})`} strokeWidth="0.8" fill="none" />
+
+        {/* === COALS / EMBERS INSIDE BOWL === */}
+        <Circle cx="13" cy="12" r="1.3" fill="#ff6f1f" opacity={0.85 * flicker} />
+        <Circle cx="17.5" cy="11.8" r="1.6" fill="#ffd166" opacity={0.95 * flicker} />
+        <Circle cx="22" cy="12" r="1.3" fill="#ff6f1f" opacity={0.8 * flicker} />
+        <Circle cx="14.5" cy="11" r="0.5" fill="#fff" opacity={flicker} />
+        <Circle cx="20.5" cy="11" r="0.5" fill="#fff" opacity={flicker * 0.85} />
+
+        {/* === MULTI-LAYER FLAME === */}
+        {/* layer 1: outer haze (darkest red, biggest) */}
         <Path
-          d={`M 17.5 ${5 - flicker * 1.5} Q ${14.5 - flicker * 0.3} 6 14 8 Q 13 5 17.5 ${0 - flicker * 2} Q ${22 + flicker * 0.3} 5 21 8 Q ${20.5 + flicker * 0.3} 6 17.5 ${5 - flicker * 1.5} Z`}
-          fill="#ff6f1f"
+          d={`M 17.5 ${3 - flicker * 1.5} Q ${12.5 - flicker * 0.5} 6 11.5 11 Q 10.5 4 17.5 ${-2 - flicker * 2} Q ${24.5 + flicker * 0.5} 4 23.5 11 Q ${22.5 + flicker * 0.5} 6 17.5 ${3 - flicker * 1.5} Z`}
+          fill="#7a1d00"
+          opacity="0.55"
         />
+        {/* layer 2: orange */}
         <Path
-          d={`M 17.5 ${5 - flicker * 1} Q 16 4 16 6 Q 15.5 3 17.5 ${1 - flicker * 1.5} Q 19.5 3 19 6 Q 19 4 17.5 ${5 - flicker * 1} Z`}
+          d={`M 17.5 ${4 - flicker * 1.3} Q ${13.5 - flicker * 0.4} 6 13 10 Q 12 4.5 17.5 ${-0.5 - flicker * 1.8} Q ${22.5 + flicker * 0.4} 4.5 22 10 Q ${21.5 + flicker * 0.4} 6 17.5 ${4 - flicker * 1.3} Z`}
+          fill="#ff6f1f"
+          opacity="0.92"
+        />
+        {/* layer 3: gold */}
+        <Path
+          d={`M 17.5 ${5 - flicker * 1.1} Q 14.5 6 14 9 Q 13 5 17.5 ${0.5 - flicker * 1.6} Q 21 5 21 9 Q 20.5 6 17.5 ${5 - flicker * 1.1} Z`}
           fill="#ffd166"
         />
-        <Circle cx="17.5" cy={4 - flicker * 0.5} r="0.8" fill="#fff" />
-        {/* iron bracket decorations */}
-        <Circle cx="13" cy="22" r="0.8" fill="#0a0510" />
-        <Circle cx="22" cy="22" r="0.8" fill="#0a0510" />
-        {/* engraved rune on pedestal */}
-        <Path d="M 16 24 L 19 24 M 17.5 23 L 17.5 26" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
+        {/* layer 4: inner yellow */}
+        <Path
+          d={`M 17.5 ${5 - flicker * 0.9} Q 15.5 6 15.5 8 Q 14.5 4 17.5 ${1 - flicker * 1.4} Q 20.5 4 19.5 8 Q 19.5 6 17.5 ${5 - flicker * 0.9} Z`}
+          fill="#fff7a8"
+        />
+        {/* layer 5: white core */}
+        <Path
+          d={`M 17.5 ${5 - flicker * 0.5} Q 16.5 5.5 16.5 7 Q 16 4 17.5 ${2.5 - flicker * 1.1} Q 19 4 18.5 7 Q 18.5 5.5 17.5 ${5 - flicker * 0.5} Z`}
+          fill="#fff"
+          opacity="0.92"
+        />
+
+        {/* === FLOATING EMBERS (animated, rising) === */}
+        <Circle cx={17.5 + Math.sin(time * 3 + phase) * 1.2} cy={4 - emberY}
+                r="0.5" fill="#ff6f1f" opacity={Math.max(0, 1 - emberY * 0.09)} />
+        <Circle cx={17.5 + Math.sin(time * 3 + phase + 2) * 1.4} cy={4 - emberY2}
+                r="0.4" fill="#ffd166" opacity={Math.max(0, 1 - emberY2 * 0.09)} />
+        <Circle cx={17.5 + Math.sin(time * 3 + phase + 4) * 1.6} cy={4 - emberY3}
+                r="0.3" fill="#ff6f1f" opacity={Math.max(0, 0.9 - emberY3 * 0.09)} />
+
+        {/* === SMOKE WISP (subtle, above flame) === */}
+        <Circle cx={17.5 + Math.sin(time * 1.5 + phase) * 1.5} cy={-3 - smokeY * 0.4}
+                r={1.5 + smokeY * 0.1} fill="#3a2a1a"
+                opacity={Math.max(0, 0.3 - smokeY * 0.018)} />
       </Svg>
     </View>
   );
