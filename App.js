@@ -1827,7 +1827,10 @@ function SpawnPortal({ pt, time }) {
 
 // ───── Castle keep — fortress with towers, battlements, banner ─────────────
 function CastleKeep({ pt, time }) {
-  const bannerWave = Math.sin(time * 3) * 1.5;
+  // Three independent flag-wave phases so they don't sync up.
+  const wave1 = Math.sin(time * 3) * 1.5;
+  const wave2 = Math.sin(time * 2.6 + 0.8) * 1.2;
+  const wave3 = Math.sin(time * 3.4 + 2.0) * 1.0;
   const size = TILE * 3;
   // center on the goal cell, extending into the right wall
   const left = pt.c * TILE - TILE * 2;
@@ -1836,100 +1839,249 @@ function CastleKeep({ pt, time }) {
     <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
       <Svg width={size} height={size} viewBox="0 0 66 66">
         <Defs>
-          <LinearGradient id="castleStone" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#a8b4d0" />
-            <Stop offset="0.1" stopColor="#8a98b8" />
-            <Stop offset="0.6" stopColor="#5a6a8c" />
-            <Stop offset="1" stopColor="#2a3050" />
+          {/* warm beige fortress stone — Kingdom Rush palette */}
+          <LinearGradient id="cStone" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#f0d8a8" />
+            <Stop offset="0.12" stopColor="#c4a878" />
+            <Stop offset="0.6" stopColor="#8a6848" />
+            <Stop offset="1" stopColor="#3a2818" />
           </LinearGradient>
-          <LinearGradient id="castleTower" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#b8c4d8" />
-            <Stop offset="0.1" stopColor="#8a98b8" />
-            <Stop offset="0.6" stopColor="#5a6a8c" />
-            <Stop offset="1" stopColor="#1a2034" />
+          {/* slightly darker stone for shadow side */}
+          <LinearGradient id="cStoneDark" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#a08858" />
+            <Stop offset="1" stopColor="#3a2818" />
           </LinearGradient>
-          <LinearGradient id="castleRoof" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#a8f8c8" />
+          {/* emerald shingled roof */}
+          <LinearGradient id="cRoof" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#b8f8c8" />
             <Stop offset="0.2" stopColor="#5cf28a" />
-            <Stop offset="1" stopColor="#0a4a20" />
+            <Stop offset="0.7" stopColor="#1a6a30" />
+            <Stop offset="1" stopColor="#0a3818" />
           </LinearGradient>
-          <RadialGradient id="castleShadow" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor="#000" stopOpacity="0.7" />
+          {/* dark wood gate */}
+          <LinearGradient id="cWood" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#8a5028" />
+            <Stop offset="0.4" stopColor="#5a3018" />
+            <Stop offset="1" stopColor="#2a1008" />
+          </LinearGradient>
+          {/* window glow */}
+          <RadialGradient id="cWin" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#fff7a8" />
+            <Stop offset="0.6" stopColor="#ffd166" />
+            <Stop offset="1" stopColor="#7a5018" />
+          </RadialGradient>
+          {/* drop shadow */}
+          <RadialGradient id="cDrop" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.75" />
             <Stop offset="1" stopColor="#000" stopOpacity="0" />
           </RadialGradient>
         </Defs>
-        {/* heavy base shadow */}
-        <Ellipse cx="33" cy="62" rx="34" ry="5" fill="url(#castleShadow)" />
-        {/* main keep — central rectangle */}
-        <Rect x="22" y="22" width="22" height="38" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1.5" />
-        {/* main keep merlons (battlements) */}
-        <Rect x="22" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
-        <Rect x="28" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
-        <Rect x="34" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
-        <Rect x="40" y="18" width="4" height="6" fill="url(#castleStone)" stroke="#0a0510" strokeWidth="1" />
-        {/* left tower */}
-        <Rect x="8" y="20" width="14" height="40" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="1.5" />
-        {/* left tower merlons */}
-        <Rect x="8" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
-        <Rect x="13" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
-        <Rect x="18" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
-        {/* left tower roof */}
-        <Polygon points="6,20 24,20 15,4" fill="url(#castleRoof)" stroke="#0a0510" strokeWidth="1.5" />
-        <Path d="M 6 20 L 15 4" stroke="#fff" strokeWidth="1" opacity="0.6" />
-        <Path d="M 15 4 L 24 20" stroke="#0a0510" strokeWidth="0.6" opacity="0.6" />
-        {/* left tower rim light */}
-        <Path d="M 8 22 L 8 60" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.55" />
-        {/* right tower */}
-        <Rect x="44" y="20" width="14" height="40" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="1.5" />
-        <Rect x="45" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
-        <Rect x="50" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
-        <Rect x="55" y="16" width="3" height="5" fill="url(#castleTower)" stroke="#0a0510" strokeWidth="0.8" />
-        <Polygon points="42,20 60,20 51,4" fill="url(#castleRoof)" stroke="#0a0510" strokeWidth="1.5" />
-        <Path d="M 42 20 L 51 4" stroke="#fff" strokeWidth="1" opacity="0.6" />
-        <Path d="M 51 4 L 60 20" stroke="#0a0510" strokeWidth="0.6" opacity="0.6" />
-        {/* right tower rim light */}
-        <Path d="M 44 22 L 44 60" stroke="#cfd5e6" strokeWidth="0.8" opacity="0.55" />
-        {/* central keep rim light */}
-        <Path d="M 22 24 L 22 60" stroke="#cfd5e6" strokeWidth="0.6" opacity="0.45" />
-        {/* gate */}
-        <Path d="M 28 60 L 28 44 Q 28 38 33 38 Q 38 38 38 44 L 38 60 Z" fill="#0a0510" stroke="#0a0510" strokeWidth="1" />
-        {/* gate portcullis bars */}
-        <Path d="M 30 44 L 30 58 M 33 42 L 33 58 M 36 44 L 36 58" stroke="#7a6a3a" strokeWidth="0.8" />
-        <Path d="M 28 50 L 38 50" stroke="#7a6a3a" strokeWidth="0.8" />
-        {/* tower windows — arched slits */}
-        <Path d="M 13 30 L 13 36 Q 13 38 15 38 Q 17 38 17 36 L 17 30 Z" fill="#ffd166" />
-        <Path d="M 49 30 L 49 36 Q 49 38 51 38 Q 53 38 53 36 L 53 30 Z" fill="#ffd166" />
-        <Path d="M 13 44 L 13 50 Q 13 52 15 52 Q 17 52 17 50 L 17 44 Z" fill="#ffd166" opacity="0.6" />
-        <Path d="M 49 44 L 49 50 Q 49 52 51 52 Q 53 52 53 50 L 53 44 Z" fill="#ffd166" opacity="0.6" />
-        {/* main keep windows */}
-        <Path d="M 26 30 L 26 34 Q 26 36 28 36 Q 30 36 30 34 L 30 30 Z" fill="#ffd166" />
-        <Path d="M 36 30 L 36 34 Q 36 36 38 36 Q 40 36 40 34 L 40 30 Z" fill="#ffd166" />
-        {/* main keep flagpole + waving banner */}
-        <Rect x="32.5" y="0" width="1" height="20" fill="#3a2806" />
+
+        {/* big drop shadow on ground */}
+        <Ellipse cx="33" cy="63" rx="34" ry="4.5" fill="url(#cDrop)" />
+
+        {/* === FOUNDATION: stepped stone base === */}
+        <Path d="M 0 61 L 66 61 L 64 65 L 2 65 Z" fill="url(#cStoneDark)" stroke="#1a0c08" strokeWidth="1.2" />
+        <Path d="M 2 59 L 64 59 L 62 61 L 4 61 Z" fill="#a08858" stroke="#1a0c08" strokeWidth="1" />
+        {/* foundation rim light */}
+        <Path d="M 2 59 L 64 59" stroke="#e8c898" strokeWidth="0.5" opacity="0.75" />
+        {/* grass tufts at base */}
+        <Path d="M 8 59 L 7.5 57 M 8 59 L 8 56.5 M 8 59 L 8.5 57" stroke="#5cf28a" strokeWidth="0.7" />
+        <Path d="M 14 59 L 13.5 57.5 M 14 59 L 14.5 57.5" stroke="#5cf28a" strokeWidth="0.6" />
+        <Path d="M 52 59 L 51.5 57 M 52 59 L 52 56.5 M 52 59 L 52.5 57" stroke="#5cf28a" strokeWidth="0.7" />
+        <Path d="M 58 59 L 57.5 57.5 M 58 59 L 58.5 57.5" stroke="#5cf28a" strokeWidth="0.6" />
+
+        {/* === LEFT TOWER === */}
+        {/* tower body */}
+        <Rect x="4" y="22" width="18" height="37" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="1.5" />
+        {/* stone block horizontal courses */}
+        <Path d="M 4 28 L 22 28" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 4 34 L 22 34" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 4 40 L 22 40" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 4 46 L 22 46" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 4 52 L 22 52" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        {/* alternating vertical joints (running bond) */}
+        <Path d="M 10 22 L 10 28 M 16 22 L 16 28" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 7 28 L 7 34 M 13 28 L 13 34 M 19 28 L 19 34" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 10 34 L 10 40 M 16 34 L 16 40" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 7 40 L 7 46 M 13 40 L 13 46 M 19 40 L 19 46" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 10 46 L 10 52 M 16 46 L 16 52" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 7 52 L 7 59 M 13 52 L 13 59 M 19 52 L 19 59" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        {/* rim light on left edge */}
+        <Path d="M 5 23 L 5 58" stroke="#f8e8c0" strokeWidth="0.9" opacity="0.7" />
+        {/* battlement cap strip */}
+        <Path d="M 3 22 L 23 22 L 22 24 L 4 24 Z" fill="#8a6848" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 3 22 L 23 22" stroke="#e8c898" strokeWidth="0.4" opacity="0.7" />
+        {/* battlement merlons (with cap stones) */}
+        <Rect x="3" y="17" width="4" height="6" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 2 17 L 8 17" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="9" y="17" width="4" height="6" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 8 17 L 14 17" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="15" y="17" width="4" height="6" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 14 17 L 20 17" stroke="#1a0c08" strokeWidth="0.6" />
+        {/* tower roof — peaked with shingles */}
+        <Polygon points="2,17 24,17 13,1" fill="url(#cRoof)" stroke="#0a3818" strokeWidth="1.5" />
+        {/* shingle rows (zigzag) */}
+        <Path d="M 4 14 L 7 12.5 L 10 14 L 13 12.5 L 16 14 L 19 12.5 L 22 14" stroke="#0a3818" strokeWidth="0.5" fill="none" opacity="0.65" />
+        <Path d="M 6 10 L 9 8.5 L 12 10 L 15 8.5 L 18 10 L 20 8.5" stroke="#0a3818" strokeWidth="0.5" fill="none" opacity="0.55" />
+        <Path d="M 8 6 L 11 5 L 14 6 L 16 5" stroke="#0a3818" strokeWidth="0.4" fill="none" opacity="0.5" />
+        {/* roof apex rim light */}
+        <Path d="M 2 17 L 13 1" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+        <Path d="M 13 1 L 24 17" stroke="#0a3818" strokeWidth="0.8" opacity="0.7" />
+        {/* roof finial */}
+        <Circle cx="13" cy="1" r="0.8" fill="#ffd166" stroke="#3a2806" strokeWidth="0.3" />
+        {/* tower flag (left) */}
+        <Rect x="12.5" y="-5" width="1" height="6" fill="#3a2806" />
         <Path
-          d={`M 33 2 L ${42 + bannerWave} 6 L ${40 + bannerWave} 14 L 33 12 Z`}
+          d={`M 13 -4 L ${17 + wave2} -2 L ${16 + wave2} 0 L 13 -1 Z`}
+          fill="#ff4d6d" stroke="#7a1d2e" strokeWidth="0.4"
+        />
+        {/* upper window with arch + glow */}
+        <Path d="M 8 33 L 8 39 Q 8 41 10 41 Q 12 41 12 39 L 12 33 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="10" cy="38" r="3.5" fill="#ffd166" opacity="0.22" />
+        <Path d="M 14 33 L 14 39 Q 14 41 16 41 Q 18 41 18 39 L 18 33 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="16" cy="38" r="3.5" fill="#ffd166" opacity="0.22" />
+        {/* lower window */}
+        <Path d="M 11 47 L 11 52 Q 11 54 13 54 Q 15 54 15 52 L 15 47 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.5" opacity="0.85" />
+        <Circle cx="13" cy="51" r="2.5" fill="#ffd166" opacity="0.18" />
+
+        {/* === CENTRAL KEEP === */}
+        {/* keep body */}
+        <Rect x="23" y="24" width="20" height="35" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="1.5" />
+        {/* horizontal courses */}
+        <Path d="M 23 30 L 43 30" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 23 36 L 43 36" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 23 42 L 43 42" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 23 48 L 43 48" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 23 54 L 43 54" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        {/* alternating vertical joints */}
+        <Path d="M 28 24 L 28 30 M 35 24 L 35 30" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 25 30 L 25 36 M 31 30 L 31 36 M 38 30 L 38 36" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 28 36 L 28 42 M 35 36 L 35 42" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 25 42 L 25 48 M 31 42 L 31 48 M 38 42 L 38 48" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 28 48 L 28 54 M 35 48 L 35 54" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        {/* keep rim light */}
+        <Path d="M 24 25 L 24 58" stroke="#f8e8c0" strokeWidth="0.8" opacity="0.65" />
+        {/* battlement strip */}
+        <Path d="M 22 24 L 44 24 L 43 26 L 23 26 Z" fill="#8a6848" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 22 24 L 44 24" stroke="#e8c898" strokeWidth="0.4" opacity="0.7" />
+        {/* keep merlons */}
+        <Rect x="22" y="19" width="4" height="5" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 21 19 L 27 19" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="28" y="19" width="4" height="5" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 27 19 L 33 19" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="34" y="19" width="4" height="5" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 33 19 L 39 19" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="40" y="19" width="4" height="5" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 39 19 L 45 19" stroke="#1a0c08" strokeWidth="0.6" />
+        {/* keep roof — taller peak */}
+        <Polygon points="22,19 44,19 33,3" fill="url(#cRoof)" stroke="#0a3818" strokeWidth="1.5" />
+        {/* shingle rows */}
+        <Path d="M 24 16 L 28 14.5 L 32 16 L 36 14.5 L 40 16" stroke="#0a3818" strokeWidth="0.5" fill="none" opacity="0.65" />
+        <Path d="M 26 12 L 30 10.5 L 33 12 L 36 10.5 L 39 12" stroke="#0a3818" strokeWidth="0.5" fill="none" opacity="0.55" />
+        <Path d="M 28 8 L 31 6.5 L 33 8 L 35 6.5 L 37 8" stroke="#0a3818" strokeWidth="0.4" fill="none" opacity="0.5" />
+        {/* roof rim light */}
+        <Path d="M 22 19 L 33 3" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+        <Path d="M 33 3 L 44 19" stroke="#0a3818" strokeWidth="0.8" opacity="0.7" />
+        {/* roof finial */}
+        <Circle cx="33" cy="3" r="1" fill="#ffd166" stroke="#3a2806" strokeWidth="0.3" />
+        {/* main flag (biggest, waving) */}
+        <Rect x="32.5" y="-6" width="1.2" height="9" fill="#3a2806" />
+        {/* flag triangle pennant */}
+        <Path
+          d={`M 33 -4 L ${44 + wave1} 0 L ${42 + wave1} 8 L 33 6 Z`}
           fill="#5cf28a"
-          stroke="#0a0510"
+          stroke="#0a3818"
           strokeWidth="0.6"
         />
-        <Path d={`M 33 6 L ${39 + bannerWave} 8 L ${38 + bannerWave} 11 L 33 9 Z`} fill="#fff" opacity="0.4" />
-        {/* heraldry star on the banner */}
-        <Polygon
-          points={`${36 + bannerWave * 0.5},6 ${37 + bannerWave * 0.5},9 ${40 + bannerWave * 0.5},9 ${37.5 + bannerWave * 0.5},11 ${38.5 + bannerWave * 0.5},14 ${36 + bannerWave * 0.5},12 ${33.5 + bannerWave * 0.5},14 ${34.5 + bannerWave * 0.5},11 ${32 + bannerWave * 0.5},9 ${35 + bannerWave * 0.5},9`}
-          fill="#ffd166"
+        <Path
+          d={`M 33 -2 L ${40 + wave1 * 0.7} 1 L ${39 + wave1 * 0.7} 4 L 33 2 Z`}
+          fill="#fff" opacity="0.3"
         />
-        {/* tower roof flags */}
-        <Rect x="14.5" y="-2" width="1" height="7" fill="#3a2806" />
-        <Polygon points="15.5,-2 20,0 15.5,2" fill="#ff4d6d" />
-        <Rect x="50.5" y="-2" width="1" height="7" fill="#3a2806" />
-        <Polygon points="51.5,-2 56,0 51.5,2" fill="#4cc9ff" />
-        {/* warm window glow */}
-        <Circle cx="15" cy="34" r="3.5" fill="#ffd166" opacity="0.25" />
-        <Circle cx="51" cy="34" r="3.5" fill="#ffd166" opacity="0.25" />
-        {/* stone block lines on tower */}
-        <Path d="M 8 30 L 22 30 M 8 40 L 22 40 M 8 50 L 22 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.6" />
-        <Path d="M 44 30 L 58 30 M 44 40 L 58 40 M 44 50 L 58 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.6" />
-        <Path d="M 22 30 L 44 30 M 22 40 L 44 40 M 22 50 L 44 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.6" />
+        {/* heraldry star */}
+        <Polygon
+          points={`${37 + wave1 * 0.5},-2 ${38 + wave1 * 0.5},1 ${41 + wave1 * 0.5},1 ${38.5 + wave1 * 0.5},3 ${39.5 + wave1 * 0.5},6 ${37 + wave1 * 0.5},4 ${34.5 + wave1 * 0.5},6 ${35.5 + wave1 * 0.5},3 ${33 + wave1 * 0.5},1 ${36 + wave1 * 0.5},1`}
+          fill="#ffd166"
+          stroke="#3a2806"
+          strokeWidth="0.3"
+        />
+        {/* gate */}
+        <Path d="M 28 59 L 28 46 Q 28 40 33 40 Q 38 40 38 46 L 38 59 Z" fill="url(#cWood)" stroke="#1a0c08" strokeWidth="1.4" />
+        {/* gate arch rim light */}
+        <Path d="M 28 46 Q 28 40 33 40 Q 38 40 38 46" stroke="#a06838" strokeWidth="0.6" fill="none" opacity="0.65" />
+        {/* gate wood planks */}
+        <Path d="M 30 42 L 30 59" stroke="#1a0c08" strokeWidth="0.45" opacity="0.7" />
+        <Path d="M 33 40.5 L 33 59" stroke="#1a0c08" strokeWidth="0.45" opacity="0.7" />
+        <Path d="M 36 42 L 36 59" stroke="#1a0c08" strokeWidth="0.45" opacity="0.7" />
+        {/* iron bands on gate */}
+        <Path d="M 28 50 L 38 50" stroke="#1a2028" strokeWidth="1" />
+        <Path d="M 28 54 L 38 54" stroke="#1a2028" strokeWidth="1" />
+        {/* iron studs */}
+        <Circle cx="30" cy="50" r="0.5" fill="#5a6470" />
+        <Circle cx="33" cy="50" r="0.5" fill="#5a6470" />
+        <Circle cx="36" cy="50" r="0.5" fill="#5a6470" />
+        <Circle cx="30" cy="54" r="0.5" fill="#5a6470" />
+        <Circle cx="33" cy="54" r="0.5" fill="#5a6470" />
+        <Circle cx="36" cy="54" r="0.5" fill="#5a6470" />
+        {/* door ring */}
+        <Circle cx="36" cy="48" r="1.1" fill="none" stroke="#3a3848" strokeWidth="0.5" />
+        <Circle cx="36" cy="48" r="0.4" fill="#5a6470" />
+        {/* keep windows above gate */}
+        <Path d="M 27 31 L 27 35 Q 27 37 29 37 Q 31 37 31 35 L 31 31 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.5" />
+        <Circle cx="29" cy="34" r="2.5" fill="#ffd166" opacity="0.25" />
+        <Path d="M 35 31 L 35 35 Q 35 37 37 37 Q 39 37 39 35 L 39 31 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.5" />
+        <Circle cx="37" cy="34" r="2.5" fill="#ffd166" opacity="0.25" />
+
+        {/* === RIGHT TOWER === */}
+        <Rect x="44" y="22" width="18" height="37" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="1.5" />
+        {/* horizontal courses */}
+        <Path d="M 44 28 L 62 28" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 44 34 L 62 34" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 44 40 L 62 40" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 44 46 L 62 46" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        <Path d="M 44 52 L 62 52" stroke="#1a0c08" strokeWidth="0.5" opacity="0.55" />
+        {/* alternating vertical joints */}
+        <Path d="M 50 22 L 50 28 M 56 22 L 56 28" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 47 28 L 47 34 M 53 28 L 53 34 M 59 28 L 59 34" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 50 34 L 50 40 M 56 34 L 56 40" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 47 40 L 47 46 M 53 40 L 53 46 M 59 40 L 59 46" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 50 46 L 50 52 M 56 46 L 56 52" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        <Path d="M 47 52 L 47 59 M 53 52 L 53 59 M 59 52 L 59 59" stroke="#1a0c08" strokeWidth="0.4" opacity="0.45" />
+        {/* rim light on left edge of right tower (toward keep) */}
+        <Path d="M 45 23 L 45 58" stroke="#f8e8c0" strokeWidth="0.9" opacity="0.7" />
+        {/* battlement strip */}
+        <Path d="M 43 22 L 63 22 L 62 24 L 44 24 Z" fill="#8a6848" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 43 22 L 63 22" stroke="#e8c898" strokeWidth="0.4" opacity="0.7" />
+        {/* merlons */}
+        <Rect x="43" y="17" width="4" height="6" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 42 17 L 48 17" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="49" y="17" width="4" height="6" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 48 17 L 54 17" stroke="#1a0c08" strokeWidth="0.6" />
+        <Rect x="55" y="17" width="4" height="6" fill="url(#cStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 54 17 L 60 17" stroke="#1a0c08" strokeWidth="0.6" />
+        {/* roof */}
+        <Polygon points="42,17 64,17 53,1" fill="url(#cRoof)" stroke="#0a3818" strokeWidth="1.5" />
+        <Path d="M 44 14 L 47 12.5 L 50 14 L 53 12.5 L 56 14 L 59 12.5 L 62 14" stroke="#0a3818" strokeWidth="0.5" fill="none" opacity="0.65" />
+        <Path d="M 46 10 L 49 8.5 L 52 10 L 55 8.5 L 58 10 L 60 8.5" stroke="#0a3818" strokeWidth="0.5" fill="none" opacity="0.55" />
+        <Path d="M 48 6 L 51 5 L 54 6 L 56 5" stroke="#0a3818" strokeWidth="0.4" fill="none" opacity="0.5" />
+        <Path d="M 42 17 L 53 1" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+        <Path d="M 53 1 L 64 17" stroke="#0a3818" strokeWidth="0.8" opacity="0.7" />
+        {/* roof finial */}
+        <Circle cx="53" cy="1" r="0.8" fill="#ffd166" stroke="#3a2806" strokeWidth="0.3" />
+        {/* tower flag (right) */}
+        <Rect x="52.5" y="-5" width="1" height="6" fill="#3a2806" />
+        <Path
+          d={`M 53 -4 L ${57 + wave3} -2 L ${56 + wave3} 0 L 53 -1 Z`}
+          fill="#4cc9ff" stroke="#0a4070" strokeWidth="0.4"
+        />
+        {/* upper windows */}
+        <Path d="M 48 33 L 48 39 Q 48 41 50 41 Q 52 41 52 39 L 52 33 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="50" cy="38" r="3.5" fill="#ffd166" opacity="0.22" />
+        <Path d="M 54 33 L 54 39 Q 54 41 56 41 Q 58 41 58 39 L 58 33 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="56" cy="38" r="3.5" fill="#ffd166" opacity="0.22" />
+        {/* lower window */}
+        <Path d="M 51 47 L 51 52 Q 51 54 53 54 Q 55 54 55 52 L 55 47 Z" fill="url(#cWin)" stroke="#1a0c08" strokeWidth="0.5" opacity="0.85" />
+        <Circle cx="53" cy="51" r="2.5" fill="#ffd166" opacity="0.18" />
       </Svg>
     </View>
   );
