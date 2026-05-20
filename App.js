@@ -2418,70 +2418,227 @@ function CheckpointTorch({ pt, time, i }) {
 // keeps the same shape across renders.
 function RockView({ t }) {
   const seed = (t.id * 2654435761) >>> 0;
-  const variant = seed % 4;
-  const rot = ((seed >> 4) & 0x3F) - 32; // -32..+31 degrees
-  const baseColors = ['#4a4a5e', '#4f4860', '#3f4458', '#52516a'];
-  const highlightColors = ['#8c8aa8', '#9a90b0', '#7e8aa0', '#a09ab8'];
-  const shadowColors = ['#22222e', '#26222e', '#1e2230', '#2a2738'];
-  const base = baseColors[variant];
-  const hi = highlightColors[variant];
-  const sh = shadowColors[variant];
-  const spikeAngle = ((seed >> 10) & 0xFF) - 128;
-  const showSpike = variant !== 0;
+  const variant = seed % 8;                 // 8 shapes
+  const palette = (seed >> 4) % 3;          // 3 palettes
+  const detail = (seed >> 8) % 4;           // 4 detail overlays
+  const rot = (((seed >> 12) & 0x3F) - 32) * 0.4;  // ±12.8° rotation (gentle)
+  const px = TILE;
+  const id = useRef(nextGid()).current;
+
+  // Palettes: warm beige / cool gray / dark obsidian
+  const palettes = [
+    { hi: '#d8c098', main: '#a08868', dark: '#604838', deep: '#2a1810' },
+    { hi: '#b8c0d0', main: '#7a8090', dark: '#3a4050', deep: '#1a2030' },
+    { hi: '#5a5a72', main: '#3a3a4e', dark: '#1a1a28', deep: '#000' },
+  ];
+  const pal = palettes[palette];
+  // Embedded-crystal accent colors (cycled by detail bit)
+  const accentColors = ['#4cc9ff', '#ff4d6d', '#5cf28a', '#ffd166'];
+  const accent = accentColors[(seed >> 16) % 4];
+  // Moss / lichen colors
+  const moss = '#3a6a3a';
+
   return (
     <View pointerEvents="none" style={{
       position: 'absolute', left: t.c * TILE, top: t.r * TILE,
-      width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
+      width: px, height: px,
+      alignItems: 'center', justifyContent: 'center',
     }}>
-      {/* shadow under stone */}
-      <View style={{
-        position: 'absolute', left: TILE * 0.15, top: TILE * 0.55,
-        width: TILE * 0.7, height: TILE * 0.28,
-        borderRadius: TILE * 0.4,
-        backgroundColor: '#000', opacity: 0.45,
-      }} />
-      {/* main rock body, rotated for variation */}
-      <View style={{
-        width: TILE * 0.78, height: TILE * 0.78,
-        transform: [{ rotate: `${rot}deg` }],
-        alignItems: 'center', justifyContent: 'center',
-      }}>
-        {/* dark base */}
-        <View style={{
-          position: 'absolute', width: '100%', height: '100%',
-          backgroundColor: sh,
-          borderRadius: variant === 0 ? TILE * 0.3 : 4,
-        }} />
-        {/* main face */}
-        <View style={{
-          position: 'absolute',
-          left: 0, top: 0, right: TILE * 0.05, bottom: TILE * 0.12,
-          backgroundColor: base,
-          borderRadius: variant === 0 ? TILE * 0.3 : 3,
-        }} />
-        {/* top-left highlight facet */}
-        <View style={{
-          position: 'absolute',
-          left: 0, top: 0,
-          width: '55%', height: '55%',
-          backgroundColor: hi,
-          opacity: 0.7,
-          borderTopLeftRadius: variant === 0 ? TILE * 0.3 : 3,
-          borderBottomRightRadius: 8,
-        }} />
-        {/* small dark facet (chipped corner) */}
-        {showSpike && (
-          <View style={{
-            position: 'absolute',
-            right: 1, top: TILE * 0.18,
-            width: '32%', height: '32%',
-            backgroundColor: sh,
-            transform: [{ rotate: `${spikeAngle}deg` }],
-            borderRadius: 2,
-            opacity: 0.85,
-          }} />
+      <Svg width={px} height={px} viewBox="0 0 100 100" style={{ transform: [{ rotate: `${rot}deg` }] }}>
+        <Defs>
+          <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={pal.hi} />
+            <Stop offset="0.2" stopColor={pal.main} />
+            <Stop offset="0.7" stopColor={pal.dark} />
+            <Stop offset="1" stopColor={pal.deep} />
+          </LinearGradient>
+          <RadialGradient id={`${id}drop`} cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.7" />
+            <Stop offset="1" stopColor="#000" stopOpacity="0" />
+          </RadialGradient>
+          <LinearGradient id={`${id}xtal`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="rgba(255,255,255,0.5)" />
+            <Stop offset="0.2" stopColor={accent} />
+            <Stop offset="1" stopColor={darken(accent, 0.5)} />
+          </LinearGradient>
+        </Defs>
+
+        {/* ground shadow under every rock */}
+        <Ellipse cx="50" cy="86" rx="34" ry="5" fill={`url(#${id}drop)`} />
+
+        {variant === 0 && (
+          // SMOOTH BOULDER — potato shape
+          <>
+            <Path
+              d="M 22 60 Q 12 40 22 24 Q 38 14 50 16 Q 68 14 78 22 Q 90 38 82 56 Q 72 78 52 80 Q 32 80 22 60 Z"
+              fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.5"
+            />
+            {/* top rim light */}
+            <Path d="M 22 24 Q 38 14 50 16 Q 68 14 78 22"
+                  stroke={pal.hi} strokeWidth="1.5" fill="none" opacity="0.65" />
+            {/* subtle inner shading curve */}
+            <Path d="M 26 56 Q 38 50 50 56 Q 62 52 70 58" stroke={pal.deep} strokeWidth="0.6" fill="none" opacity="0.5" />
+          </>
         )}
-      </View>
+
+        {variant === 1 && (
+          // CRYSTAL CLUSTER — 3 shards
+          <>
+            {/* main center shard */}
+            <Polygon points="50,12 64,40 60,76 40,76 36,40" fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.2" />
+            <Polygon points="50,12 40,40 50,50" fill={pal.hi} opacity="0.5" />
+            {/* left smaller shard */}
+            <Polygon points="22,38 32,22 38,50 30,74 16,72" fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2" opacity="0.95" />
+            <Polygon points="22,38 32,22 28,50" fill={pal.hi} opacity="0.45" />
+            {/* right smaller shard */}
+            <Polygon points="78,38 68,22 62,50 70,74 84,72" fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2" opacity="0.95" />
+            <Polygon points="78,38 68,22 72,50" fill={pal.hi} opacity="0.45" />
+            {/* top rim light on main shard */}
+            <Path d="M 50 12 L 64 40" stroke={pal.hi} strokeWidth="1.2" fill="none" opacity="0.7" />
+            {/* small shine pip */}
+            <Circle cx="44" cy="30" r="2" fill="#fff" opacity="0.6" />
+          </>
+        )}
+
+        {variant === 2 && (
+          // CRACKED BLOCK — square with chipped corner + crack
+          <>
+            <Path
+              d="M 18 22 L 76 18 L 82 32 L 84 70 L 76 80 L 28 78 L 18 68 L 16 32 Z"
+              fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.5"
+            />
+            {/* top rim light */}
+            <Path d="M 18 22 L 76 18 L 82 32" stroke={pal.hi} strokeWidth="1.5" fill="none" opacity="0.65" />
+            {/* chipped corner — show a darker face */}
+            <Polygon points="76,18 82,32 76,30" fill={pal.deep} />
+            {/* visible crack across body */}
+            <Path d="M 32 30 L 42 50 L 38 70" stroke={pal.deep} strokeWidth="0.9" fill="none" opacity="0.85" />
+            <Path d="M 56 22 L 60 44 L 70 66" stroke={pal.deep} strokeWidth="0.7" fill="none" opacity="0.75" />
+            {/* small chip out of bottom */}
+            <Polygon points="28,78 38,76 32,72" fill={pal.deep} />
+          </>
+        )}
+
+        {variant === 3 && (
+          // TWIN BOULDER — two rocks joined
+          <>
+            {/* larger left boulder */}
+            <Path d="M 12 60 Q 6 36 18 22 Q 32 14 42 18 Q 52 26 48 52 Q 46 76 30 78 Q 14 78 12 60 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.2" />
+            <Path d="M 12 36 Q 22 14 42 18" stroke={pal.hi} strokeWidth="1.3" fill="none" opacity="0.6" />
+            {/* smaller right boulder */}
+            <Path d="M 50 64 Q 46 44 58 32 Q 72 24 84 36 Q 92 56 84 72 Q 70 80 56 78 Q 50 76 50 64 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.2" />
+            <Path d="M 54 44 Q 64 26 84 36" stroke={pal.hi} strokeWidth="1.2" fill="none" opacity="0.55" />
+            {/* join shadow */}
+            <Ellipse cx="48" cy="68" rx="6" ry="3" fill={pal.deep} opacity="0.65" />
+          </>
+        )}
+
+        {variant === 4 && (
+          // SPIKY ROCK — base with sharp upward spikes
+          <>
+            {/* base body (rounded) */}
+            <Path d="M 18 60 Q 12 44 22 36 Q 38 28 50 30 Q 68 28 78 36 Q 88 44 82 60 Q 76 76 50 76 Q 24 76 18 60 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.4" />
+            {/* spikes */}
+            <Polygon points="22,46 28,18 34,46" fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2" />
+            <Polygon points="38,40 46,10 54,44" fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2" />
+            <Polygon points="56,42 64,14 72,46" fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2" />
+            {/* spike rim lights */}
+            <Path d="M 28 18 L 22 46" stroke={pal.hi} strokeWidth="0.9" opacity="0.7" />
+            <Path d="M 46 10 L 38 40" stroke={pal.hi} strokeWidth="0.9" opacity="0.7" />
+            <Path d="M 64 14 L 56 42" stroke={pal.hi} strokeWidth="0.9" opacity="0.7" />
+            {/* base rim light */}
+            <Path d="M 18 60 Q 12 44 22 36" stroke={pal.hi} strokeWidth="1.2" fill="none" opacity="0.55" />
+          </>
+        )}
+
+        {variant === 5 && (
+          // MUSHROOM ROCK — wider top, eroded base
+          <>
+            {/* base (narrower) */}
+            <Path d="M 30 78 L 28 56 Q 28 52 32 52 L 68 52 Q 72 52 72 56 L 70 78 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.2" />
+            {/* top cap (wider) */}
+            <Path d="M 14 38 Q 14 22 50 18 Q 86 22 86 38 Q 82 54 50 56 Q 18 54 14 38 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.4" />
+            {/* top cap rim light */}
+            <Path d="M 14 38 Q 14 22 50 18 Q 86 22 86 38" stroke={pal.hi} strokeWidth="1.5" fill="none" opacity="0.7" />
+            {/* erosion crack on base */}
+            <Path d="M 40 56 L 42 76" stroke={pal.deep} strokeWidth="0.7" opacity="0.7" />
+            <Path d="M 58 56 L 56 76" stroke={pal.deep} strokeWidth="0.7" opacity="0.7" />
+          </>
+        )}
+
+        {variant === 6 && (
+          // EMBEDDED CRYSTAL — boulder with a small colored crystal jutting out
+          <>
+            {/* boulder body */}
+            <Path d="M 18 60 Q 12 40 24 24 Q 40 14 52 18 Q 72 14 80 26 Q 90 44 82 58 Q 70 78 50 78 Q 28 78 18 60 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.4" />
+            <Path d="M 24 24 Q 40 14 52 18 Q 72 14 80 26" stroke={pal.hi} strokeWidth="1.4" fill="none" opacity="0.65" />
+            {/* embedded crystal — angled shard */}
+            <Polygon points="56,26 70,4 64,38 50,42 46,32" fill={`url(#${id}xtal)`} stroke={pal.deep} strokeWidth="1.8" />
+            <Polygon points="56,26 50,42 60,32" fill="#fff" opacity="0.35" />
+            {/* crystal rim light */}
+            <Path d="M 56 26 L 70 4" stroke="#fff" strokeWidth="0.8" opacity="0.7" />
+            {/* small glow around crystal */}
+            <Circle cx="60" cy="20" r="14" fill={accent} opacity="0.18" />
+            {/* shine pip on crystal */}
+            <Circle cx="60" cy="14" r="1.5" fill="#fff" opacity="0.85" />
+          </>
+        )}
+
+        {variant === 7 && (
+          // ROCK PILE — 3 smaller rocks stacked
+          <>
+            {/* bottom largest rock */}
+            <Path d="M 14 76 Q 10 60 22 56 Q 38 54 50 58 Q 64 54 78 58 Q 90 62 88 76 Q 76 82 50 82 Q 24 82 14 76 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2.2" />
+            <Path d="M 14 70 Q 18 56 38 54 Q 60 54 86 64" stroke={pal.hi} strokeWidth="1" fill="none" opacity="0.55" />
+            {/* middle rock */}
+            <Path d="M 26 54 Q 22 40 32 34 Q 48 30 58 36 Q 70 32 76 44 Q 78 56 56 56 Q 32 58 26 54 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="2" />
+            <Path d="M 26 46 Q 36 32 60 34" stroke={pal.hi} strokeWidth="0.9" fill="none" opacity="0.6" />
+            {/* top rock */}
+            <Path d="M 40 30 Q 38 18 50 14 Q 62 14 66 26 Q 64 36 52 34 Q 42 34 40 30 Z"
+                  fill={`url(#${id}b)`} stroke={pal.deep} strokeWidth="1.8" />
+            <Path d="M 40 24 Q 48 16 62 18" stroke={pal.hi} strokeWidth="0.9" fill="none" opacity="0.65" />
+            {/* small pebbles at base */}
+            <Ellipse cx="10" cy="80" rx="3" ry="1.5" fill={pal.dark} stroke={pal.deep} strokeWidth="0.6" />
+            <Ellipse cx="90" cy="80" rx="3" ry="1.5" fill={pal.dark} stroke={pal.deep} strokeWidth="0.6" />
+          </>
+        )}
+
+        {/* === DETAIL OVERLAYS === */}
+        {detail === 1 && variant !== 6 && (
+          // MOSS patches
+          <>
+            <Ellipse cx="36" cy="32" rx="10" ry="4" fill={moss} opacity="0.75" />
+            <Ellipse cx="32" cy="34" rx="5" ry="2.5" fill="#5cf28a" opacity="0.55" />
+            <Ellipse cx="64" cy="40" rx="6" ry="3" fill={moss} opacity="0.65" />
+            {/* tiny grass tufts */}
+            <Path d="M 30 28 L 30 24 M 33 28 L 33 24 M 36 28 L 36 24" stroke="#5cf28a" strokeWidth="0.6" />
+          </>
+        )}
+        {detail === 2 && variant !== 2 && (
+          // EXTRA CRACKS
+          <>
+            <Path d="M 30 28 L 38 50 L 32 70" stroke={pal.deep} strokeWidth="0.8" fill="none" opacity="0.8" />
+            <Path d="M 58 32 L 64 56" stroke={pal.deep} strokeWidth="0.6" fill="none" opacity="0.7" />
+          </>
+        )}
+        {detail === 3 && (
+          // LICHEN / DIRT spots
+          <>
+            <Circle cx="34" cy="46" r="2" fill={pal.hi} opacity="0.5" />
+            <Circle cx="62" cy="56" r="1.5" fill={pal.hi} opacity="0.45" />
+            <Circle cx="46" cy="64" r="1.2" fill={pal.deep} opacity="0.6" />
+            <Circle cx="68" cy="38" r="1" fill={pal.deep} opacity="0.55" />
+          </>
+        )}
+      </Svg>
     </View>
   );
 }
@@ -2567,122 +2724,217 @@ function GemSvg({ gemType, tier }) {
 
         {/* GEM BODY — silhouette varies by tier */}
         {tier === 1 && (
-          // P1: rough irregular crystal, cracked
+          // P1 CRACKED — rough raw mineral with chips, dirt, moss patches
           <>
-            <Polygon points="50,22 70,38 64,76 36,76 30,38" fill={`url(#${id}b)`}
-                     stroke={veryDark} strokeWidth="2" />
-            <Path d="M 42 38 L 46 70" stroke={veryDark} strokeWidth="1.2" />
-            <Path d="M 38 50 L 60 56" stroke={veryDark} strokeWidth="0.6" opacity="0.6" />
-            {/* crack */}
-            <Path d="M 48 32 L 52 50 L 46 68" stroke="#0a0510" strokeWidth="0.8" fill="none" />
+            {/* irregular 7-vertex outline */}
+            <Polygon points="48,20 62,30 70,42 66,68 56,78 38,76 30,62 30,42 36,28"
+                     fill={`url(#${id}b)`} stroke={veryDark} strokeWidth="2.2" />
+            {/* internal facet lines (uneven, suggest amateur cut) */}
+            <Path d="M 42 30 L 48 50 L 44 70" stroke={veryDark} strokeWidth="1" fill="none" opacity="0.7" />
+            <Path d="M 30 42 L 48 50 L 70 42" stroke={veryDark} strokeWidth="0.7" fill="none" opacity="0.55" />
+            <Path d="M 38 76 L 48 50 L 56 78" stroke={veryDark} strokeWidth="0.6" fill="none" opacity="0.5" />
+            {/* main crack running through body */}
+            <Path d="M 48 22 L 52 38 L 46 56 L 50 70" stroke="#0a0510" strokeWidth="0.9" fill="none" />
+            <Path d="M 48 22 L 52 38 L 46 56 L 50 70" stroke="#fff" strokeWidth="0.3" fill="none" opacity="0.4" />
+            {/* dirt smudges (dark spots) */}
+            <Circle cx="40" cy="62" r="2.5" fill="#0a0510" opacity="0.35" />
+            <Circle cx="58" cy="48" r="1.8" fill="#0a0510" opacity="0.3" />
+            <Circle cx="36" cy="44" r="1.4" fill="#0a0510" opacity="0.4" />
+            {/* moss patch on one side */}
+            <Ellipse cx="62" cy="58" rx="5" ry="2.5" fill="#3a6a3a" opacity="0.7" />
+            <Ellipse cx="62" cy="58" rx="3" ry="1.5" fill="#5cf28a" opacity="0.55" />
+            {/* very faint shine pip — barely polished */}
+            <Circle cx="40" cy="36" r="1.6" fill="#fff" opacity="0.35" />
+            {/* tiny chip out of edge */}
+            <Polygon points="62,30 66,28 64,34" fill={veryDark} />
           </>
         )}
         {tier === 2 && (
-          // P2: cut rhombus — clean 6-sided
+          // P2 CUT — clean 6-sided rhombus with proper facets, rim light
           <>
+            {/* subtle color glow halo */}
+            <Circle cx="50" cy="50" r="42" fill={light} opacity="0.08" />
+            {/* main body */}
             <Polygon points="50,18 74,38 68,74 32,74 26,38" fill={`url(#${id}b)`}
                      stroke={veryDark} strokeWidth="2" />
-            {/* facet lines */}
+            {/* 8 facet lines (was 4) */}
             <Path d="M 50 18 L 42 46 L 50 74" stroke={veryDark} strokeWidth="0.8" fill="none" opacity="0.7" />
             <Path d="M 50 18 L 58 46 L 50 74" stroke={veryDark} strokeWidth="0.8" fill="none" opacity="0.7" />
             <Path d="M 26 38 L 42 46 L 32 74" stroke={veryDark} strokeWidth="0.6" fill="none" opacity="0.6" />
             <Path d="M 74 38 L 58 46 L 68 74" stroke={veryDark} strokeWidth="0.6" fill="none" opacity="0.6" />
-            {/* one bright facet */}
-            <Polygon points="50,18 42,46 50,40" fill="#fff" opacity="0.35" />
+            <Path d="M 42 46 L 58 46" stroke={veryDark} strokeWidth="0.5" fill="none" opacity="0.55" />
+            <Path d="M 32 74 L 50 50 L 68 74" stroke={veryDark} strokeWidth="0.4" fill="none" opacity="0.45" />
+            {/* TWO bright facets (upper-left + upper-right) */}
+            <Polygon points="50,18 42,46 50,40" fill="#fff" opacity="0.4" />
+            <Polygon points="50,18 58,46 50,40" fill="#fff" opacity="0.22" />
+            {/* rim light on upper edges */}
+            <Path d="M 26 38 L 50 18 L 74 38" stroke="rgba(255,255,255,0.55)" strokeWidth="1" fill="none" />
+            {/* tiny center shine pip */}
+            <Circle cx="50" cy="42" r="1.2" fill="#fff" opacity="0.7" />
           </>
         )}
         {tier === 3 && (
-          // P3: polished hexagonal, star highlight
+          // P3 POLISHED — symmetric hexagon, 8 radial facets, shine, color glow
           <>
+            {/* color glow halo */}
+            <Circle cx="50" cy="50" r="46" fill={light} opacity="0.12" />
+            {/* main body */}
             <Polygon points="50,14 78,32 78,68 50,86 22,68 22,32" fill={`url(#${id}b)`}
                      stroke={veryDark} strokeWidth="2" />
-            {/* radial facets to centre */}
+            {/* 8 radial facets (was 6) */}
             <Path d="M 50 14 L 50 50 M 78 32 L 50 50 M 78 68 L 50 50 M 50 86 L 50 50 M 22 68 L 50 50 M 22 32 L 50 50"
                   stroke={veryDark} strokeWidth="0.8" opacity="0.55" />
+            <Path d="M 64 23 L 50 50 M 36 23 L 50 50" stroke={veryDark} strokeWidth="0.6" opacity="0.45" />
             {/* upper-left bright facet */}
-            <Polygon points="50,14 22,32 50,50" fill="#fff" opacity="0.3" />
-            {/* shine spot */}
-            <Circle cx="38" cy="30" r="4" fill="#fff" opacity="0.7" />
+            <Polygon points="50,14 22,32 50,50" fill="#fff" opacity="0.35" />
+            {/* upper-right slightly bright facet */}
+            <Polygon points="50,14 78,32 50,50" fill="#fff" opacity="0.18" />
+            {/* rim light on top edges */}
+            <Path d="M 22 32 L 50 14 L 78 32" stroke="rgba(255,255,255,0.6)" strokeWidth="1.2" fill="none" />
+            {/* bigger shine spot upper-left */}
+            <Circle cx="36" cy="28" r="5" fill="#fff" opacity="0.75" />
+            <Circle cx="34" cy="26" r="2" fill="#fff" />
+            {/* two smaller inner sparkle pips */}
+            <Circle cx="60" cy="36" r="1.5" fill="#fff" opacity="0.7" />
+            <Circle cx="44" cy="60" r="1.2" fill="#fff" opacity="0.55" />
+            {/* center symmetry dot (cut mark) */}
+            <Circle cx="50" cy="50" r="1" fill={veryDark} opacity="0.7" />
           </>
         )}
         {tier === 4 && (
-          // P4: radiant — 8-pointed brilliant cut + star sparkle
+          // P4 RADIANT — 12-pointed brilliant + inner inset gem + 6-point sparkle
           <>
+            {/* main body */}
             <Polygon points="50,8 64,22 86,28 78,50 86,72 64,78 50,92 36,78 14,72 22,50 14,28 36,22"
                      fill={`url(#${id}b)`} stroke={veryDark} strokeWidth="2" />
             {/* internal facets */}
             <Path d="M 50 8 L 50 50 M 64 22 L 50 50 M 86 28 L 50 50 M 78 50 L 50 50 M 86 72 L 50 50 M 64 78 L 50 50 M 50 92 L 50 50 M 36 78 L 50 50 M 14 72 L 50 50 M 22 50 L 50 50 M 14 28 L 50 50 M 36 22 L 50 50"
                   stroke={veryDark} strokeWidth="0.7" opacity="0.55" />
             {/* upper bright wedge */}
-            <Polygon points="50,8 36,22 50,50 64,22" fill="#fff" opacity="0.32" />
-            {/* sparkle: 4-point star */}
-            <Path d="M 38 26 L 40 30 L 44 32 L 40 34 L 38 38 L 36 34 L 32 32 L 36 30 Z" fill="#fff" />
-            {/* shine spots */}
-            <Circle cx="36" cy="62" r="2" fill="#fff" opacity="0.6" />
-            <Circle cx="68" cy="36" r="1.5" fill="#fff" opacity="0.7" />
+            <Polygon points="50,8 36,22 50,50 64,22" fill="#fff" opacity="0.35" />
+            {/* INNER INSET GEM — smaller hex inside the body */}
+            <Polygon points="50,30 64,42 64,58 50,70 36,58 36,42"
+                     fill="none" stroke="#fff" strokeWidth="0.9" opacity="0.7" />
+            <Polygon points="50,30 64,42 50,50" fill="#fff" opacity="0.25" />
+            {/* rim light on upper edges */}
+            <Path d="M 14 28 L 36 22 L 50 8 L 64 22 L 86 28"
+                  stroke="rgba(255,255,255,0.5)" strokeWidth="1" fill="none" />
+            {/* 6-POINT STAR sparkle (was 4-point) */}
+            <Path d="M 38 26 L 40 30 L 44 31 L 40 32 L 42 38 L 38 34 L 34 38 L 36 32 L 32 31 L 36 30 Z" fill="#fff" />
+            {/* 3 shine pips (was 2) */}
+            <Circle cx="36" cy="62" r="2.2" fill="#fff" opacity="0.7" />
+            <Circle cx="68" cy="36" r="1.7" fill="#fff" opacity="0.75" />
+            <Circle cx="64" cy="64" r="1.3" fill="#fff" opacity="0.6" />
           </>
         )}
         {tier === 5 && (
-          // P5: perfect — crown-rim and inner gem
+          // P5 PERFECT — gold-spike crown, hex inset gem, double sparkle, 4 motes
           <>
+            {/* main body */}
             <Polygon points="50,8 64,20 86,28 78,50 86,72 64,80 50,92 36,80 14,72 22,50 14,28 36,20"
                      fill={`url(#${id}b)`} stroke={veryDark} strokeWidth="2.2" />
-            {/* extra inner facet ring */}
-            <Polygon points="50,22 66,32 76,50 66,68 50,78 34,68 24,50 34,32" fill="none"
-                     stroke="#fff" strokeWidth="1" opacity="0.5" />
+            {/* gold trim along upper body edges */}
+            <Path d="M 14 28 L 36 20 L 50 8 L 64 20 L 86 28" stroke="#ffd166" strokeWidth="0.7" fill="none" opacity="0.7" />
             {/* internal facets */}
             <Path d="M 50 8 L 50 50 M 64 20 L 50 50 M 86 28 L 50 50 M 78 50 L 50 50 M 86 72 L 50 50 M 64 80 L 50 50 M 50 92 L 50 50 M 36 80 L 50 50 M 14 72 L 50 50 M 22 50 L 50 50 M 14 28 L 50 50 M 36 20 L 50 50"
                   stroke={veryDark} strokeWidth="0.6" opacity="0.55" />
+            {/* upper bright wedge */}
             <Polygon points="50,8 36,20 50,50 64,20" fill="#fff" opacity="0.4" />
-            {/* crown points */}
-            <Polygon points="42,4 50,-2 58,4 50,12" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            {/* PROPER HEX INSET GEM with its own light facet */}
+            <Polygon points="50,28 64,40 64,58 50,70 36,58 36,40"
+                     fill="rgba(255,255,255,0.25)" stroke="#ffd166" strokeWidth="0.8" />
+            <Polygon points="50,28 64,40 50,50" fill="#fff" opacity="0.3" />
+            {/* center dot */}
+            <Circle cx="50" cy="50" r="1.2" fill="#ffd166" />
+            {/* rim light */}
+            <Path d="M 14 28 L 36 20 L 50 8 L 64 20 L 86 28" stroke="rgba(255,255,255,0.55)" strokeWidth="1.1" fill="none" />
+            {/* CROWN — 5 gold spikes (was 3 points) */}
+            <Polygon points="38,8 40,-4 42,8" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            <Polygon points="44,5 46,-7 48,5" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            <Polygon points="48,3 50,-10 52,3" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            <Polygon points="52,5 54,-7 56,5" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            <Polygon points="58,8 60,-4 62,8" fill={`url(#${id}crown)`} stroke={veryDark} strokeWidth="0.6" />
+            <Circle cx="50" cy="-6" r="1.2" fill="#fff" />
             {/* 8-point starburst sparkle */}
             <Path d="M 36 28 L 38 32 L 42 32 L 39 36 L 41 40 L 36 38 L 31 40 L 33 36 L 30 32 L 34 32 Z"
                   fill="#fff" />
-            {/* shine pips */}
-            <Circle cx="64" cy="32" r="1.5" fill="#fff" opacity="0.85" />
-            <Circle cx="60" cy="62" r="1.5" fill="#fff" opacity="0.75" />
-            {/* floating mote */}
+            {/* cross sparkle (top-right) */}
+            <Path d="M 68 30 L 70 32 L 72 30 L 70 32 L 72 34 L 70 32 Z" fill="#fff" />
+            <Path d="M 70 28 L 70 36 M 66 32 L 74 32" stroke="#fff" strokeWidth="0.8" />
+            {/* 4 floating motes (was 1) */}
             <Circle cx="84" cy="14" r="1.8" fill="#fff" opacity="0.9" />
+            <Circle cx="14" cy="80" r="1.6" fill="#fff" opacity="0.85" />
+            <Circle cx="86" cy="84" r="1.2" fill="#fff" opacity="0.7" />
+            <Circle cx="16" cy="20" r="1.2" fill="#fff" opacity="0.7" />
           </>
         )}
         {tier === 6 && (
-          // P6: ascendant — biggest, gold crown of mini-gems, multi-aura
+          // P6 ASCENDANT — divine, 3-layer halo, inner starburst, reality cracks
           <>
-            {/* extra outer aura ring */}
-            <Circle cx="50" cy="50" r="46" fill="none" stroke="#ffd166" strokeWidth="0.8"
-                    opacity="0.7" strokeDasharray="2 4" />
+            {/* 3-LAYER HALO behind everything */}
+            <Circle cx="50" cy="50" r="48" fill={light} opacity="0.18" />
+            <Circle cx="50" cy="50" r="48" fill="none" stroke="#ffd166" strokeWidth="0.7"
+                    opacity="0.75" strokeDasharray="2 4" />
+            <Circle cx="50" cy="50" r="42" fill="none" stroke="#fff" strokeWidth="0.5"
+                    opacity="0.4" strokeDasharray="1 3" />
+            <Circle cx="50" cy="50" r="38" fill="none" stroke="#ffd166" strokeWidth="0.4" opacity="0.5" />
+            {/* main body */}
             <Polygon points="50,10 66,22 88,30 80,50 88,70 66,78 50,90 34,78 12,70 20,50 12,30 34,22"
                      fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
-            {/* extra gold trim border */}
+            {/* gold trim border */}
             <Polygon points="50,10 66,22 88,30 80,50 88,70 66,78 50,90 34,78 12,70 20,50 12,30 34,22"
-                     fill="none" stroke="#ffd166" strokeWidth="0.8" />
-            {/* inner gem inside the outer body */}
+                     fill="none" stroke="#ffd166" strokeWidth="1" />
+            {/* INNER HEX INSET GEM with its own facet + starburst */}
             <Polygon points="50,28 60,38 68,50 60,62 50,72 40,62 32,50 40,38" fill="#fff"
                      opacity="0.35" />
             <Polygon points="50,28 60,38 68,50 60,62 50,72 40,62 32,50 40,38" fill="none"
                      stroke="#ffd166" strokeWidth="1" />
+            {/* inner gem mini-starburst */}
+            <Path d="M 50 38 L 51 46 L 58 47 L 51 49 L 56 56 L 50 51 L 44 56 L 49 49 L 42 47 L 49 46 Z"
+                  fill="#fff" opacity="0.85" />
             {/* internal facets */}
             <Path d="M 50 10 L 50 50 M 66 22 L 50 50 M 88 30 L 50 50 M 80 50 L 50 50 M 88 70 L 50 50 M 66 78 L 50 50 M 50 90 L 50 50 M 34 78 L 50 50 M 12 70 L 50 50 M 20 50 L 50 50 M 12 30 L 50 50 M 34 22 L 50 50"
                   stroke={veryDark} strokeWidth="0.5" opacity="0.65" />
             <Polygon points="50,10 34,22 50,50 66,22" fill="#fff" opacity="0.45" />
-            {/* crown of mini gems above */}
-            <Polygon points="40,2 44,-4 48,2 44,8" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
-            <Polygon points="48,-2 52,-8 56,-2 52,4" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
-            <Polygon points="56,2 60,-4 64,2 60,8" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
-            <Path d="M 38 4 Q 50 0 62 4" stroke="#ffd166" strokeWidth="1.2" fill="none" />
-            {/* big 8-point starburst sparkle */}
-            <Path d="M 36 26 L 38 30 L 44 30 L 40 34 L 42 40 L 36 36 L 30 40 L 32 34 L 28 30 L 34 30 Z"
+            {/* rim light on outer edge */}
+            <Path d="M 12 30 L 34 22 L 50 10 L 66 22 L 88 30"
+                  stroke="rgba(255,255,255,0.55)" strokeWidth="1" fill="none" />
+            {/* CROWN of 5 gold mini-gems */}
+            <Polygon points="34,2 38,-6 42,2 38,8" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="42,-2 46,-10 50,-2 46,6" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="48,-4 50,-14 52,-14 54,-4 50,6" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="50,-2 54,-10 58,-2 54,6" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            <Polygon points="58,2 62,-6 66,2 62,8" fill={`url(#${id}crown)`} stroke="#0a0510" strokeWidth="0.6" />
+            {/* connecting gold band */}
+            <Path d="M 34 4 Q 50 -2 66 4" stroke="#ffd166" strokeWidth="1.4" fill="none" />
+            <Path d="M 36 6 Q 50 0 64 6" stroke="#fff7a8" strokeWidth="0.5" fill="none" opacity="0.85" />
+            <Circle cx="50" cy="-10" r="1.5" fill="#fff" />
+            {/* REALITY-TEAR CRACKS radiating outward */}
+            <Path d="M 50 -2 L 50 6" stroke="#fff" strokeWidth="0.6" opacity="0.7" />
+            <Path d="M 10 50 L 18 50" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 82 50 L 90 50" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+            <Path d="M 22 22 L 28 28" stroke="#fff" strokeWidth="0.4" opacity="0.55" />
+            <Path d="M 78 22 L 72 28" stroke="#fff" strokeWidth="0.4" opacity="0.55" />
+            <Path d="M 50 90 L 50 96" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            {/* big 8-point starburst sparkle (upper-left) */}
+            <Path d="M 30 26 L 32 30 L 38 30 L 34 34 L 36 40 L 30 36 L 24 40 L 26 34 L 22 30 L 28 30 Z"
                   fill="#fff" />
-            {/* extra sparkles */}
-            <Circle cx="68" cy="32" r="2" fill="#fff" opacity="0.95" />
-            <Circle cx="64" cy="62" r="1.8" fill="#fff" opacity="0.8" />
-            <Circle cx="32" cy="60" r="1.5" fill="#fff" opacity="0.75" />
-            {/* floating motes */}
-            <Circle cx="88" cy="14" r="2" fill="#fff7a8" opacity="0.95" />
-            <Circle cx="14" cy="84" r="2" fill="#fff7a8" opacity="0.95" />
-            <Circle cx="86" cy="84" r="1.5" fill="#fff7a8" opacity="0.85" />
-            <Circle cx="14" cy="16" r="1.5" fill="#fff7a8" opacity="0.85" />
+            {/* secondary cross sparkle (upper-right) */}
+            <Path d="M 70 30 L 70 38 M 66 34 L 74 34" stroke="#fff" strokeWidth="0.9" />
+            <Circle cx="70" cy="34" r="1" fill="#fff" />
+            {/* shine pips */}
+            <Circle cx="64" cy="62" r="2" fill="#fff" opacity="0.85" />
+            <Circle cx="32" cy="60" r="1.7" fill="#fff" opacity="0.75" />
+            <Circle cx="48" cy="40" r="1" fill="#fff" />
+            {/* 8 FLOATING MOTES (was 4) */}
+            <Circle cx="88" cy="14" r="2.2" fill="#fff7a8" opacity="0.95" />
+            <Circle cx="14" cy="84" r="2.2" fill="#fff7a8" opacity="0.95" />
+            <Circle cx="86" cy="84" r="1.7" fill="#fff7a8" opacity="0.85" />
+            <Circle cx="14" cy="16" r="1.7" fill="#fff7a8" opacity="0.85" />
+            <Circle cx="92" cy="50" r="1.4" fill="#fff" opacity="0.8" />
+            <Circle cx="8" cy="50" r="1.4" fill="#fff" opacity="0.8" />
+            <Circle cx="50" cy="92" r="1.2" fill="#fff" opacity="0.7" />
+            <Circle cx="50" cy="-2" r="1.2" fill="#fff" opacity="0.85" />
           </>
         )}
       </Svg>
