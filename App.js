@@ -1751,7 +1751,16 @@ function Marker({ pt, label, color }) {
 
 // ───── Spawn portal — arched cave entrance with red glow ────────────────────
 function SpawnPortal({ pt, time }) {
-  const flicker = 0.7 + 0.3 * Math.sin(time * 5);
+  const flicker = 0.75 + 0.25 * Math.sin(time * 5);
+  const flicker2 = 0.7 + 0.3 * Math.sin(time * 7 + 1.2);
+  const flicker3 = 0.7 + 0.3 * Math.sin(time * 9 + 0.5);
+  // Three smoke wisps with offset rise positions
+  const smoke1 = (time * 6) % 30;
+  const smoke2 = (time * 6 + 10) % 30;
+  const smoke3 = (time * 6 + 20) % 30;
+  // Two ember sparks
+  const ember1 = (time * 9) % 28;
+  const ember2 = (time * 9 + 14) % 28;
   const size = TILE * 3;
   // center the 3-tile portal on the spawn cell, extending into the wall to the left
   const left = pt.c * TILE - TILE * 2;
@@ -1760,66 +1769,228 @@ function SpawnPortal({ pt, time }) {
     <View pointerEvents="none" style={{ position: 'absolute', left, top, width: size, height: size }}>
       <Svg width={size} height={size} viewBox="0 0 66 66">
         <Defs>
-          <RadialGradient id="portalDepth" cx="0.7" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor="#ff4d6d" stopOpacity="0.6" />
-            <Stop offset="0.5" stopColor="#7a1d2e" stopOpacity="0.8" />
+          {/* corrupted stone — same warm beige as castle, slightly darker / red-tinted */}
+          <LinearGradient id="pStone" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#d8c098" />
+            <Stop offset="0.15" stopColor="#a08868" />
+            <Stop offset="0.6" stopColor="#604838" />
+            <Stop offset="1" stopColor="#3a1a14" />
+          </LinearGradient>
+          {/* shadow-side stone */}
+          <LinearGradient id="pStoneDark" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#8a7050" />
+            <Stop offset="1" stopColor="#3a1a14" />
+          </LinearGradient>
+          {/* deep portal cave — 4-stop gradient red→black */}
+          <RadialGradient id="pDepth" cx="0.5" cy="0.6" r="0.55">
+            <Stop offset="0" stopColor="#ff4d6d" stopOpacity="0.85" />
+            <Stop offset="0.35" stopColor="#7a1d2e" stopOpacity="0.95" />
+            <Stop offset="0.85" stopColor="#1a0006" stopOpacity="1" />
             <Stop offset="1" stopColor="#000" stopOpacity="1" />
           </RadialGradient>
-          <RadialGradient id="portalGlow" cx="0.7" cy="0.5" r="0.6">
-            <Stop offset="0" stopColor="#ff4d6d" stopOpacity={0.55 * flicker} />
+          {/* outer red glow */}
+          <RadialGradient id="pGlow" cx="0.5" cy="0.5" r="0.65">
+            <Stop offset="0" stopColor="#ff4d6d" stopOpacity={0.6 * flicker} />
             <Stop offset="1" stopColor="#ff4d6d" stopOpacity="0" />
           </RadialGradient>
-          <LinearGradient id="portalStone" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#7a6e90" />
-            <Stop offset="0.15" stopColor="#4a4060" />
-            <Stop offset="1" stopColor="#0a0510" />
-          </LinearGradient>
-          <RadialGradient id="portalShadow" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0" stopColor="#000" stopOpacity="0.8" />
+          {/* keystone glowing gem */}
+          <RadialGradient id="pGem" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#fff" />
+            <Stop offset="0.3" stopColor="#fff7a8" />
+            <Stop offset="0.6" stopColor="#ff4d6d" />
+            <Stop offset="1" stopColor="#7a0e1e" />
+          </RadialGradient>
+          {/* drop shadow */}
+          <RadialGradient id="pDrop" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0" stopColor="#000" stopOpacity="0.85" />
             <Stop offset="1" stopColor="#000" stopOpacity="0" />
           </RadialGradient>
         </Defs>
-        {/* outer red glow */}
-        <Rect x="0" y="0" width="66" height="66" fill="url(#portalGlow)" />
-        {/* heavy ground shadow at base */}
-        <Ellipse cx="33" cy="62" rx="32" ry="4" fill="url(#portalShadow)" />
-        {/* stone arch frame — rectangle with rounded top forming an arch shape */}
-        <Path
-          d="M 8 60 L 8 30 Q 8 12 33 12 Q 58 12 58 30 L 58 60 Z"
-          fill="url(#portalStone)"
-          stroke="#0a0510"
-          strokeWidth="1.8"
-        />
-        {/* rim light on outer arch edge */}
-        <Path d="M 8 30 Q 8 12 33 12 Q 58 12 58 30" stroke="#a8b4d0" strokeWidth="0.8" fill="none" opacity="0.5" />
-        {/* arch inner — actual portal opening (dark + red glow) */}
-        <Path
-          d="M 14 58 L 14 32 Q 14 18 33 18 Q 52 18 52 32 L 52 58 Z"
-          fill="url(#portalDepth)"
-          stroke="#0a0510"
-          strokeWidth="1"
-        />
-        {/* keystone at top of arch */}
-        <Polygon points="29,12 37,12 39,20 27,20" fill="#5a4d76" stroke="#0a0510" strokeWidth="1" />
-        <Circle cx="33" cy="16" r="1.8" fill="#ff4d6d" />
-        {/* voussoirs (arch stones) — slight wedges around the arch */}
-        {[16, 22, 28, 38, 44, 50].map((x, i) => (
-          <Path key={i} d={`M ${x} 18 L ${x + 4} 14 L ${x + 6} 20 L ${x + 2} 24 Z`}
-                fill="#3a3050" stroke="#0a0510" strokeWidth="0.5" />
-        ))}
-        {/* arch keystone trim */}
-        <Path d="M 8 30 Q 8 12 33 12 Q 58 12 58 30" stroke="#5a4d76" strokeWidth="1.2" fill="none" />
-        {/* red runes inside cave */}
-        <Circle cx="44" cy="40" r="2" fill="#ff4d6d" opacity={flicker} />
-        <Circle cx="44" cy="40" r="1" fill="#fff" opacity="0.7" />
-        <Path d="M 22 50 L 26 46 L 30 50" stroke="#ff4d6d" strokeWidth="0.8" fill="none" opacity={0.6 * flicker} />
-        {/* base steps */}
-        <Rect x="6" y="58" width="54" height="3" fill="#3a3050" stroke="#0a0510" strokeWidth="0.5" />
-        <Rect x="4" y="61" width="58" height="3" fill="#2a2540" stroke="#0a0510" strokeWidth="0.5" />
-        {/* skull at base */}
-        <Ellipse cx="18" cy="56" rx="2.5" ry="2" fill="#e8e0c8" stroke="#0a0510" strokeWidth="0.5" />
-        <Circle cx="17" cy="56" r="0.6" fill="#0a0510" />
-        <Circle cx="19" cy="56" r="0.6" fill="#0a0510" />
+
+        {/* outer red glow wash */}
+        <Rect x="0" y="0" width="66" height="66" fill="url(#pGlow)" />
+
+        {/* drop shadow at base */}
+        <Ellipse cx="33" cy="63" rx="32" ry="4" fill="url(#pDrop)" />
+
+        {/* === FLOOR COBBLES AT BASE === */}
+        <Ellipse cx="10" cy="61" rx="3.5" ry="1.5" fill="#604838" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 7 60 L 13 60" stroke="#a08858" strokeWidth="0.4" opacity="0.7" />
+        <Ellipse cx="17" cy="61" rx="3" ry="1.5" fill="#8a6848" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 14 60 L 20 60" stroke="#c4a878" strokeWidth="0.4" opacity="0.7" />
+        <Ellipse cx="33" cy="62" rx="4" ry="1.5" fill="#604838" stroke="#1a0c08" strokeWidth="0.5" />
+        <Ellipse cx="49" cy="61" rx="3" ry="1.5" fill="#8a6848" stroke="#1a0c08" strokeWidth="0.5" />
+        <Ellipse cx="56" cy="61" rx="3.5" ry="1.5" fill="#604838" stroke="#1a0c08" strokeWidth="0.5" />
+
+        {/* === LEFT FLANKING COLUMN === */}
+        {/* column shaft */}
+        <Rect x="1" y="22" width="6" height="36" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="1.2" />
+        {/* block course lines */}
+        <Path d="M 1 28 L 7 28" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 1 34 L 7 34" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 1 40 L 7 40" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 1 46 L 7 46" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 1 52 L 7 52" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        {/* rim light */}
+        <Path d="M 2 23 L 2 57" stroke="#e8c898" strokeWidth="0.6" opacity="0.7" />
+        {/* capital (top) */}
+        <Path d="M -1 22 L 9 22 L 8 19 L 0 19 Z" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="1" />
+        <Path d="M 0 19 L 8 19" stroke="#e8c898" strokeWidth="0.4" opacity="0.75" />
+        {/* upper capital block */}
+        <Rect x="0" y="16" width="8" height="3" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        {/* red gem set in capital */}
+        <Polygon points="4,16 6,18 4,20 2,18" fill="#ff4d6d" stroke="#7a1d2e" strokeWidth="0.4" />
+        <Circle cx="4" cy="18" r="0.6" fill="#fff" opacity={0.85 * flicker3} />
+        {/* column base */}
+        <Rect x="-1" y="58" width="9" height="2" fill="url(#pStoneDark)" stroke="#1a0c08" strokeWidth="0.8" />
+        {/* weathering crack */}
+        <Path d="M 4 28 L 5 38 L 3 48" stroke="#3a1a14" strokeWidth="0.4" fill="none" opacity="0.7" />
+        {/* iron ring with chain (decorative) */}
+        <Circle cx="6" cy="36" r="0.9" fill="none" stroke="#1a1820" strokeWidth="0.6" />
+        <Path d="M 6 37 L 7 39 L 6 41" stroke="#1a1820" strokeWidth="0.4" fill="none" />
+
+        {/* === RIGHT FLANKING COLUMN === */}
+        <Rect x="59" y="22" width="6" height="36" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="1.2" />
+        <Path d="M 59 28 L 65 28" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 59 34 L 65 34" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 59 40 L 65 40" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 59 46 L 65 46" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 59 52 L 65 52" stroke="#1a0c08" strokeWidth="0.4" opacity="0.65" />
+        <Path d="M 60 23 L 60 57" stroke="#e8c898" strokeWidth="0.6" opacity="0.7" />
+        <Path d="M 57 22 L 67 22 L 66 19 L 58 19 Z" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="1" />
+        <Path d="M 58 19 L 66 19" stroke="#e8c898" strokeWidth="0.4" opacity="0.75" />
+        <Rect x="58" y="16" width="8" height="3" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Polygon points="62,16 64,18 62,20 60,18" fill="#ff4d6d" stroke="#7a1d2e" strokeWidth="0.4" />
+        <Circle cx="62" cy="18" r="0.6" fill="#fff" opacity={0.85 * flicker3} />
+        <Rect x="57" y="58" width="9" height="2" fill="url(#pStoneDark)" stroke="#1a0c08" strokeWidth="0.8" />
+        <Path d="M 62 32 L 61 42 L 63 52" stroke="#3a1a14" strokeWidth="0.4" fill="none" opacity="0.7" />
+        <Circle cx="60" cy="40" r="0.9" fill="none" stroke="#1a1820" strokeWidth="0.6" />
+        <Path d="M 60 41 L 59 43 L 60 45" stroke="#1a1820" strokeWidth="0.4" fill="none" />
+
+        {/* === MAIN ARCH OUTER SHAPE === */}
+        <Path d="M 8 60 L 8 30 Q 8 10 33 10 Q 58 10 58 30 L 58 60 Z" fill="url(#pStone)" stroke="#1a0c08" strokeWidth="1.8" />
+        {/* arch outer rim light */}
+        <Path d="M 8 30 Q 8 10 33 10 Q 58 10 58 30" stroke="#e8c898" strokeWidth="1" fill="none" opacity="0.7" />
+
+        {/* === VOUSSOIRS (5 wedge stones per side, alternating colors) === */}
+        {/* left side wedges */}
+        <Path d="M 8 30 L 12 28 L 13 33 L 9 35 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 9 25 L 13 22 L 14 27 L 10 30 Z" fill="#8a7050" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 11 20 L 16 17 L 18 22 L 13 24 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 15 15 L 21 13 L 22 18 L 17 20 Z" fill="#8a7050" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 21 12 L 27 11 L 28 15 L 22 17 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="0.5" />
+        {/* rim light highlights on left wedges (top edges) */}
+        <Path d="M 9 25 L 13 22" stroke="#e8c898" strokeWidth="0.3" opacity="0.65" />
+        <Path d="M 15 15 L 21 13" stroke="#e8c898" strokeWidth="0.3" opacity="0.65" />
+
+        {/* right side wedges (mirror) */}
+        <Path d="M 58 30 L 54 28 L 53 33 L 57 35 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 57 25 L 53 22 L 52 27 L 56 30 Z" fill="#8a7050" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 55 20 L 50 17 L 48 22 L 53 24 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 51 15 L 45 13 L 44 18 L 49 20 Z" fill="#8a7050" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 45 12 L 39 11 L 38 15 L 44 17 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="0.5" />
+        <Path d="M 57 25 L 53 22" stroke="#e8c898" strokeWidth="0.3" opacity="0.65" />
+        <Path d="M 51 15 L 45 13" stroke="#e8c898" strokeWidth="0.3" opacity="0.65" />
+
+        {/* === KEYSTONE (prominent, glowing gem) === */}
+        <Path d="M 28 10 L 38 10 L 40 17 L 26 17 Z" fill="#a08868" stroke="#1a0c08" strokeWidth="1.2" />
+        <Path d="M 28 10 L 38 10" stroke="#fff7a8" strokeWidth="0.6" opacity="0.8" />
+        {/* outer glow around keystone gem */}
+        <Circle cx="33" cy="14" r="6" fill="#ff4d6d" opacity={0.28 * flicker} />
+        {/* keystone gem itself */}
+        <Polygon points="33,11.5 36,14 33,17 30,14" fill="url(#pGem)" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="32" cy="13.5" r="0.7" fill="#fff" opacity="0.95" />
+
+        {/* === PORTAL OPENING (deep cave) === */}
+        <Path d="M 14 58 L 14 30 Q 14 16 33 16 Q 52 16 52 30 L 52 58 Z" fill="url(#pDepth)" stroke="#1a0c08" strokeWidth="1.2" />
+
+        {/* === RECEDING INNER ARCH LINES (3 levels of depth illusion) === */}
+        <Path d="M 20 56 L 20 34 Q 20 22 33 22 Q 46 22 46 34 L 46 56 Z"
+              fill="none" stroke="#7a1d2e" strokeWidth="0.6" opacity="0.55" />
+        <Path d="M 24 54 L 24 36 Q 24 26 33 26 Q 42 26 42 36 L 42 54 Z"
+              fill="none" stroke="#7a1d2e" strokeWidth="0.4" opacity="0.42" />
+        <Path d="M 28 52 L 28 40 Q 28 32 33 32 Q 38 32 38 40 L 38 52 Z"
+              fill="none" stroke="#5a0d1e" strokeWidth="0.3" opacity="0.3" />
+
+        {/* === RED RUNES INSIDE === */}
+        {/* triangle rune (lower-left) */}
+        <Path d="M 22 48 L 26 44 L 30 48 Z" fill="none" stroke="#ff4d6d" strokeWidth="0.7" opacity={0.6 * flicker2} />
+        <Circle cx="26" cy="47" r="0.6" fill="#ff4d6d" opacity={flicker2} />
+        {/* cross rune (upper-right) */}
+        <Path d="M 38 36 L 42 36 M 40 34 L 40 38" stroke="#ff4d6d" strokeWidth="0.7" fill="none" opacity={0.55 * flicker2} />
+        <Circle cx="40" cy="36" r="0.5" fill="#ff4d6d" opacity={flicker2} />
+        {/* glowing eye (lower-right) */}
+        <Ellipse cx="44" cy="50" rx="2" ry="1.2" fill="#0a0006" stroke="#ff4d6d" strokeWidth="0.4" opacity={flicker} />
+        <Circle cx="44" cy="50" r="0.8" fill="#ff4d6d" opacity={flicker} />
+        <Circle cx="44" cy="50" r="0.3" fill="#fff" opacity={flicker} />
+
+        {/* === BLOOD DRIPS FROM ARCH TOP === */}
+        <Path d="M 22 18 Q 21 24 22 28" stroke="#7a0e1e" strokeWidth="0.6" fill="none" opacity="0.85" />
+        <Circle cx="22" cy="28" r="0.7" fill="#7a0e1e" opacity="0.9" />
+        <Path d="M 44 18 Q 45 22 44 26" stroke="#7a0e1e" strokeWidth="0.5" fill="none" opacity="0.75" />
+        <Circle cx="44" cy="26" r="0.5" fill="#7a0e1e" opacity="0.85" />
+
+        {/* === SMOKE WISPS (animated, rising from opening) === */}
+        <Circle cx={33 + Math.sin(time * 2) * 1.5} cy={22 - smoke1 * 0.5} r={2.5 + smoke1 * 0.05}
+                fill="#5a1818" opacity={Math.max(0, 0.45 - smoke1 * 0.018)} />
+        <Circle cx={33 + Math.sin(time * 2 + 1.5) * 1.5} cy={22 - smoke2 * 0.5} r={2 + smoke2 * 0.05}
+                fill="#7a1d2e" opacity={Math.max(0, 0.4 - smoke2 * 0.016)} />
+        <Circle cx={33 + Math.sin(time * 2 + 3) * 1.5} cy={22 - smoke3 * 0.5} r={3 + smoke3 * 0.04}
+                fill="#3a0a14" opacity={Math.max(0, 0.5 - smoke3 * 0.02)} />
+
+        {/* === EMBER SPARKS rising with smoke === */}
+        <Circle cx={31 + Math.sin(time * 4) * 2} cy={24 - ember1 * 0.55} r="0.5"
+                fill="#ffd166" opacity={Math.max(0, 1 - ember1 * 0.04)} />
+        <Circle cx={35 + Math.sin(time * 4 + 2) * 2} cy={24 - ember2 * 0.55} r="0.4"
+                fill="#ff6f1f" opacity={Math.max(0, 0.9 - ember2 * 0.04)} />
+
+        {/* === THRESHOLD STONES === */}
+        <Rect x="6" y="56" width="54" height="3" fill="#604838" stroke="#1a0c08" strokeWidth="0.7" />
+        <Path d="M 6 56 L 60 56" stroke="#e8c898" strokeWidth="0.4" opacity="0.6" />
+        {/* threshold seam lines */}
+        <Path d="M 14 56 L 14 59" stroke="#1a0c08" strokeWidth="0.5" opacity="0.7" />
+        <Path d="M 22 56 L 22 59" stroke="#1a0c08" strokeWidth="0.5" opacity="0.7" />
+        <Path d="M 33 56 L 33 59" stroke="#1a0c08" strokeWidth="0.5" opacity="0.7" />
+        <Path d="M 44 56 L 44 59" stroke="#1a0c08" strokeWidth="0.5" opacity="0.7" />
+        <Path d="M 52 56 L 52 59" stroke="#1a0c08" strokeWidth="0.5" opacity="0.7" />
+        {/* lower threshold step */}
+        <Rect x="4" y="59" width="58" height="2" fill="#3a2818" stroke="#1a0c08" strokeWidth="0.6" />
+
+        {/* === SKULLS AT BASE === */}
+        {/* left skull */}
+        <Ellipse cx="14" cy="55" rx="2.5" ry="2" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="13" cy="54.8" r="0.6" fill="#1a0c08" />
+        <Circle cx="15" cy="54.8" r="0.6" fill="#1a0c08" />
+        <Path d="M 12.5 56.5 L 15.5 56.5" stroke="#1a0c08" strokeWidth="0.3" />
+        <Path d="M 13 56 L 14 56.6 L 15 56" stroke="#1a0c08" strokeWidth="0.3" />
+        {/* right skull */}
+        <Ellipse cx="52" cy="55" rx="2.5" ry="2" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.6" />
+        <Circle cx="51" cy="54.8" r="0.6" fill="#1a0c08" />
+        <Circle cx="53" cy="54.8" r="0.6" fill="#1a0c08" />
+        <Path d="M 50.5 56.5 L 53.5 56.5" stroke="#1a0c08" strokeWidth="0.3" />
+        <Path d="M 51 56 L 52 56.6 L 53 56" stroke="#1a0c08" strokeWidth="0.3" />
+        {/* center smaller skull */}
+        <Ellipse cx="33" cy="55.5" rx="2" ry="1.5" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.5" />
+        <Circle cx="32.3" cy="55.4" r="0.4" fill="#1a0c08" />
+        <Circle cx="33.7" cy="55.4" r="0.4" fill="#1a0c08" />
+        <Path d="M 31.8 56.6 L 34.2 56.6" stroke="#1a0c08" strokeWidth="0.25" />
+
+        {/* === SCATTERED BONES === */}
+        <Rect x="22" y="57.8" width="4" height="0.6" rx="0.3" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.3" />
+        <Ellipse cx="22" cy="58.1" rx="0.6" ry="0.4" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.3" />
+        <Ellipse cx="26" cy="58.1" rx="0.6" ry="0.4" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.3" />
+        <Rect x="40" y="57.8" width="4" height="0.6" rx="0.3" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.3" />
+        <Ellipse cx="40" cy="58.1" rx="0.6" ry="0.4" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.3" />
+        <Ellipse cx="44" cy="58.1" rx="0.6" ry="0.4" fill="#e8e0c8" stroke="#1a0c08" strokeWidth="0.3" />
+
+        {/* === CRACKS RADIATING FROM ARCH BASE === */}
+        <Path d="M 9 60 L 4 64" stroke="#3a1818" strokeWidth="0.6" opacity="0.75" />
+        <Path d="M 6 57 L 0 60" stroke="#3a1818" strokeWidth="0.5" opacity="0.7" />
+        <Path d="M 57 60 L 62 64" stroke="#3a1818" strokeWidth="0.6" opacity="0.75" />
+        <Path d="M 60 57 L 66 60" stroke="#3a1818" strokeWidth="0.5" opacity="0.7" />
+        {/* small cracks on the arch face */}
+        <Path d="M 16 28 L 18 32 L 15 34" stroke="#3a1818" strokeWidth="0.3" fill="none" opacity="0.6" />
+        <Path d="M 48 28 L 46 32 L 49 34" stroke="#3a1818" strokeWidth="0.3" fill="none" opacity="0.6" />
       </Svg>
     </View>
   );
