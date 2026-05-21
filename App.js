@@ -1229,7 +1229,7 @@ function Game({ onEnd, difficulty }) {
           <Pressable onPress={onBoardPress} style={{ position: 'absolute', left: 0, top: 0, width: BOARD_W, height: BOARD_H }} />
 
           {/* committed towers (gems, specials, rocks) */}
-          {s.towers.map((t) => <TowerView key={`tw${t.id}`} t={t} />)}
+          {s.towers.map((t) => <TowerView key={`tw${t.id}`} t={t} time={s.time} />)}
 
           {/* candidates (highlighted pulsing) */}
           {s.candidates.map((t) => <CandidateView key={`c${t.id}`} t={t} time={s.time} />)}
@@ -2962,7 +2962,7 @@ function GemSvg({ gemType, tier }) {
 
 const SPECIAL_TIER_SCALE = { 2: 1.05, 3: 1.18, 4: 1.35, 5: 1.55, 6: 1.85 };
 
-function SpecialSvg({ recipe }) {
+function SpecialSvg({ recipe, time = 0, id: towerId = 0 }) {
   const tier = parseInt(recipe.tier.slice(1), 10);
   const scale = SPECIAL_TIER_SCALE[tier] || 1;
   const px = TILE * scale;
@@ -2972,6 +2972,11 @@ function SpecialSvg({ recipe }) {
   const dark = darken(main, 0.55);
   const darker = darken(main, 0.75);
   const lightMain = `rgba(255,255,255,0.35)`;
+  // Idle animation drivers — per-tower phase so adjacent specials don't sync.
+  const phase = (towerId * 0.91) % (Math.PI * 2);
+  const bob = Math.sin(time * 1.6 + phase) * (tier >= 5 ? 1.6 : 1.2);
+  const wingFlap = Math.sin(time * 2.4 + phase) * (tier === 6 ? 9 : tier === 5 ? 7 : 5);
+  const haloPulse = 0.85 + 0.15 * Math.sin(time * 2 + phase);
 
   return (
     <View pointerEvents="none" style={{
@@ -3025,25 +3030,58 @@ function SpecialSvg({ recipe }) {
             {/* accent ring on stone */}
             <Ellipse cx="50" cy="76" rx="24" ry="4" fill="none" stroke={accent} strokeWidth="1" opacity="0.7" />
 
-            {/* robed body */}
-            <Path d="M 50 26 C 60 26 66 32 66 40 L 68 76 L 32 76 L 34 40 C 34 32 40 26 50 26 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.2" />
-            {/* rim light on robe (left side) */}
-            <Path d="M 34 40 C 34 32 40 26 50 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.5" />
-            {/* hood */}
-            <Path d="M 34 36 C 34 22 42 18 50 18 C 58 18 66 22 66 36 L 62 50 L 38 50 Z"
-                  fill={dark} stroke="#0a0510" strokeWidth="2" />
-            <Path d="M 34 36 C 34 22 42 18 50 18" stroke="#fff" strokeWidth="0.7" fill="none" opacity="0.45" />
-            {/* face shadow under hood */}
-            <Path d="M 38 50 L 62 50 L 58 56 L 42 56 Z" fill="#0a0510" />
-            {/* glowing eye slit */}
-            <Path d="M 42 44 L 50 41 L 58 44 L 50 47 Z" fill={accent} />
-            <Circle cx="50" cy="44" r="1" fill="#fff" />
-            {/* chest gem (diamond shape) */}
-            <Polygon points="50,58 56,66 50,74 44,66" fill={accent} stroke="#fff" strokeWidth="0.8" />
-            <Polygon points="50,58 50,70 44,66" fill="#fff" opacity="0.45" />
-            {/* belt trim */}
-            <Path d="M 33 70 L 67 70" stroke={accent} strokeWidth="1.2" />
+            {/* === IDLE-BOB GROUP === */}
+            <G transform={`translate(0, ${bob})`}>
+              {/* boots peeking out from under robe */}
+              <Ellipse cx="42" cy="74" rx="4" ry="2.2" fill={darker} stroke="#0a0510" strokeWidth="0.8" />
+              <Ellipse cx="42" cy="73.5" rx="3" ry="1" fill={dark} opacity="0.7" />
+              <Ellipse cx="58" cy="74" rx="4" ry="2.2" fill={darker} stroke="#0a0510" strokeWidth="0.8" />
+              <Ellipse cx="58" cy="73.5" rx="3" ry="1" fill={dark} opacity="0.7" />
+
+              {/* robed body */}
+              <Path d="M 50 26 C 60 26 66 32 66 40 L 68 74 L 32 74 L 34 40 C 34 32 40 26 50 26 Z"
+                    fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.2" />
+              {/* rim light on robe (left side) */}
+              <Path d="M 34 40 C 34 32 40 26 50 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.5" />
+              {/* vertical seam down robe */}
+              <Path d="M 50 42 L 50 74" stroke={darker} strokeWidth="0.5" opacity="0.6" />
+
+              {/* folded arms — sleeves crossing in front */}
+              <Path d="M 33 50 Q 38 60 50 60 Q 62 60 67 50" stroke={`url(#${id}b)`} strokeWidth="5" fill="none" />
+              <Path d="M 33 50 Q 38 60 50 60 Q 62 60 67 50" stroke="#0a0510" strokeWidth="0.6" fill="none" />
+              <Path d="M 33 50 Q 38 58 50 58" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.4" />
+              {/* hands meeting at center (sleeve cuffs visible) */}
+              <Circle cx="50" cy="60" r="2.2" fill={dark} stroke="#0a0510" strokeWidth="0.6" />
+
+              {/* belt with buckle */}
+              <Path d="M 33 65 L 67 65" stroke="#0a0510" strokeWidth="2.6" />
+              <Path d="M 33 65 L 67 65" stroke={darker} strokeWidth="2" />
+              <Polygon points="46,62 54,62 54,68 46,68" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
+              <Polygon points="46,62 50,65 50,62" fill="#fff" opacity="0.5" />
+
+              {/* chest gem (diamond shape) above belt */}
+              <Polygon points="50,44 56,52 50,60 44,52" fill={accent} stroke="#fff" strokeWidth="0.8" />
+              <Polygon points="50,44 50,56 44,52" fill="#fff" opacity="0.5" />
+
+              {/* hood */}
+              <Path d="M 34 36 C 34 22 42 18 50 18 C 58 18 66 22 66 36 L 62 50 L 38 50 Z"
+                    fill={dark} stroke="#0a0510" strokeWidth="2" />
+              <Path d="M 34 36 C 34 22 42 18 50 18" stroke="#fff" strokeWidth="0.7" fill="none" opacity="0.45" />
+              {/* hood ornament at top */}
+              <Circle cx="50" cy="18" r="1.6" fill={accent} stroke="#0a0510" strokeWidth="0.4" />
+
+              {/* face shadow under hood (very dark) */}
+              <Path d="M 38 42 L 62 42 L 58 50 L 42 50 Z" fill="#000" />
+
+              {/* TWO glowing eyes (was single slit) */}
+              <Ellipse cx="45" cy="45" rx="2" ry="1.4" fill={accent} />
+              <Circle cx="45" cy="45" r="0.7" fill="#fff" />
+              <Ellipse cx="55" cy="45" rx="2" ry="1.4" fill={accent} />
+              <Circle cx="55" cy="45" r="0.7" fill="#fff" />
+              {/* brow ridge */}
+              <Path d="M 42 42.5 L 47.5 43.5" stroke="#0a0510" strokeWidth="1" strokeLinecap="round" />
+              <Path d="M 58 42.5 L 52.5 43.5" stroke="#0a0510" strokeWidth="1" strokeLinecap="round" />
+            </G>
           </>
         )}
 
@@ -3061,42 +3099,64 @@ function SpecialSvg({ recipe }) {
             {/* base sigil pattern */}
             <Path d="M 50 74 L 58 78 L 50 82 L 42 78 Z" fill={accent} opacity="0.85" stroke="#0a0510" strokeWidth="0.6" />
 
-            {/* outer sigil ring around head */}
-            <Circle cx="50" cy="20" r="13" fill="none" stroke={accent} strokeWidth="1" opacity="0.55"
-                    strokeDasharray="3 2" />
-            {/* halo */}
-            <Circle cx="50" cy="22" r="10" fill="none" stroke={accent} strokeWidth="2.5" />
-            <Circle cx="50" cy="22" r="10" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.55" />
-            {/* robed body */}
-            <Path d="M 50 26 C 64 26 72 34 72 46 L 76 76 L 24 76 L 28 46 C 28 34 36 26 50 26 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
-            <Path d="M 28 46 C 28 34 36 26 50 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.5" />
-            {/* head */}
-            <Circle cx="50" cy="24" r="9" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
-            {/* face hood shadow */}
-            <Path d="M 43 22 Q 50 16 57 22 L 55 32 L 45 32 Z" fill="#0a0510" />
-            {/* two glowing eyes */}
-            <Circle cx="46" cy="23" r="1.5" fill={accent} />
-            <Circle cx="54" cy="23" r="1.5" fill={accent} />
-            <Circle cx="46" cy="22.5" r="0.5" fill="#fff" />
-            <Circle cx="54" cy="22.5" r="0.5" fill="#fff" />
-            {/* crown */}
-            <Polygon points="42,16 46,8 50,14 54,8 58,16" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
-            <Circle cx="50" cy="10" r="1.5" fill="#fff" />
-            {/* chest sigil */}
-            <Polygon points="50,46 60,56 50,66 40,56" fill={accent} stroke="#fff" strokeWidth="0.8" />
-            <Polygon points="50,46 50,66 40,56" fill="#fff" opacity="0.35" />
-            <Path d="M 40 56 L 60 56 M 50 46 L 50 66" stroke="#0a0510" strokeWidth="0.6" />
-            {/* folded arms */}
-            <Path d="M 30 52 Q 50 64 70 52" stroke={accent} strokeWidth="2.2" fill="none" />
-            <Path d="M 30 52 Q 50 64 70 52" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.5" />
-            {/* robe trim hem */}
-            <Path d="M 24 74 L 76 74" stroke={accent} strokeWidth="1.5" />
-            {/* floating side gems */}
-            <Polygon points="12,46 16,42 20,46 16,50" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
-            <Polygon points="80,46 84,42 88,46 84,50" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
-            <Circle cx="16" cy="46" r="0.8" fill="#fff" />
-            <Circle cx="84" cy="46" r="0.8" fill="#fff" />
+            {/* === IDLE-BOB GROUP === */}
+            <G transform={`translate(0, ${bob})`}>
+              {/* boots peeking out from under robe */}
+              <Ellipse cx="40" cy="74" rx="4.5" ry="2.4" fill={darker} stroke="#0a0510" strokeWidth="0.8" />
+              <Ellipse cx="40" cy="73.5" rx="3.5" ry="1.2" fill={dark} opacity="0.7" />
+              <Ellipse cx="60" cy="74" rx="4.5" ry="2.4" fill={darker} stroke="#0a0510" strokeWidth="0.8" />
+              <Ellipse cx="60" cy="73.5" rx="3.5" ry="1.2" fill={dark} opacity="0.7" />
+
+              {/* outer sigil ring around head */}
+              <Circle cx="50" cy="20" r="13" fill="none" stroke={accent} strokeWidth="1" opacity="0.55"
+                      strokeDasharray="3 2" />
+              {/* halo */}
+              <Circle cx="50" cy="22" r="10" fill="none" stroke={accent} strokeWidth="2.5" />
+              <Circle cx="50" cy="22" r="10" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.55" />
+              {/* robed body */}
+              <Path d="M 50 26 C 64 26 72 34 72 46 L 76 74 L 24 74 L 28 46 C 28 34 36 26 50 26 Z"
+                    fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.4" />
+              <Path d="M 28 46 C 28 34 36 26 50 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.5" />
+              {/* robe vertical seam */}
+              <Path d="M 50 36 L 50 74" stroke={darker} strokeWidth="0.5" opacity="0.6" />
+              {/* head */}
+              <Circle cx="50" cy="24" r="9" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+              {/* face hood shadow */}
+              <Path d="M 43 22 Q 50 16 57 22 L 55 32 L 45 32 Z" fill="#0a0510" />
+              {/* two glowing eyes */}
+              <Circle cx="46" cy="23" r="1.5" fill={accent} />
+              <Circle cx="54" cy="23" r="1.5" fill={accent} />
+              <Circle cx="46" cy="22.5" r="0.5" fill="#fff" />
+              <Circle cx="54" cy="22.5" r="0.5" fill="#fff" />
+              {/* brow ridge */}
+              <Path d="M 43 21 L 48 22" stroke="#0a0510" strokeWidth="1" strokeLinecap="round" />
+              <Path d="M 57 21 L 52 22" stroke="#0a0510" strokeWidth="1" strokeLinecap="round" />
+              {/* crown */}
+              <Polygon points="42,16 46,8 50,14 54,8 58,16" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
+              <Circle cx="50" cy="10" r="1.5" fill="#fff" />
+              {/* chest sigil */}
+              <Polygon points="50,46 60,56 50,66 40,56" fill={accent} stroke="#fff" strokeWidth="0.8" />
+              <Polygon points="50,46 50,66 40,56" fill="#fff" opacity="0.35" />
+              <Path d="M 40 56 L 60 56 M 50 46 L 50 66" stroke="#0a0510" strokeWidth="0.6" />
+              {/* arms with VISIBLE hand cuffs */}
+              <Path d="M 30 50 Q 38 60 50 62 Q 62 60 70 50" stroke={`url(#${id}b)`} strokeWidth="5" fill="none" />
+              <Path d="M 30 50 Q 38 60 50 62 Q 62 60 70 50" stroke="#0a0510" strokeWidth="0.6" fill="none" />
+              <Path d="M 30 50 Q 38 58 50 60" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.4" />
+              {/* hand cuffs */}
+              <Circle cx="32" cy="50" r="2" fill={dark} stroke="#0a0510" strokeWidth="0.5" />
+              <Circle cx="68" cy="50" r="2" fill={dark} stroke="#0a0510" strokeWidth="0.5" />
+              {/* robe trim hem */}
+              <Path d="M 24 70 L 76 70" stroke={accent} strokeWidth="1.5" />
+              {/* belt with buckle */}
+              <Path d="M 28 64 L 72 64" stroke="#0a0510" strokeWidth="2.6" />
+              <Path d="M 28 64 L 72 64" stroke={darker} strokeWidth="2" />
+              <Polygon points="46,61 54,61 54,67 46,67" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
+              {/* floating side gems */}
+              <Polygon points="12,46 16,42 20,46 16,50" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
+              <Polygon points="80,46 84,42 88,46 84,50" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
+              <Circle cx="16" cy="46" r="0.8" fill="#fff" />
+              <Circle cx="84" cy="46" r="0.8" fill="#fff" />
+            </G>
           </>
         )}
 
@@ -3126,55 +3186,95 @@ function SpecialSvg({ recipe }) {
             {/* sigil panel on pillar */}
             <Polygon points="50,80 56,84 50,88 44,84" fill={accent} stroke="#0a0510" strokeWidth="0.6" />
 
-            {/* wings spread out */}
-            <Path d="M 30 36 Q 4 22 -4 50 Q 8 50 22 56 Q 4 60 6 72 Q 22 64 30 60 Z"
-                  fill={accent} stroke="#0a0510" strokeWidth="1.5" />
-            <Path d="M 70 36 Q 96 22 104 50 Q 92 50 78 56 Q 96 60 94 72 Q 78 64 70 60 Z"
-                  fill={accent} stroke="#0a0510" strokeWidth="1.5" />
-            {/* wing feather highlights / rim */}
-            <Path d="M 6 30 L 24 46" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
-            <Path d="M 0 46 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 8 64 L 26 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
-            <Path d="M 94 30 L 76 46" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
-            <Path d="M 100 46 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 92 64 L 74 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
-            {/* wing top rim */}
-            <Path d="M 30 36 Q 4 22 -4 50" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.4" />
-            <Path d="M 70 36 Q 96 22 104 50" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.4" />
+            {/* === WINGS — flap independently from body bob === */}
+            <G transform={`rotate(${-wingFlap}, 30, 36)`}>
+              <Path d="M 30 36 Q 4 22 -4 50 Q 8 50 22 56 Q 4 60 6 72 Q 22 64 30 60 Z"
+                    fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+              <Path d="M 6 30 L 24 46" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+              <Path d="M 0 46 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+              <Path d="M 8 64 L 26 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+              <Path d="M 30 36 Q 4 22 -4 50" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.4" />
+              {/* extra inner feather lines */}
+              <Path d="M 12 38 L 26 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+              <Path d="M 4 54 L 24 56" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${wingFlap}, 70, 36)`}>
+              <Path d="M 70 36 Q 96 22 104 50 Q 92 50 78 56 Q 96 60 94 72 Q 78 64 70 60 Z"
+                    fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+              <Path d="M 94 30 L 76 46" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+              <Path d="M 100 46 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+              <Path d="M 92 64 L 74 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+              <Path d="M 70 36 Q 96 22 104 50" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.4" />
+              <Path d="M 88 38 L 74 50" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+              <Path d="M 96 54 L 76 56" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
 
-            {/* halo behind head */}
-            <Circle cx="50" cy="18" r="11" fill="none" stroke={accent} strokeWidth="2.6" />
-            <Circle cx="50" cy="18" r="11" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.55" />
-            <Circle cx="50" cy="18" r="8" fill="none" stroke={accent} strokeWidth="0.8" opacity="0.7" />
+            {/* === IDLE-BOB GROUP — body floats relative to wings === */}
+            <G transform={`translate(0, ${bob})`}>
+              {/* boots peeking out from under armor skirt */}
+              <Ellipse cx="40" cy="72" rx="5" ry="2.6" fill={darker} stroke="#0a0510" strokeWidth="0.9" />
+              <Ellipse cx="40" cy="71.5" rx="4" ry="1.4" fill={dark} opacity="0.7" />
+              <Path d="M 37 70 L 43 70" stroke="#ffd166" strokeWidth="0.6" />
+              <Ellipse cx="60" cy="72" rx="5" ry="2.6" fill={darker} stroke="#0a0510" strokeWidth="0.9" />
+              <Ellipse cx="60" cy="71.5" rx="4" ry="1.4" fill={dark} opacity="0.7" />
+              <Path d="M 57 70 L 63 70" stroke="#ffd166" strokeWidth="0.6" />
 
-            {/* armoured body */}
-            <Path d="M 50 26 C 64 26 72 34 72 44 L 74 72 L 26 72 L 28 44 C 28 34 36 26 50 26 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.6" />
-            <Path d="M 28 44 C 28 34 36 26 50 26" stroke="#fff" strokeWidth="0.9" fill="none" opacity="0.5" />
-            {/* breastplate */}
-            <Path d="M 38 36 L 62 36 L 60 68 L 40 68 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
-            <Path d="M 38 36 L 62 36" stroke="#fff" strokeWidth="0.7" opacity="0.5" />
-            {/* gold trim on breastplate */}
-            <Path d="M 38 36 L 62 36" stroke="#ffd166" strokeWidth="1" />
-            <Path d="M 40 68 L 60 68" stroke="#ffd166" strokeWidth="0.8" />
-            {/* large diamond sigil on chest */}
-            <Polygon points="50,42 60,52 50,62 40,52" fill={accent} stroke="#fff" strokeWidth="0.9" />
-            <Polygon points="50,42 50,62 40,52" fill="#fff" opacity="0.4" />
-            <Path d="M 40 52 L 60 52 M 50 42 L 50 62" stroke="#0a0510" strokeWidth="0.6" />
-            {/* head with visor */}
-            <Circle cx="50" cy="22" r="9" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
-            {/* visor strip */}
-            <Path d="M 42 22 L 58 22" stroke="#0a0510" strokeWidth="1.6" />
-            <Path d="M 43 23 L 57 23" stroke="#fff" strokeWidth="0.5" />
-            {/* face plate detail */}
-            <Path d="M 50 24 L 50 30 M 47 28 L 53 28" stroke="#0a0510" strokeWidth="0.6" />
-            {/* small forehead gem */}
-            <Circle cx="50" cy="17" r="1.8" fill="#fff" stroke="#0a0510" strokeWidth="0.4" />
+              {/* halo behind head */}
+              <Circle cx="50" cy="18" r="11" fill="none" stroke={accent} strokeWidth="2.6" />
+              <Circle cx="50" cy="18" r="11" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.55" />
+              <Circle cx="50" cy="18" r="8" fill="none" stroke={accent} strokeWidth="0.8" opacity="0.7" />
 
-            {/* staff in right hand */}
-            <Rect x="76" y="20" width="2.5" height="48" fill="#3a2806" stroke="#0a0510" strokeWidth="0.5" />
-            <Polygon points="77,16 71,22 77,30 83,22" fill={accent} stroke="#fff" strokeWidth="0.8" />
-            <Circle cx="77" cy="22" r="1.5" fill="#fff" />
+              {/* armoured body */}
+              <Path d="M 50 26 C 64 26 72 34 72 44 L 74 70 L 26 70 L 28 44 C 28 34 36 26 50 26 Z"
+                    fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.6" />
+              <Path d="M 28 44 C 28 34 36 26 50 26" stroke="#fff" strokeWidth="0.9" fill="none" opacity="0.5" />
+              {/* breastplate */}
+              <Path d="M 38 36 L 62 36 L 60 66 L 40 66 Z" fill={dark} stroke="#0a0510" strokeWidth="1.5" />
+              <Path d="M 38 36 L 62 36" stroke="#fff" strokeWidth="0.7" opacity="0.5" />
+              {/* gold trim on breastplate */}
+              <Path d="M 38 36 L 62 36" stroke="#ffd166" strokeWidth="1" />
+              <Path d="M 40 66 L 60 66" stroke="#ffd166" strokeWidth="0.8" />
+              {/* large diamond sigil on chest */}
+              <Polygon points="50,42 60,52 50,62 40,52" fill={accent} stroke="#fff" strokeWidth="0.9" />
+              <Polygon points="50,42 50,62 40,52" fill="#fff" opacity="0.4" />
+              <Path d="M 40 52 L 60 52 M 50 42 L 50 62" stroke="#0a0510" strokeWidth="0.6" />
+              {/* belt with buckle */}
+              <Path d="M 28 66 L 72 66" stroke="#0a0510" strokeWidth="2.6" />
+              <Path d="M 28 66 L 72 66" stroke="#ffd166" strokeWidth="1.6" />
+              <Polygon points="46,63 54,63 54,69 46,69" fill={accent} stroke="#0a0510" strokeWidth="0.7" />
+              <Polygon points="46,63 50,66 50,63" fill="#fff" opacity="0.5" />
+              {/* head with helmet */}
+              <Circle cx="50" cy="22" r="9" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+              {/* helmet top crest */}
+              <Path d="M 50 13 L 48 17 L 52 17 Z" fill="#ffd166" stroke="#0a0510" strokeWidth="0.5" />
+              {/* visor strip */}
+              <Path d="M 41 22 L 59 22" stroke="#0a0510" strokeWidth="1.8" />
+              <Path d="M 42 23 L 58 23" stroke="#fff" strokeWidth="0.6" />
+              {/* TWO glowing eyes inside visor */}
+              <Circle cx="46" cy="23" r="1" fill="#fff" />
+              <Circle cx="54" cy="23" r="1" fill="#fff" />
+              {/* brow / face plate detail */}
+              <Path d="M 50 24 L 50 30 M 47 28 L 53 28" stroke="#0a0510" strokeWidth="0.6" />
+              {/* small forehead gem */}
+              <Circle cx="50" cy="17" r="1.8" fill="#fff" stroke="#0a0510" strokeWidth="0.4" />
+
+              {/* pauldron (left shoulder) */}
+              <Path d="M 26 36 Q 22 28 32 26 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.1" />
+              <Path d="M 26 36 Q 22 28 32 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.55" />
+              <Circle cx="29" cy="31" r="1" fill="#ffd166" />
+              {/* pauldron (right shoulder) */}
+              <Path d="M 74 36 Q 78 28 68 26 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.1" />
+              <Path d="M 74 36 Q 78 28 68 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.55" />
+              <Circle cx="71" cy="31" r="1" fill="#ffd166" />
+
+              {/* staff in right hand */}
+              <Rect x="76" y="20" width="2.5" height="48" fill="#3a2806" stroke="#0a0510" strokeWidth="0.5" />
+              <Polygon points="77,16 71,22 77,30 83,22" fill={accent} stroke="#fff" strokeWidth="0.8" />
+              <Circle cx="77" cy="22" r="1.5" fill="#fff" />
+              <Circle cx="77" cy="22" r="3" fill={accent} opacity="0.3" />
+              {/* hand gripping staff */}
+              <Circle cx="77" cy="46" r="2" fill={dark} stroke="#0a0510" strokeWidth="0.5" />
+            </G>
           </>
         )}
 
@@ -3205,76 +3305,110 @@ function SpecialSvg({ recipe }) {
             <Path d="M 28 70 L 26 92" stroke="#0a0510" strokeWidth="0.6" />
             <Path d="M 72 70 L 74 92" stroke="#0a0510" strokeWidth="0.6" />
 
-            {/* upper wings */}
-            <Path d="M 30 32 Q 0 14 -8 38 Q 4 38 22 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
-            <Path d="M 70 32 Q 100 14 108 38 Q 96 38 78 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
-            <Path d="M 30 32 Q 0 14 -8 38" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.5" />
-            <Path d="M 70 32 Q 100 14 108 38" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.5" />
-            {/* lower wings */}
-            <Path d="M 30 50 Q 2 48 -4 70 Q 14 64 30 60 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.9" />
-            <Path d="M 70 50 Q 98 48 104 70 Q 86 64 70 60 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.9" />
-            {/* feather highlights */}
-            <Path d="M 6 22 L 24 42" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
-            <Path d="M 0 32 L 22 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 4 56 L 26 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
-            <Path d="M 8 66 L 28 62" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
-            <Path d="M 94 22 L 76 42" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
-            <Path d="M 100 32 L 78 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 96 56 L 74 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
-            <Path d="M 92 66 L 72 62" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+            {/* === WINGS (4 total — upper + lower pair on each side) flap === */}
+            <G transform={`rotate(${-wingFlap}, 30, 32)`}>
+              <Path d="M 30 32 Q 0 14 -8 38 Q 4 38 22 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+              <Path d="M 30 32 Q 0 14 -8 38" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.5" />
+              <Path d="M 6 22 L 24 42" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
+              <Path d="M 0 32 L 22 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+              {/* feather separators */}
+              <Path d="M 12 24 L 24 44" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+              <Path d="M 6 36 L 22 48" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${-wingFlap * 0.6}, 30, 50)`}>
+              <Path d="M 30 50 Q 2 48 -4 70 Q 14 64 30 60 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.9" />
+              <Path d="M 4 56 L 26 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+              <Path d="M 8 66 L 28 62" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+              <Path d="M 6 60 L 28 60" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${wingFlap}, 70, 32)`}>
+              <Path d="M 70 32 Q 100 14 108 38 Q 96 38 78 50 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+              <Path d="M 70 32 Q 100 14 108 38" stroke="#fff" strokeWidth="0.6" fill="none" opacity="0.5" />
+              <Path d="M 94 22 L 76 42" stroke="#fff" strokeWidth="0.6" opacity="0.6" />
+              <Path d="M 100 32 L 78 46" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+              <Path d="M 88 24 L 76 44" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+              <Path d="M 94 36 L 78 48" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${wingFlap * 0.6}, 70, 50)`}>
+              <Path d="M 70 50 Q 98 48 104 70 Q 86 64 70 60 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.9" />
+              <Path d="M 96 56 L 74 58" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+              <Path d="M 92 66 L 72 62" stroke="#fff" strokeWidth="0.5" opacity="0.5" />
+              <Path d="M 94 60 L 72 60" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
 
-            {/* multi-halo */}
-            <Circle cx="50" cy="16" r="13" fill="none" stroke={accent} strokeWidth="2.8" />
-            <Circle cx="50" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="0.7" opacity="0.6" />
-            <Circle cx="50" cy="16" r="7" fill="none" stroke={accent} strokeWidth="1" opacity="0.7" />
+            {/* === IDLE-BOB GROUP — body floats relative to wings === */}
+            <G transform={`translate(0, ${bob})`}>
+              {/* boots at the bottom */}
+              <Ellipse cx="38" cy="70" rx="5.5" ry="2.8" fill={darker} stroke="#0a0510" strokeWidth="0.9" />
+              <Ellipse cx="38" cy="69.5" rx="4.5" ry="1.5" fill={dark} opacity="0.7" />
+              <Path d="M 34 68 L 42 68" stroke="#ffd166" strokeWidth="0.7" />
+              <Ellipse cx="62" cy="70" rx="5.5" ry="2.8" fill={darker} stroke="#0a0510" strokeWidth="0.9" />
+              <Ellipse cx="62" cy="69.5" rx="4.5" ry="1.5" fill={dark} opacity="0.7" />
+              <Path d="M 58 68 L 66 68" stroke="#ffd166" strokeWidth="0.7" />
 
-            {/* armoured body */}
-            <Path d="M 50 24 C 66 24 74 32 74 44 L 78 70 L 22 70 L 26 44 C 26 32 34 24 50 24 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.8" />
-            <Path d="M 26 44 C 26 32 34 24 50 24" stroke="#fff" strokeWidth="1" fill="none" opacity="0.55" />
-            {/* breastplate */}
-            <Path d="M 34 36 L 66 36 L 64 66 L 36 66 Z" fill={dark} stroke="#0a0510" strokeWidth="1.6" />
-            <Path d="M 34 36 L 66 36" stroke="#fff" strokeWidth="0.7" opacity="0.55" />
-            {/* gold trim on breastplate */}
-            <Path d="M 34 36 L 66 36" stroke="#ffd166" strokeWidth="1.2" />
-            <Path d="M 36 66 L 64 66" stroke="#ffd166" strokeWidth="1" />
-            <Path d="M 34 36 L 36 66" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
-            <Path d="M 66 36 L 64 66" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
-            {/* large double-diamond sigil */}
-            <Polygon points="50,38 64,50 50,62 36,50" fill={accent} stroke="#fff" strokeWidth="1" />
-            <Polygon points="50,42 60,50 50,58 40,50" fill="#fff" opacity="0.5" />
-            <Polygon points="50,42 60,50 50,58 40,50" fill="none" stroke="#0a0510" strokeWidth="0.5" />
-            <Path d="M 36 50 L 64 50 M 50 38 L 50 62" stroke="#0a0510" strokeWidth="0.6" />
-            {/* head with golden crown */}
-            <Circle cx="50" cy="20" r="9" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
-            {/* gold crown points */}
-            <Polygon points="40,14 44,4 48,12 52,2 56,12 60,4 64,14" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
-            <Circle cx="52" cy="5" r="2" fill="#fff" />
-            {/* visor */}
-            <Path d="M 42 21 L 58 21" stroke="#0a0510" strokeWidth="1.6" />
-            <Path d="M 44 22 L 56 22" stroke="#fff" strokeWidth="0.5" />
-            {/* face plate detail */}
-            <Path d="M 50 24 L 50 30 M 47 28 L 53 28" stroke="#0a0510" strokeWidth="0.6" />
-            {/* forehead gem */}
-            <Circle cx="50" cy="15" r="2" fill="#fff" stroke="#0a0510" strokeWidth="0.4" />
+              {/* multi-halo (opacity pulses gently) */}
+              <Circle cx="50" cy="16" r="13" fill="none" stroke={accent} strokeWidth="2.8" opacity={haloPulse} />
+              <Circle cx="50" cy="16" r="10" fill="none" stroke="#fff" strokeWidth="0.7" opacity={0.6 * haloPulse} />
+              <Circle cx="50" cy="16" r="7" fill="none" stroke={accent} strokeWidth="1" opacity={0.7 * haloPulse} />
 
-            {/* greatsword behind body */}
-            <Rect x="48.5" y="-2" width="3" height="80" fill="#cfd5e6" stroke="#0a0510" strokeWidth="0.6" />
-            <Path d="M 48.5 -2 L 51.5 -2" stroke="#fff" strokeWidth="0.5" />
-            <Polygon points="46,-2 54,-2 50,-10" fill="#cfd5e6" stroke="#0a0510" strokeWidth="0.6" />
-            <Rect x="42" y="42" width="16" height="3.5" fill="#7a6a3a" stroke="#0a0510" strokeWidth="0.5" />
-            <Path d="M 42 42 L 58 42" stroke="#ffd166" strokeWidth="0.8" />
-            <Circle cx="50" cy="55" r="2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+              {/* armoured body */}
+              <Path d="M 50 24 C 66 24 74 32 74 44 L 78 68 L 22 68 L 26 44 C 26 32 34 24 50 24 Z"
+                    fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="2.8" />
+              <Path d="M 26 44 C 26 32 34 24 50 24" stroke="#fff" strokeWidth="1" fill="none" opacity="0.55" />
+              {/* breastplate */}
+              <Path d="M 34 36 L 66 36 L 64 64 L 36 64 Z" fill={dark} stroke="#0a0510" strokeWidth="1.6" />
+              <Path d="M 34 36 L 66 36" stroke="#fff" strokeWidth="0.7" opacity="0.55" />
+              {/* gold trim on breastplate */}
+              <Path d="M 34 36 L 66 36" stroke="#ffd166" strokeWidth="1.2" />
+              <Path d="M 36 64 L 64 64" stroke="#ffd166" strokeWidth="1" />
+              <Path d="M 34 36 L 36 64" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
+              <Path d="M 66 36 L 64 64" stroke="#ffd166" strokeWidth="0.6" opacity="0.85" />
+              {/* large double-diamond sigil */}
+              <Polygon points="50,38 64,50 50,62 36,50" fill={accent} stroke="#fff" strokeWidth="1" />
+              <Polygon points="50,42 60,50 50,58 40,50" fill="#fff" opacity="0.5" />
+              <Polygon points="50,42 60,50 50,58 40,50" fill="none" stroke="#0a0510" strokeWidth="0.5" />
+              <Path d="M 36 50 L 64 50 M 50 38 L 50 62" stroke="#0a0510" strokeWidth="0.6" />
+              {/* belt with buckle */}
+              <Path d="M 26 64 L 74 64" stroke="#0a0510" strokeWidth="2.8" />
+              <Path d="M 26 64 L 74 64" stroke="#ffd166" strokeWidth="1.8" />
+              <Polygon points="46,61 54,61 54,67 46,67" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
+              <Polygon points="46,61 50,64 50,61" fill="#fff" opacity="0.5" />
+              {/* head with golden crown */}
+              <Circle cx="50" cy="20" r="9" fill={accent} stroke="#0a0510" strokeWidth="1.5" />
+              {/* gold crown points */}
+              <Polygon points="40,14 44,4 48,12 52,2 56,12 60,4 64,14" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+              <Circle cx="52" cy="5" r="2" fill="#fff" />
+              {/* visor */}
+              <Path d="M 42 21 L 58 21" stroke="#0a0510" strokeWidth="1.8" />
+              <Path d="M 43 22 L 57 22" stroke="#fff" strokeWidth="0.5" />
+              {/* TWO eye dots inside visor */}
+              <Circle cx="46" cy="22" r="0.9" fill="#fff" />
+              <Circle cx="54" cy="22" r="0.9" fill="#fff" />
+              {/* face plate detail */}
+              <Path d="M 50 24 L 50 30 M 47 28 L 53 28" stroke="#0a0510" strokeWidth="0.6" />
+              {/* forehead gem */}
+              <Circle cx="50" cy="15" r="2" fill="#fff" stroke="#0a0510" strokeWidth="0.4" />
 
-            {/* shoulder pauldrons */}
-            <Path d="M 22 38 Q 18 30 28 26 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
-            <Path d="M 78 38 Q 82 30 72 26 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
-            <Path d="M 22 38 Q 18 30 28 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
-            <Path d="M 78 38 Q 82 30 72 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+              {/* shoulder pauldrons (with edge highlights and inset gem) */}
+              <Path d="M 22 38 Q 18 30 28 26 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+              <Path d="M 22 38 Q 18 30 28 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+              <Circle cx="26" cy="31" r="1.2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.3" />
+              <Path d="M 78 38 Q 82 30 72 26 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+              <Path d="M 78 38 Q 82 30 72 26" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+              <Circle cx="74" cy="31" r="1.2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.3" />
 
-            {/* floating motes */}
-            <Circle cx="8" cy="10" r="1.5" fill="#fff" opacity="0.85" />
-            <Circle cx="92" cy="10" r="1.5" fill="#fff" opacity="0.85" />
+              {/* greatsword behind body */}
+              <Rect x="48.5" y="-2" width="3" height="76" fill="#cfd5e6" stroke="#0a0510" strokeWidth="0.6" />
+              <Path d="M 48.5 -2 L 51.5 -2" stroke="#fff" strokeWidth="0.5" />
+              <Polygon points="46,-2 54,-2 50,-10" fill="#cfd5e6" stroke="#0a0510" strokeWidth="0.6" />
+              <Rect x="42" y="42" width="16" height="3.5" fill="#7a6a3a" stroke="#0a0510" strokeWidth="0.5" />
+              <Path d="M 42 42 L 58 42" stroke="#ffd166" strokeWidth="0.8" />
+              <Circle cx="50" cy="55" r="2" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+
+              {/* floating motes */}
+              <Circle cx="8" cy="10" r="1.5" fill="#fff" opacity={0.85 * haloPulse} />
+              <Circle cx="92" cy="10" r="1.5" fill="#fff" opacity={0.85 * haloPulse} />
+            </G>
           </>
         )}
 
@@ -3284,7 +3418,7 @@ function SpecialSvg({ recipe }) {
             {/* drop shadow on floor */}
             <Ellipse cx="50" cy="94" rx="48" ry="6" fill="#0a0510" opacity="0.75" />
             {/* orbit rings under figure (magic dais) */}
-            <Ellipse cx="50" cy="84" rx="44" ry="9" fill="none" stroke="#ffd166" strokeWidth="0.7" opacity="0.7" strokeDasharray="2 3" />
+            <Ellipse cx="50" cy="84" rx="44" ry="9" fill="none" stroke="#ffd166" strokeWidth="0.7" opacity={0.7 * haloPulse} strokeDasharray="2 3" />
             <Ellipse cx="50" cy="84" rx="36" ry="6.5" fill="none" stroke={accent} strokeWidth="1.5" opacity="0.75" />
             <Ellipse cx="50" cy="84" rx="28" ry="4.5" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.55" />
             {/* magic platform top — runic disc */}
@@ -3295,87 +3429,128 @@ function SpecialSvg({ recipe }) {
             <Path d="M 50 80 L 53 77 L 53 83 Z" fill="#fff" opacity="0.85" />
             <Path d="M 68 80 L 64 78 L 68 82 Z" fill={accent} />
             {/* glow under the disc — figure appears to hover */}
-            <Ellipse cx="50" cy="76" rx="22" ry="3" fill="#ffd166" opacity="0.65" />
+            <Ellipse cx="50" cy="76" rx="22" ry="3" fill="#ffd166" opacity={0.65 * haloPulse} />
 
-            {/* reality-tear cracks */}
-            <Path d="M 50 -8 L 50 2" stroke="#fff" strokeWidth="1.5" opacity="0.7" />
-            <Path d="M 14 4 L 22 12" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
-            <Path d="M 86 4 L 78 12" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
-            <Path d="M -4 50 L 6 50" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
-            <Path d="M 94 50 L 104 50" stroke="#fff" strokeWidth="1.2" opacity="0.6" />
+            {/* reality-tear cracks (pulsing white) */}
+            <Path d="M 50 -8 L 50 2" stroke="#fff" strokeWidth="1.5" opacity={0.7 * haloPulse} />
+            <Path d="M 14 4 L 22 12" stroke="#fff" strokeWidth="1.2" opacity={0.6 * haloPulse} />
+            <Path d="M 86 4 L 78 12" stroke="#fff" strokeWidth="1.2" opacity={0.6 * haloPulse} />
+            <Path d="M -4 50 L 6 50" stroke="#fff" strokeWidth="1.2" opacity={0.6 * haloPulse} />
+            <Path d="M 94 50 L 104 50" stroke="#fff" strokeWidth="1.2" opacity={0.6 * haloPulse} />
 
-            {/* triple wings per side */}
-            <Path d="M 30 30 Q 0 8 -10 36 Q 6 36 22 48 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
-            <Path d="M 28 46 Q -10 42 -10 64 Q 6 60 28 56 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
-            <Path d="M 30 60 Q -2 64 -2 80 Q 16 72 32 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
-            <Path d="M 70 30 Q 100 8 110 36 Q 94 36 78 48 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
-            <Path d="M 72 46 Q 110 42 110 64 Q 94 60 72 56 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
-            <Path d="M 70 60 Q 102 64 102 80 Q 84 72 68 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
-            {/* feather rim lighting */}
-            <Path d="M -4 16 L 24 38" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
-            <Path d="M -8 42 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 0 70 L 28 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
-            <Path d="M 104 16 L 76 38" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
-            <Path d="M 108 42 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
-            <Path d="M 100 70 L 72 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+            {/* === TRIPLE WINGS per side — each pair flaps at different rate === */}
+            <G transform={`rotate(${-wingFlap}, 30, 30)`}>
+              <Path d="M 30 30 Q 0 8 -10 36 Q 6 36 22 48 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+              <Path d="M -4 16 L 24 38" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+              <Path d="M 10 16 L 24 40" stroke="#0a0510" strokeWidth="0.4" opacity="0.55" />
+            </G>
+            <G transform={`rotate(${-wingFlap * 0.75}, 28, 46)`}>
+              <Path d="M 28 46 Q -10 42 -10 64 Q 6 60 28 56 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
+              <Path d="M -8 42 L 22 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+              <Path d="M -4 56 L 26 56" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${-wingFlap * 0.5}, 30, 60)`}>
+              <Path d="M 30 60 Q -2 64 -2 80 Q 16 72 32 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+              <Path d="M 0 70 L 28 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+              <Path d="M 4 76 L 28 70" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${wingFlap}, 70, 30)`}>
+              <Path d="M 70 30 Q 100 8 110 36 Q 94 36 78 48 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" />
+              <Path d="M 104 16 L 76 38" stroke="#fff" strokeWidth="0.6" opacity="0.65" />
+              <Path d="M 90 16 L 76 40" stroke="#0a0510" strokeWidth="0.4" opacity="0.55" />
+            </G>
+            <G transform={`rotate(${wingFlap * 0.75}, 72, 46)`}>
+              <Path d="M 72 46 Q 110 42 110 64 Q 94 60 72 56 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.92" />
+              <Path d="M 108 42 L 78 52" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+              <Path d="M 104 56 L 74 56" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
+            <G transform={`rotate(${wingFlap * 0.5}, 70, 60)`}>
+              <Path d="M 70 60 Q 102 64 102 80 Q 84 72 68 68 Z" fill={accent} stroke="#0a0510" strokeWidth="1.4" opacity="0.85" />
+              <Path d="M 100 70 L 72 64" stroke="#fff" strokeWidth="0.5" opacity="0.55" />
+              <Path d="M 96 76 L 72 70" stroke="#0a0510" strokeWidth="0.4" opacity="0.5" />
+            </G>
 
-            {/* multi-layer halo */}
-            <Circle cx="50" cy="14" r="16" fill="none" stroke="#ffd166" strokeWidth="0.7" opacity="0.65" strokeDasharray="1 3" />
-            <Circle cx="50" cy="14" r="13" fill="none" stroke={accent} strokeWidth="2.5" />
-            <Circle cx="50" cy="14" r="10" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.7" />
-            <Circle cx="50" cy="14" r="7" fill="none" stroke={accent} strokeWidth="1.2" />
+            {/* === IDLE-BOB GROUP — body hovers above the dais === */}
+            <G transform={`translate(0, ${bob})`}>
+              {/* boots peeking out from radiant body */}
+              <Ellipse cx="38" cy="74" rx="6" ry="3" fill={darker} stroke="#0a0510" strokeWidth="1" />
+              <Ellipse cx="38" cy="73.5" rx="5" ry="1.6" fill={dark} opacity="0.7" />
+              <Path d="M 33 71.5 L 43 71.5" stroke="#ffd166" strokeWidth="0.8" />
+              <Ellipse cx="62" cy="74" rx="6" ry="3" fill={darker} stroke="#0a0510" strokeWidth="1" />
+              <Ellipse cx="62" cy="73.5" rx="5" ry="1.6" fill={dark} opacity="0.7" />
+              <Path d="M 57 71.5 L 67 71.5" stroke="#ffd166" strokeWidth="0.8" />
 
-            {/* radiant body */}
-            <Path d="M 50 24 C 70 24 80 32 80 46 L 84 76 L 16 76 L 20 46 C 20 32 30 24 50 24 Z"
-                  fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="3" />
-            <Path d="M 50 24 C 70 24 80 32 80 46 L 84 76 L 16 76 L 20 46 C 20 32 30 24 50 24 Z"
-                  fill="none" stroke="#ffd166" strokeWidth="1.2" />
-            <Path d="M 20 46 C 20 32 30 24 50 24" stroke="#fff" strokeWidth="1" fill="none" opacity="0.55" />
+              {/* multi-layer halo (opacity pulses) */}
+              <Circle cx="50" cy="14" r="16" fill="none" stroke="#ffd166" strokeWidth="0.7" opacity={0.65 * haloPulse} strokeDasharray="1 3" />
+              <Circle cx="50" cy="14" r="13" fill="none" stroke={accent} strokeWidth="2.5" opacity={haloPulse} />
+              <Circle cx="50" cy="14" r="10" fill="none" stroke="#fff" strokeWidth="0.8" opacity={0.7 * haloPulse} />
+              <Circle cx="50" cy="14" r="7" fill="none" stroke={accent} strokeWidth="1.2" opacity={haloPulse} />
 
-            {/* head + crown */}
-            <Circle cx="50" cy="18" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.6" />
-            <Polygon points="36,14 40,0 46,10 50,-2 54,10 60,0 64,14" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
-            <Circle cx="50" cy="2" r="2.5" fill="#fff" />
-            <Path d="M 42 19 L 58 19" stroke="#0a0510" strokeWidth="1.5" />
-            <Path d="M 44 20 L 56 20" stroke="#fff" strokeWidth="0.6" />
-            {/* forehead gem */}
-            <Circle cx="50" cy="12" r="2.5" fill="#fff" stroke="#0a0510" strokeWidth="0.5" />
+              {/* radiant body */}
+              <Path d="M 50 24 C 70 24 80 32 80 46 L 84 72 L 16 72 L 20 46 C 20 32 30 24 50 24 Z"
+                    fill={`url(#${id}b)`} stroke="#0a0510" strokeWidth="3" />
+              <Path d="M 50 24 C 70 24 80 32 80 46 L 84 72 L 16 72 L 20 46 C 20 32 30 24 50 24 Z"
+                    fill="none" stroke="#ffd166" strokeWidth="1.2" />
+              <Path d="M 20 46 C 20 32 30 24 50 24" stroke="#fff" strokeWidth="1" fill="none" opacity="0.55" />
 
-            {/* chest plate with cosmic core */}
-            <Path d="M 32 36 L 68 36 L 66 72 L 34 72 Z" fill={dark} stroke="#0a0510" strokeWidth="1.8" />
-            <Path d="M 32 36 L 68 36" stroke="#ffd166" strokeWidth="1.2" />
-            <Path d="M 34 72 L 66 72" stroke="#ffd166" strokeWidth="1" />
-            {/* cosmic singularity core */}
-            <Circle cx="50" cy="54" r="13" fill="#000" stroke="#0a0510" strokeWidth="2.2" />
-            <Circle cx="50" cy="54" r="11" fill={accent} />
-            <Polygon points="50,44 54,52 62,54 54,56 50,64 46,56 38,54 46,52" fill="#fff" opacity="0.9" />
-            <Circle cx="50" cy="54" r="3" fill="#000" />
-            <Circle cx="50" cy="54" r="3" fill="none" stroke="#fff" strokeWidth="0.6" />
-            {/* orbital ring around the chest core */}
-            <Ellipse cx="50" cy="54" rx="17" ry="4" fill="none" stroke="#ffd166" strokeWidth="0.8" opacity="0.85" />
+              {/* head + crown */}
+              <Circle cx="50" cy="18" r="10" fill={accent} stroke="#0a0510" strokeWidth="1.6" />
+              <Polygon points="36,14 40,0 46,10 50,-2 54,10 60,0 64,14" fill="#ffd166" stroke="#0a0510" strokeWidth="0.8" />
+              <Circle cx="50" cy="2" r="2.5" fill="#fff" />
+              <Path d="M 42 19 L 58 19" stroke="#0a0510" strokeWidth="1.5" />
+              <Path d="M 44 20 L 56 20" stroke="#fff" strokeWidth="0.6" />
+              {/* TWO glowing eyes inside visor */}
+              <Circle cx="46" cy="20" r="1" fill="#fff" />
+              <Circle cx="54" cy="20" r="1" fill="#fff" />
+              {/* forehead gem */}
+              <Circle cx="50" cy="12" r="2.5" fill="#fff" stroke="#0a0510" strokeWidth="0.5" />
 
-            {/* twin scepters at sides */}
-            <Rect x="16" y="40" width="2" height="40" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
-            <Circle cx="17" cy="40" r="3.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
-            <Circle cx="17" cy="40" r="1.5" fill="#fff" />
-            <Rect x="82" y="40" width="2" height="40" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
-            <Circle cx="83" cy="40" r="3.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
-            <Circle cx="83" cy="40" r="1.5" fill="#fff" />
+              {/* chest plate with cosmic core */}
+              <Path d="M 32 36 L 68 36 L 66 70 L 34 70 Z" fill={dark} stroke="#0a0510" strokeWidth="1.8" />
+              <Path d="M 32 36 L 68 36" stroke="#ffd166" strokeWidth="1.2" />
+              <Path d="M 34 70 L 66 70" stroke="#ffd166" strokeWidth="1" />
+              {/* cosmic singularity core */}
+              <Circle cx="50" cy="52" r="13" fill="#000" stroke="#0a0510" strokeWidth="2.2" />
+              <Circle cx="50" cy="52" r="11" fill={accent} />
+              <Polygon points="50,42 54,50 62,52 54,54 50,62 46,54 38,52 46,50" fill="#fff" opacity={0.9 * haloPulse} />
+              <Circle cx="50" cy="52" r="3" fill="#000" />
+              <Circle cx="50" cy="52" r="3" fill="none" stroke="#fff" strokeWidth="0.6" />
+              {/* orbital ring around the chest core */}
+              <Ellipse cx="50" cy="52" rx="17" ry="4" fill="none" stroke="#ffd166" strokeWidth="0.8" opacity={0.85 * haloPulse} />
 
-            {/* shoulder pauldrons with gems */}
-            <Path d="M 20 40 Q 14 28 26 24 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
-            <Path d="M 80 40 Q 86 28 74 24 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
-            <Path d="M 20 40 Q 14 28 26 24" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
-            <Path d="M 80 40 Q 86 28 74 24" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
-            <Circle cx="22" cy="30" r="1.5" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
-            <Circle cx="78" cy="30" r="1.5" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+              {/* belt with buckle */}
+              <Path d="M 24 70 L 76 70" stroke="#0a0510" strokeWidth="3" />
+              <Path d="M 24 70 L 76 70" stroke="#ffd166" strokeWidth="2" />
+              <Polygon points="46,67 54,67 54,73 46,73" fill={accent} stroke="#0a0510" strokeWidth="0.8" />
+              <Polygon points="46,67 50,70 50,67" fill="#fff" opacity="0.5" />
 
-            {/* orbital motes around */}
-            <Circle cx="-4" cy="16" r="2" fill="#fff" opacity="0.95" />
-            <Circle cx="104" cy="16" r="2" fill="#fff" opacity="0.95" />
-            <Circle cx="-6" cy="64" r="1.8" fill="#fff7a8" opacity="0.9" />
-            <Circle cx="106" cy="64" r="1.8" fill="#fff7a8" opacity="0.9" />
-            <Circle cx="50" cy="-6" r="2.5" fill="#fff" />
+              {/* twin scepters at sides — held in hands */}
+              <Rect x="16" y="40" width="2" height="40" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
+              <Circle cx="17" cy="40" r="3.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
+              <Circle cx="17" cy="40" r="1.5" fill="#fff" />
+              <Circle cx="17" cy="40" r="5" fill={accent} opacity={0.25 * haloPulse} />
+              <Circle cx="17" cy="50" r="2" fill={dark} stroke="#0a0510" strokeWidth="0.5" />
+              <Rect x="82" y="40" width="2" height="40" fill="#a8b4d0" stroke="#0a0510" strokeWidth="0.5" />
+              <Circle cx="83" cy="40" r="3.5" fill={accent} stroke="#fff" strokeWidth="0.6" />
+              <Circle cx="83" cy="40" r="1.5" fill="#fff" />
+              <Circle cx="83" cy="40" r="5" fill={accent} opacity={0.25 * haloPulse} />
+              <Circle cx="83" cy="50" r="2" fill={dark} stroke="#0a0510" strokeWidth="0.5" />
+
+              {/* shoulder pauldrons with gems */}
+              <Path d="M 20 40 Q 14 28 26 24 L 36 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+              <Path d="M 80 40 Q 86 28 74 24 L 64 36 Z" fill={accent} stroke="#0a0510" strokeWidth="1.2" />
+              <Path d="M 20 40 Q 14 28 26 24" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+              <Path d="M 80 40 Q 86 28 74 24" stroke="#fff" strokeWidth="0.5" fill="none" opacity="0.6" />
+              <Circle cx="22" cy="30" r="1.5" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+              <Circle cx="78" cy="30" r="1.5" fill="#ffd166" stroke="#0a0510" strokeWidth="0.4" />
+
+              {/* orbital motes around */}
+              <Circle cx="-4" cy="16" r="2" fill="#fff" opacity={0.95 * haloPulse} />
+              <Circle cx="104" cy="16" r="2" fill="#fff" opacity={0.95 * haloPulse} />
+              <Circle cx="-6" cy="64" r="1.8" fill="#fff7a8" opacity={0.9 * haloPulse} />
+              <Circle cx="106" cy="64" r="1.8" fill="#fff7a8" opacity={0.9 * haloPulse} />
+              <Circle cx="50" cy="-6" r="2.5" fill="#fff" opacity={haloPulse} />
+            </G>
           </>
         )}
       </Svg>
@@ -3383,7 +3558,7 @@ function SpecialSvg({ recipe }) {
   );
 }
 
-function TowerView({ t }) {
+function TowerView({ t, time }) {
   if (t.kind === 'rock') {
     return <RockView t={t} />;
   }
@@ -3395,7 +3570,7 @@ function TowerView({ t }) {
         position: 'absolute', left: t.c * TILE, top: t.r * TILE,
         width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
       }}>
-        <SpecialSvg recipe={recipe} />
+        <SpecialSvg recipe={recipe} time={time || 0} id={t.id} />
         {/* Full special tower name written below the tile */}
         <View style={{
           position: 'absolute',
