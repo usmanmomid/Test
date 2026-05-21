@@ -710,6 +710,13 @@ function LobbyScreen({ stats, onStartSolo }) {
               activeOpacity={0.85}
               style={[styles.diffBtn, { borderColor: d.color }]}
             >
+              {/* difficulty-coloured corner gems */}
+              <View style={[styles.diffCornerGem, { top: 4, left: 4, backgroundColor: d.color }]} />
+              <View style={[styles.diffCornerGem, { top: 4, right: 4, backgroundColor: d.color }]} />
+              <View style={[styles.diffCornerGem, { bottom: 4, left: 4, backgroundColor: d.color }]} />
+              <View style={[styles.diffCornerGem, { bottom: 4, right: 4, backgroundColor: d.color }]} />
+              {/* coloured ribbon on the left */}
+              <View style={[styles.diffRibbon, { backgroundColor: d.color }]} />
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
                   <Text style={[styles.diffName, { color: d.color }]}>{d.name}</Text>
@@ -828,21 +835,35 @@ function EndScreen({ won, score, waveReached, difficulty, stats, onPlayAgain, on
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.lobbyHeader}>
-        <Text style={[styles.lobbyCrystal, won ? { color: '#5cf28a' } : { color: '#ff4d6d' }]}>
-          {won ? '★' : '✦'}
-        </Text>
-        <Text style={styles.lobbyTitle}>{won ? 'Victory' : 'Defeated'}</Text>
-        <Text style={styles.lobbySubtitle}>
-          {won ? 'The crystals shine on' : `Fell on wave ${waveReached}`}
-        </Text>
-        <View style={[styles.diffPill, { borderColor: diff.color, marginTop: 8 }]}>
-          <View style={[styles.diffPillDot, { backgroundColor: diff.color }]} />
-          <Text style={[styles.diffPillText, { color: diff.color }]}>{diff.name}</Text>
+      <View style={styles.titleBannerWrap}>
+        <View style={[styles.titleChain, { left: '22%' }]} />
+        <View style={[styles.titleChain, { right: '22%' }]} />
+        <View style={[styles.titleBanner, { borderTopColor: won ? '#3a8848' : '#7a1d2e', borderBottomColor: won ? '#3a8848' : '#7a1d2e' }]}>
+          <View style={[styles.cornerStud, { top: 4, left: 4 }]} />
+          <View style={[styles.cornerStud, { top: 4, right: 4 }]} />
+          <View style={[styles.cornerStud, { bottom: 4, left: 4 }]} />
+          <View style={[styles.cornerStud, { bottom: 4, right: 4 }]} />
+          <View style={[styles.titleBannerInner, { borderColor: won ? '#5cf28a' : '#ff4d6d' }]}>
+            <Text style={[styles.lobbyCrystal, won ? { color: '#5cf28a' } : { color: '#ff4d6d' }]}>
+              {won ? '★' : '✦'}
+            </Text>
+            <Text style={[styles.lobbyTitle, { color: won ? '#5cf28a' : '#ff4d6d' }]}>{won ? 'VICTORY' : 'DEFEATED'}</Text>
+            <Text style={styles.lobbySubtitle}>
+              {won ? 'THE CRYSTALS SHINE ON' : `FELL ON WAVE ${waveReached}`}
+            </Text>
+            <View style={[styles.diffPill, { borderColor: diff.color, marginTop: 8 }]}>
+              <View style={[styles.diffPillDot, { backgroundColor: diff.color }]} />
+              <Text style={[styles.diffPillText, { color: diff.color }]}>{diff.name}</Text>
+            </View>
+          </View>
         </View>
       </View>
       <View style={styles.statsCard}>
-        <Text style={styles.statsCardLabel}>THIS RUN</Text>
+        <View style={[styles.cornerStud, { top: 6, left: 6 }]} />
+        <View style={[styles.cornerStud, { top: 6, right: 6 }]} />
+        <View style={[styles.cornerStud, { bottom: 6, left: 6 }]} />
+        <View style={[styles.cornerStud, { bottom: 6, right: 6 }]} />
+        <Text style={styles.statsCardLabel}>· THIS RUN ·</Text>
         <View style={styles.statsRow}>
           <StatTile label="SCORE" value={score} color="#ffd166" />
           <StatTile label="WAVE REACHED" value={`${waveReached}/${NUM_WAVES}`} color="#4cc9ff" />
@@ -6021,6 +6042,13 @@ function WaveBanner({ banner, time }) {
   else if (t < 0.7) opacity = 1;
   else opacity = (1 - t) / 0.3;
   const slide = (1 - opacity) * 30;
+  const accentColor = banner.finalWave ? '#ff4d6d'
+    : banner.boss ? '#ff4d6d'
+    : banner.mythic ? '#ff6f1f'
+    : banner.apex ? '#5cf28a'
+    : banner.champion ? '#ffd166'
+    : banner.elite ? '#b08bff'
+    : '#4cc9ff';
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
@@ -6029,56 +6057,64 @@ function WaveBanner({ banner, time }) {
       opacity,
       transform: [{ translateY: slide }],
     }}>
-      <Text style={{
-        color: banner.finalWave ? '#fff'
-          : banner.boss ? '#ff4d6d'
-          : banner.mythic ? '#ff6f1f'
-          : banner.apex ? '#5cf28a'
-          : banner.champion ? '#ffd166'
-          : banner.elite ? '#b08bff'
-          : '#4cc9ff',
-        fontSize: banner.finalWave ? 16 : 14, fontWeight: '700',
-        letterSpacing: 6,
+      {/* wood-banner backdrop */}
+      <View style={{
+        backgroundColor: '#1a0c08e6',
+        paddingVertical: 16, paddingHorizontal: 32,
+        borderRadius: 14,
+        borderWidth: 3, borderColor: '#3a2818',
+        borderTopWidth: 5, borderTopColor: accentColor,
+        borderBottomWidth: 5, borderBottomColor: accentColor,
+        alignItems: 'center',
+        shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 16, shadowOffset: { width: 0, height: 8 },
+        position: 'relative',
       }}>
-        {banner.finalWave ? '✦  THE FINAL WAVE  ✦'
-          : banner.boss ? '⚠  BOSS WAVE  ⚠'
-          : banner.mythic ? '✦  MYTHIC WAVE  ✦'
-          : banner.apex ? '◆  APEX WAVE  ◆'
-          : banner.champion ? '☠  CHAMPION WAVE  ☠'
-          : banner.elite ? 'ELITE WAVE'
-          : 'INCOMING'}
-      </Text>
-      <Text style={{
-        color: '#fff', fontSize: banner.finalWave ? 64 : 56, fontWeight: '900',
-        letterSpacing: 4,
-        textShadowColor: banner.finalWave ? '#ff4d6d'
-          : banner.boss ? '#ff4d6d'
-          : banner.mythic ? '#ff6f1f'
-          : banner.apex ? '#5cf28a'
-          : banner.champion ? '#ffd166'
-          : banner.elite ? '#b08bff'
-          : '#4cc9ff',
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: banner.finalWave ? 28 : 18,
-      }}>
-        WAVE {banner.wave}
-      </Text>
-      {banner.bossName && (
+        {/* gold corner studs */}
+        <View style={[styles.cornerStud, { top: 4, left: 4 }]} />
+        <View style={[styles.cornerStud, { top: 4, right: 4 }]} />
+        <View style={[styles.cornerStud, { bottom: 4, left: 4 }]} />
+        <View style={[styles.cornerStud, { bottom: 4, right: 4 }]} />
+
         <Text style={{
-          color: '#ffd166', fontSize: 22, fontWeight: '800',
-          letterSpacing: 5, marginTop: 2,
-          textShadowColor: '#ff4d6d',
-          textShadowOffset: { width: 0, height: 0 },
-          textShadowRadius: 10,
+          color: accentColor,
+          fontSize: banner.finalWave ? 16 : 14, fontWeight: '900',
+          letterSpacing: 6,
+          textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
         }}>
-          {banner.bossName}
+          {banner.finalWave ? '✦  THE FINAL WAVE  ✦'
+            : banner.boss ? '⚠  BOSS WAVE  ⚠'
+            : banner.mythic ? '✦  MYTHIC WAVE  ✦'
+            : banner.apex ? '◆  APEX WAVE  ◆'
+            : banner.champion ? '☠  CHAMPION WAVE  ☠'
+            : banner.elite ? 'ELITE WAVE'
+            : 'INCOMING'}
         </Text>
-      )}
-      <Text style={{
-        color: '#9aa3c7', fontSize: 12, letterSpacing: 3, marginTop: 4,
-      }}>
-        {banner.total} ENEMIES
-      </Text>
+        <Text style={{
+          color: '#fff', fontSize: banner.finalWave ? 64 : 56, fontWeight: '900',
+          letterSpacing: 4, marginTop: 4,
+          textShadowColor: accentColor,
+          textShadowOffset: { width: 0, height: 0 },
+          textShadowRadius: banner.finalWave ? 28 : 18,
+        }}>
+          WAVE {banner.wave}
+        </Text>
+        {banner.bossName && (
+          <Text style={{
+            color: '#ffd166', fontSize: 22, fontWeight: '900',
+            letterSpacing: 5, marginTop: 4,
+            textShadowColor: '#ff4d6d',
+            textShadowOffset: { width: 0, height: 0 },
+            textShadowRadius: 10,
+          }}>
+            {banner.bossName}
+          </Text>
+        )}
+        <Text style={{
+          color: '#cfd5e6', fontSize: 11, letterSpacing: 3, marginTop: 6, fontWeight: '700',
+        }}>
+          {banner.total} ENEMIES
+        </Text>
+      </View>
     </View>
   );
 }
@@ -6581,20 +6617,34 @@ const styles = StyleSheet.create({
 
   modeList: { gap: 10 },
   soloHeader: {
-    color: '#9aa3c7', fontSize: 11, fontWeight: '700',
-    letterSpacing: 4, marginBottom: 4, marginLeft: 4,
+    color: '#ffd166', fontSize: 11, fontWeight: '900',
+    letterSpacing: 3, marginBottom: 6, marginLeft: 4,
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   diffBtn: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#181430',
-    borderRadius: 12, padding: 13,
+    backgroundColor: '#2a1a08',
+    borderRadius: 12, padding: 13, paddingLeft: 18,
     borderWidth: 2.5,
-    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
+    shadowColor: '#000', shadowOpacity: 0.65, shadowRadius: 8, shadowOffset: { width: 0, height: 4 },
+    position: 'relative',
   },
-  diffName: { fontSize: 17, fontWeight: '900', letterSpacing: 1.8 },
-  diffShort: { color: '#9aa3c7', fontSize: 11, fontStyle: 'italic' },
-  diffTagline: { color: '#cfd5e6', fontSize: 11, marginTop: 2 },
-  diffStats: { color: '#6f7798', fontSize: 9.5, marginTop: 4, letterSpacing: 0.5 },
+  diffName: {
+    fontSize: 17, fontWeight: '900', letterSpacing: 1.8,
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
+  diffShort: { color: '#cfd5e6', fontSize: 11, fontStyle: 'italic' },
+  diffTagline: { color: '#e8e0c8', fontSize: 11, marginTop: 3, opacity: 0.92 },
+  diffStats: { color: '#c4a878', fontSize: 9.5, marginTop: 4, letterSpacing: 0.5, fontWeight: '700' },
+  diffCornerGem: {
+    position: 'absolute', width: 5, height: 5, borderRadius: 3,
+    zIndex: 8,
+    shadowOpacity: 0.9, shadowRadius: 2, shadowOffset: { width: 0, height: 0 },
+  },
+  diffRibbon: {
+    position: 'absolute', left: 0, top: 0, bottom: 0, width: 5,
+    borderTopLeftRadius: 12, borderBottomLeftRadius: 12,
+  },
   diffStrip: {
     flexDirection: 'row', justifyContent: 'center',
     paddingBottom: 4,
@@ -6688,18 +6738,28 @@ const styles = StyleSheet.create({
   tiltBtnText: { color: '#ffd166', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
 
   bottomBar: {
-    paddingHorizontal: 12, paddingTop: 12, paddingBottom: 14,
+    paddingHorizontal: 12, paddingTop: 14, paddingBottom: 14,
     alignItems: 'center',
-    backgroundColor: '#0a0e1ce0',
-    borderTopWidth: 1, borderTopColor: '#1f2a4a',
+    backgroundColor: '#1a0c08',
+    borderTopWidth: 3, borderTopColor: '#3a2818',
+    shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 8, shadowOffset: { width: 0, height: -4 },
   },
   phaseBadge: {
-    backgroundColor: '#4cc9ff', paddingHorizontal: 16, paddingVertical: 5,
+    backgroundColor: '#4cc9ff',
+    paddingHorizontal: 18, paddingVertical: 5,
     borderRadius: 999, marginBottom: 8,
-    shadowColor: '#4cc9ff', shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
+    borderWidth: 2, borderColor: '#1a0c08',
+    shadowColor: '#4cc9ff', shadowOpacity: 0.7, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
   },
-  phaseBadgeText: { color: '#0b1020', fontWeight: '900', fontSize: 12, letterSpacing: 2 },
-  bottomMessage: { color: '#cfd5e6', fontSize: 13, fontWeight: '600', textAlign: 'center', letterSpacing: 0.3 },
+  phaseBadgeText: {
+    color: '#0b1020', fontWeight: '900', fontSize: 12, letterSpacing: 2,
+    textShadowColor: '#fff6', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1,
+  },
+  bottomMessage: {
+    color: '#e8e0c8', fontSize: 13, fontWeight: '700',
+    textAlign: 'center', letterSpacing: 0.5,
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
   bottomRow: { marginTop: 8 },
   speedBtn: {
     backgroundColor: '#2a335f', width: 56, height: 36,
