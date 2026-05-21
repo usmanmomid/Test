@@ -654,18 +654,37 @@ function LobbyScreen({ stats, onStartSolo }) {
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
       <LobbyBackground width={VIEWPORT_W} height={VIEWPORT_H + 200} />
-      <View style={styles.lobbyHeader}>
-        <View style={styles.lobbyCrystalRow}>
-          <Text style={[styles.lobbyCrystal, { color: '#ff4d6d' }]}>◆</Text>
-          <Text style={[styles.lobbyCrystal, { color: '#4cc9ff' }]}>◆</Text>
-          <Text style={[styles.lobbyCrystal, { color: '#5cf28a' }]}>◆</Text>
+      <View style={styles.titleBannerWrap}>
+        {/* Hanging chains on each side */}
+        <View style={[styles.titleChain, { left: '22%' }]} />
+        <View style={[styles.titleChain, { right: '22%' }]} />
+        {/* Banner itself */}
+        <View style={styles.titleBanner}>
+          {/* gold trim corner studs */}
+          <View style={[styles.cornerStud, { top: 4, left: 4 }]} />
+          <View style={[styles.cornerStud, { top: 4, right: 4 }]} />
+          <View style={[styles.cornerStud, { bottom: 4, left: 4 }]} />
+          <View style={[styles.cornerStud, { bottom: 4, right: 4 }]} />
+          {/* inner gold border */}
+          <View style={styles.titleBannerInner}>
+            <View style={styles.lobbyCrystalRow}>
+              <Text style={[styles.lobbyCrystal, { color: '#ff4d6d' }]}>◆</Text>
+              <Text style={[styles.lobbyCrystal, { color: '#4cc9ff' }]}>◆</Text>
+              <Text style={[styles.lobbyCrystal, { color: '#5cf28a' }]}>◆</Text>
+            </View>
+            <Text style={styles.lobbyTitle}>Crystal Maze</Text>
+            <Text style={styles.lobbySubtitle}>D E F E N C E</Text>
+          </View>
         </View>
-        <Text style={styles.lobbyTitle}>Crystal Maze</Text>
-        <Text style={styles.lobbySubtitle}>D E F E N C E</Text>
       </View>
 
       <View style={styles.statsCard}>
-        <Text style={styles.statsCardLabel}>YOUR STATS</Text>
+        {/* gold corner studs */}
+        <View style={[styles.cornerStud, { top: 6, left: 6 }]} />
+        <View style={[styles.cornerStud, { top: 6, right: 6 }]} />
+        <View style={[styles.cornerStud, { bottom: 6, left: 6 }]} />
+        <View style={[styles.cornerStud, { bottom: 6, right: 6 }]} />
+        <Text style={styles.statsCardLabel}>· YOUR STATS ·</Text>
         <View style={styles.statsRow}>
           <StatTile label="BEST SCORE" value={stats.bestScore} color="#ffd166" />
           <StatTile label="HIGHEST WAVE" value={`${stats.bestWave}/${NUM_WAVES}`} color="#4cc9ff" />
@@ -675,7 +694,7 @@ function LobbyScreen({ stats, onStartSolo }) {
           <StatTile label="WINS" value={stats.wins} color="#5cf28a" />
         </View>
         {stats.gamesPlayed === 0 && (
-          <Text style={styles.statsHint}>No games yet. Tap SOLO to start.</Text>
+          <Text style={styles.statsHint}>No games yet. Pick a difficulty to start.</Text>
         )}
       </View>
 
@@ -744,8 +763,11 @@ function LobbyScreen({ stats, onStartSolo }) {
 function StatTile({ label, value, color }) {
   return (
     <View style={styles.statTile}>
+      <View style={styles.statTileMedallion}>
+        <View style={styles.statTileMedallionInner} />
+        <Text style={[styles.statTileValue, { color }]} numberOfLines={1}>{value}</Text>
+      </View>
       <Text style={styles.statTileLabel}>{label}</Text>
-      <Text style={[styles.statTileValue, { color }]}>{value}</Text>
     </View>
   );
 }
@@ -1285,6 +1307,11 @@ function Game({ onEnd, difficulty }) {
       >
         <Pressable style={styles.modalBackdrop} onPress={() => { s.inspect = null; force(); }}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
+            {/* gold corner studs */}
+            <View style={[styles.cornerStud, { top: 8, left: 8 }]} />
+            <View style={[styles.cornerStud, { top: 8, right: 8 }]} />
+            <View style={[styles.cornerStud, { bottom: 8, left: 8 }]} />
+            <View style={[styles.cornerStud, { bottom: 8, right: 8 }]} />
             <TouchableOpacity
               style={styles.modalCloseX}
               onPress={() => { s.inspect = null; force(); }}
@@ -6174,8 +6201,10 @@ function ModalStat({ label, value }) {
 function HudStat({ label, value, color }) {
   return (
     <View style={styles.hudStat}>
-      <Text style={styles.hudLabel}>{label}</Text>
-      <Text style={[styles.hudValue, { color }]}>{value}</Text>
+      <View style={[styles.hudStatPlaque, { borderColor: color + 'aa' }]}>
+        <Text style={[styles.hudValue, { color }]} numberOfLines={1}>{value}</Text>
+      </View>
+      <Text style={[styles.hudLabel, { color: color + 'cc' }]}>{label}</Text>
     </View>
   );
 }
@@ -6460,31 +6489,94 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18, paddingTop: 24, paddingBottom: 12,
     justifyContent: 'space-between',
   },
-  lobbyHeader: { alignItems: 'center', marginTop: 32 },
-  lobbyCrystalRow: { flexDirection: 'row', marginBottom: 8 },
+  lobbyHeader: { alignItems: 'center', marginTop: 12 },
+  // Wood-sign banner for the lobby title — dark wood gradient via stacked colors,
+  // gold trim on all sides, four corner studs, hanging chains.
+  titleBannerWrap: {
+    alignItems: 'center', marginTop: 16, marginBottom: 8,
+    paddingHorizontal: 18, position: 'relative',
+  },
+  titleChain: {
+    position: 'absolute', top: -8, width: 3, height: 24,
+    backgroundColor: '#6a6470',
+    borderLeftWidth: 1, borderLeftColor: '#3a3848',
+    borderRightWidth: 1, borderRightColor: '#9aa3c7',
+  },
+  titleBanner: {
+    backgroundColor: '#3a2818',
+    borderWidth: 3, borderColor: '#1a0c08',
+    borderRadius: 12,
+    padding: 4,
+    shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 12, shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    position: 'relative',
+  },
+  titleBannerInner: {
+    backgroundColor: '#2a1a08',
+    borderWidth: 2, borderColor: '#ffd166',
+    borderRadius: 8,
+    paddingHorizontal: 28, paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cornerStud: {
+    position: 'absolute',
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: '#ffd166',
+    borderWidth: 1.5, borderColor: '#b89020',
+    zIndex: 10,
+    shadowColor: '#ffd166', shadowOpacity: 0.6, shadowRadius: 3, shadowOffset: { width: 0, height: 0 },
+  },
+  lobbyCrystalRow: { flexDirection: 'row', marginBottom: 6 },
   lobbyCrystal: {
-    fontSize: 64, marginHorizontal: 6,
-    textShadowColor: '#4cc9ff60', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 12,
+    fontSize: 28, marginHorizontal: 4,
+    textShadowColor: '#000a', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 3,
   },
   lobbyTitle: {
-    color: '#fff', fontSize: 38, fontWeight: '900', letterSpacing: 2,
-    textShadowColor: '#4cc9ff80', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16,
+    color: '#ffd166', fontSize: 34, fontWeight: '900', letterSpacing: 2,
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4,
   },
-  lobbySubtitle: { color: '#9aa3c7', fontSize: 14, letterSpacing: 8, marginTop: 4 },
+  lobbySubtitle: {
+    color: '#cfd5e6', fontSize: 11, letterSpacing: 8, marginTop: 4, fontWeight: '700',
+  },
 
   statsCard: {
-    backgroundColor: '#161c33', borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: '#2a335f',
+    backgroundColor: '#2a1a08', borderRadius: 14, padding: 14,
+    borderWidth: 3, borderColor: '#1a0c08',
+    shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 10, shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    position: 'relative',
   },
   statsCardLabel: {
-    color: '#7c84a8', fontSize: 12, letterSpacing: 2, fontWeight: '700',
-    marginBottom: 10, textAlign: 'center',
+    color: '#ffd166', fontSize: 11, letterSpacing: 3, fontWeight: '900',
+    marginBottom: 12, textAlign: 'center',
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 6 },
-  statTile: { flex: 1, alignItems: 'center', paddingVertical: 6 },
-  statTileLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1.5, fontWeight: '600' },
-  statTileValue: { fontSize: 22, fontWeight: '800', marginTop: 2 },
-  statsHint: { color: '#7c84a8', fontSize: 12, textAlign: 'center', fontStyle: 'italic', marginTop: 4 },
+  // Medallion-style stat tile: circular dark base with gold ring + big value + label below
+  statTile: {
+    flex: 1, alignItems: 'center', paddingVertical: 4, paddingHorizontal: 4,
+  },
+  statTileMedallion: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: '#161c33',
+    borderWidth: 3, borderColor: '#ffd166',
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
+  },
+  statTileMedallionInner: {
+    position: 'absolute',
+    width: 64, height: 64, borderRadius: 32,
+    borderWidth: 1, borderColor: '#b89020', opacity: 0.7,
+  },
+  statTileLabel: {
+    color: '#ffd166', fontSize: 10, letterSpacing: 1.5, fontWeight: '800',
+    marginTop: 6, textAlign: 'center',
+  },
+  statTileValue: {
+    fontSize: 18, fontWeight: '900',
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
+  statsHint: { color: '#cfd5e6', fontSize: 11, textAlign: 'center', fontStyle: 'italic', marginTop: 8, opacity: 0.8 },
   newBestText: { color: '#ffd166', fontSize: 14, fontWeight: '900', letterSpacing: 2, textAlign: 'center', marginTop: 8 },
 
   modeList: { gap: 10 },
@@ -6541,25 +6633,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-around',
     paddingTop: 8, borderTopWidth: 1, borderTopColor: '#161c33',
   },
-  footerBtn: { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 12 },
-  footerIcon: { color: '#9aa3c7', fontSize: 22 },
-  footerLabel: { color: '#7c84a8', fontSize: 12, letterSpacing: 1, marginTop: 2 },
-  footerVersion: { color: '#7c84a8', fontSize: 12 },
+  footerBtn: {
+    alignItems: 'center', paddingVertical: 8, paddingHorizontal: 14,
+    backgroundColor: '#2a1a08',
+    borderWidth: 2, borderColor: '#1a0c08',
+    borderTopWidth: 2, borderTopColor: '#ffd166',
+    borderRadius: 10,
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+  },
+  footerIcon: {
+    color: '#ffd166', fontSize: 20,
+    textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
+  },
+  footerLabel: { color: '#ffd166', fontSize: 10, letterSpacing: 1.5, marginTop: 3, fontWeight: '800' },
+  footerVersion: { color: '#cfd5e6', fontSize: 11, fontWeight: '700' },
 
   gameRoot: { flex: 1, backgroundColor: '#0b1020' },
   hud: {
     flexDirection: 'row', justifyContent: 'space-around',
-    paddingVertical: 12, paddingHorizontal: 8,
+    paddingVertical: 10, paddingHorizontal: 8,
+    backgroundColor: '#1a0c08',
+    borderBottomWidth: 3, borderBottomColor: '#3a2818',
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 6, shadowOffset: { width: 0, height: 3 },
+  },
+  hudStat: { alignItems: 'center', minWidth: 60 },
+  // Carved-stone plaque around each HUD value — dark base, coloured rim
+  hudStatPlaque: {
+    minWidth: 56, paddingVertical: 4, paddingHorizontal: 10,
     backgroundColor: '#0a0e1c',
-    borderBottomWidth: 1, borderBottomColor: '#1f2a4a',
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
   },
-  hudStat: {
-    alignItems: 'center', minWidth: 64,
-    paddingVertical: 4, paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  hudLabel: { color: '#7c84a8', fontSize: 10, letterSpacing: 2, fontWeight: '700' },
-  hudValue: { fontSize: 22, fontWeight: '900', marginTop: 1, textShadowColor: '#000a', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
+  hudLabel: { fontSize: 9, letterSpacing: 2, fontWeight: '800', marginTop: 3 },
+  hudValue: { fontSize: 20, fontWeight: '900', textShadowColor: '#000', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2 },
 
   marker: { position: 'absolute', width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center' },
   markerText: { color: '#fff', fontSize: TILE * 0.55, opacity: 0.6, fontWeight: '700' },
@@ -6611,9 +6719,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#161c33', borderRadius: 18,
     padding: 22, paddingTop: 28,
     width: '100%', maxWidth: 420,
-    borderWidth: 2, borderColor: '#3a4a7a',
-    borderTopWidth: 4, borderTopColor: '#ffd166',
-    shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 26, shadowOffset: { width: 0, height: 14 },
+    borderWidth: 3, borderColor: '#1a0c08',
+    borderTopWidth: 5, borderTopColor: '#ffd166',
+    borderBottomWidth: 5, borderBottomColor: '#ffd166',
+    shadowColor: '#000', shadowOpacity: 0.85, shadowRadius: 28, shadowOffset: { width: 0, height: 14 },
+    position: 'relative',
   },
   modalCloseX: {
     position: 'absolute', top: 8, right: 8,
