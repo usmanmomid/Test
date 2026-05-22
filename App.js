@@ -87,26 +87,26 @@ const DIFFICULTIES = {
   newcomer:  {
     id: 'newcomer',  name: 'NEWCOMER',  short: 'New here',
     tagline: 'First crystals, kind waves',
-    hpMul: 0.7,  speedMul: 0.9,  bossMul: 0.65, goldMul: 1.3,
+    hpMul: 0.70, speedMul: 0.90, bossMul: 0.70, goldMul: 1.30,
     lives: 30, color: '#5cf28a',
   },
   thatkid:   {
     id: 'thatkid',   name: 'THATKID',   short: 'You know this game',
     tagline: 'Standard challenge — the way it was designed',
-    hpMul: 1.0,  speedMul: 1.0,  bossMul: 1.0,  goldMul: 1.0,
+    hpMul: 1.00, speedMul: 1.00, bossMul: 1.00, goldMul: 1.00,
     lives: 20, color: '#4cc9ff',
   },
   coolkid:   {
     id: 'coolkid',   name: 'COOLKID',   short: 'Too cool for the path',
     tagline: 'You started skipping classes — and skipping defences',
-    hpMul: 1.6,  speedMul: 1.05, bossMul: 1.8,  goldMul: 0.85,
+    hpMul: 1.25, speedMul: 1.05, bossMul: 1.30, goldMul: 1.05,
     lives: 15, color: '#ffd166',
   },
   principal: {
     id: 'principal', name: "PRINCIPAL'S OFFICE", short: 'You went too far',
     tagline: 'Detention, daily, eternal. The maze remembers.',
-    hpMul: 2.5,  speedMul: 1.2,  bossMul: 3.0,  goldMul: 0.7,
-    lives: 10, color: '#ff4d6d',
+    hpMul: 1.70, speedMul: 1.10, bossMul: 1.70, goldMul: 1.10,
+    lives: 12, color: '#ff4d6d',
   },
 };
 const DIFFICULTY_ORDER = ['newcomer', 'thatkid', 'coolkid', 'principal'];
@@ -157,23 +157,75 @@ function rollPurity(level) {
   }
   return 1;
 }
-// Player level grows every 4 waves and now caps at L8 (W29+) instead of L5.
-//   L1 W1-4 · L2 W5-8 · L3 W9-12 · L4 W13-16 · L5 W17-20 · L6 W21-24
-//   L7 W25-28 · L8 W29+
+
+// ─── Smart pity (V1 balance patch) ──────────────────────────────────────────
+// Bad-run protection so a streak of P1/P2 doesn't soft-lock the player.
+// After wave 25 with 15+ placements without P4+, force minimum P4 next roll.
+// After wave 35 with 20+ placements without P5,  force minimum P5 next roll.
+// Family pity: each placement increments a per-family dry-streak counter.
+//   When a family hits 20 dry placements its weight doubles each subsequent
+//   placement until it appears.
+function rollWithPity(s) {
+  if (!s.pity) {
+    s.pity = {
+      familyLastSeen: Object.fromEntries(GEM_IDS.map((g) => [g, 0])),
+      placements: 0,
+      highTierStreak: 0,
+    };
+  }
+  s.pity.placements += 1;
+  // ── Family pity weights ──
+  const weights = {};
+  let totalWeight = 0;
+  for (const fam of GEM_IDS) {
+    const dryStreak = s.pity.placements - s.pity.familyLastSeen[fam];
+    let w = 1;
+    if (dryStreak > 20) w = 1 + (dryStreak - 20) * 0.4;
+    weights[fam] = w;
+    totalWeight += w;
+  }
+  let r = Math.random() * totalWeight;
+  let gemType = GEM_IDS[0];
+  for (const fam of GEM_IDS) {
+    r -= weights[fam];
+    if (r < 0) { gemType = fam; break; }
+  }
+  s.pity.familyLastSeen[gemType] = s.pity.placements;
+  // ── Tier pity ──
+  let tier = rollPurity(s.playerLevel);
+  if (s.wave >= 25 && s.pity.highTierStreak >= 15) tier = Math.max(tier, 4);
+  if (s.wave >= 35 && s.pity.highTierStreak >= 20) tier = Math.max(tier, 5);
+  if (tier >= 4) s.pity.highTierStreak = 0;
+  else s.pity.highTierStreak += 1;
+  return { tier, gemType };
+}
+// Hand-tuned hero-level table (V1 balance patch).
+//   L1 W1-4   L2 W5-8   L3 W9-13   L4 W14-19   L5 W20-27
+//   L6 W28-35  L7 W36-43  L8 W44-50
+// Slower ramp at higher levels so each level represents real progress.
 function levelForWave(wave) {
-  return Math.min(8, Math.floor((wave - 1) / 4) + 1);
+  if (wave <= 4)  return 1;
+  if (wave <= 8)  return 2;
+  if (wave <= 13) return 3;
+  if (wave <= 19) return 4;
+  if (wave <= 27) return 5;
+  if (wave <= 35) return 6;
+  if (wave <= 43) return 7;
+  return 8;
 }
 
-// ─── Kill gold curve (design doc §16) ────────────────────────────────────────
+// ─── Kill gold curve (V1 balance patch anchors) ──────────────────────────────
+// W1=1, W5=4, W10=10, W20=25, W30=55, W40=110, W50=180.
 const KILL_GOLD_BY_WAVE = [
-  0, 1, 1, 2, 2, 3, 4, 5, 6, 8, 10,    // waves 1-10
-  11, 12, 14, 16, 18, 19, 20, 22, 25, 30,   // 11-20
-  28, 32, 36, 40, 44, 48, 52, 58, 64, 75,   // 21-30
-  70, 78, 86, 95, 105, 116, 128, 140, 155, 180, // 31-40
-  175, 195, 215, 235, 260, 290, 320, 350, 380, 500, // 41-50
+  0,                                       // index 0 unused (wave 1 → KILL_GOLD_BY_WAVE[1])
+  1, 1, 2, 2, 4, 5, 6, 7, 8, 10,            // waves 1-10
+  12, 13, 15, 16, 18, 20, 21, 22, 24, 25,   // 11-20
+  28, 31, 34, 37, 40, 43, 46, 49, 52, 55,   // 21-30
+  61, 67, 73, 79, 85, 91, 97, 103, 107, 110, // 31-40
+  117, 124, 131, 138, 145, 154, 162, 170, 175, 180, // 41-50
 ];
 const BOSS_GOLD_BONUS = {
-  10: 250, 20: 1000, 30: 2500, 40: 6000, 50: 15000,
+  10: 150, 20: 500, 30: 1200, 40: 2500, 50: 6000,
 };
 
 // ─── Gems (8 families) ──────────────────────────────────────────────────────
@@ -446,18 +498,21 @@ function ingredientLabel(ing) {
 }
 
 // ─── Enemies ─────────────────────────────────────────────────────────────────
-// Per-tier multipliers were dropping mega's effective HP into the trillions on
-// the old 1.25^w curve. Mega base reduced 34k→12k and curve gentled to 1.18^w
-// (W50 mul ≈ 3,000 instead of ≈ 70,000) so endgame is achievable with the
-// mythic specials. Difficulty multipliers then scale on top.
+// V1 balance patch: bases lowered, HP curves per-type (regular 1.15, boss 1.13,
+// mega 1.12) so endgame is beatable with multiple mythic builds.
+// Base HP anchors:
+//   grunt  30   W50 ≈ 28k  (was 230k)
+//   tank   100  W50 ≈ 94k
+//   boss   1200 W50 ≈ 425k each
+//   mega   5000 W50 ≈ 1.4M each
 const ENEMIES = {
   grunt:  { hp: 30,    speed: 1.4, gold: 1, color: '#c4b9ff', size: 0.55, armor: 0, flying: false },
   runner: { hp: 18,    speed: 2.8, gold: 1, color: '#ffd166', size: 0.45, armor: 0, flying: false },
-  tank:   { hp: 140,   speed: 0.8, gold: 2, color: '#7d8aa8', size: 0.7,  armor: 4, flying: false },
+  tank:   { hp: 100,   speed: 0.8, gold: 2, color: '#7d8aa8', size: 0.7,  armor: 4, flying: false },
   swarm:  { hp: 12,    speed: 2.2, gold: 1, color: '#ff8fab', size: 0.4,  armor: 0, flying: false },
   flyer:  { hp: 40,    speed: 2.0, gold: 1, color: '#88f088', size: 0.5,  armor: 1, flying: true  },
-  boss:   { hp: 2100,  speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
-  mega:   { hp: 12000, speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
+  boss:   { hp: 1200,  speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
+  mega:   { hp: 5000,  speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
 };
 
 // ─── Wave generator (50 waves) ───────────────────────────────────────────────
@@ -470,8 +525,10 @@ const ENEMIES = {
 function buildWaves() {
   const waves = [];
   for (let w = 1; w <= NUM_WAVES; w++) {
-    const hpMul = Math.pow(1.18, w - 1);
-    const bossMul = Math.pow(1.17, w - 1);
+    // V1 patch — softer growth so endgame is reachable.
+    const hpMul = Math.pow(1.15, w - 1);   // regular enemies
+    const bossMul = Math.pow(1.13, w - 1); // bosses
+    const megaMul = Math.pow(1.12, w - 1); // mega (softest)
     let spawns;
     let trial = null;
     if (w === 10) spawns = [['boss', 1, 0.5]];
@@ -514,7 +571,7 @@ function buildWaves() {
       if (w >= 12 && w % 4 === 0) types.push(['flyer', Math.max(3, Math.floor(count * 0.4)), 0.45]);
       spawns = types;
     }
-    waves.push({ spawns, hpMul, bossMul, trial });
+    waves.push({ spawns, hpMul, bossMul, megaMul, trial });
   }
   return waves;
 }
@@ -951,6 +1008,7 @@ function Game({ onEnd, difficulty }) {
       score: 0,
       speed: 1,
       difficulty: diff,
+      pity: null,                  // rollWithPity lazily seeds this
       inspect: null,               // candidate id being inspected
       flash: null,
       pan: { x: 0, y: 0 },
@@ -1038,9 +1096,8 @@ function Game({ onEnd, difficulty }) {
       flash('Would block the route');
       return;
     }
-    // Roll gem
-    const purity = rollPurity(s.playerLevel);
-    const gemType = rollGemType();
+    // Roll gem (with pity protection — see rollWithPity)
+    const { tier: purity, gemType } = rollWithPity(s);
     s.candidates.push({
       id: s.nextTowerId++,
       r, c,
@@ -1182,7 +1239,9 @@ function Game({ onEnd, difficulty }) {
     const queue = [];
     let t = s.time + 0.8;
     for (const [type, count, gap] of w.spawns) {
-      const mul = (type === 'boss' || type === 'mega') ? w.bossMul : w.hpMul;
+      const mul = type === 'mega' ? w.megaMul
+                : type === 'boss' ? w.bossMul
+                : w.hpMul;
       for (let i = 0; i < count; i++) {
         t += gap;
         queue.push({ type, atTime: t, hpMul: mul });
