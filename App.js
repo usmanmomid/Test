@@ -133,17 +133,22 @@ const tier = (n) => TIERS[n - 1];
 // but a small token refund makes mistakes recoverable on mobile.
 const sellValue = (t) => Math.floor(5 * Math.pow(2.5, t - 1));
 
-// ─── Roll odds by player level (design doc §10) ─────────────────────────────
+// ─── Roll odds by player level (extended L1–L8) ─────────────────────────────
 // Each row is [P1, P2, P3, P4, P5]. P6 only via merge/recipe.
+// Levels 6–8 added so late game keeps progressing — at L7+ (W25+) P1 is
+// completely gone, and P5 becomes the dominant roll.
 const ROLL_ODDS = [
   /* level 1 */ [1.00, 0.00, 0.00, 0.00, 0.00],
   /* level 2 */ [0.70, 0.30, 0.00, 0.00, 0.00],
   /* level 3 */ [0.50, 0.30, 0.20, 0.00, 0.00],
   /* level 4 */ [0.30, 0.30, 0.30, 0.10, 0.00],
-  /* level 5+*/ [0.10, 0.20, 0.30, 0.30, 0.10],
+  /* level 5 */ [0.10, 0.25, 0.30, 0.25, 0.10],
+  /* level 6 */ [0.05, 0.15, 0.30, 0.35, 0.15],
+  /* level 7 */ [0.00, 0.10, 0.25, 0.40, 0.25],
+  /* level 8 */ [0.00, 0.05, 0.15, 0.40, 0.40],
 ];
 function rollPurity(level) {
-  const row = ROLL_ODDS[Math.min(level, 5) - 1];
+  const row = ROLL_ODDS[Math.min(level, 8) - 1];
   const r = Math.random();
   let cum = 0;
   for (let i = 0; i < row.length; i++) {
@@ -152,9 +157,11 @@ function rollPurity(level) {
   }
   return 1;
 }
-// Player level grows every 4 waves: L1 W1-4, L2 W5-8, L3 W9-12, L4 W13-16, L5 W17+
+// Player level grows every 4 waves and now caps at L8 (W29+) instead of L5.
+//   L1 W1-4 · L2 W5-8 · L3 W9-12 · L4 W13-16 · L5 W17-20 · L6 W21-24
+//   L7 W25-28 · L8 W29+
 function levelForWave(wave) {
-  return Math.min(5, Math.floor((wave - 1) / 4) + 1);
+  return Math.min(8, Math.floor((wave - 1) / 4) + 1);
 }
 
 // ─── Kill gold curve (design doc §16) ────────────────────────────────────────
@@ -454,20 +461,48 @@ const ENEMIES = {
 };
 
 // ─── Wave generator (50 waves) ───────────────────────────────────────────────
-// Generates spawn lists + per-wave HP multiplier so we don't have to hand-tune
-// every wave. Bosses on 10/20/30/40/50.
+// Generates spawn lists + per-wave HP multipliers. Bosses on 10/20/30/40/50,
+// trial waves on 5/15/25/35/45 (speed / aerial / swarm / armored / endurance).
 // Curve anchors (THATKID baseline, ×1.0 difficulty):
-//   W1 ≈ 1,  W10 ≈ 5.2,  W20 ≈ 32,  W30 ≈ 199,  W40 ≈ 1235,  W50 ≈ 7657
+//   regular  1.18^(w-1):  W1 ≈ 1, W10 ≈ 5.2, W20 ≈ 32, W30 ≈ 199, W40 ≈ 1235, W50 ≈ 7657
+//   bosses   1.17^(w-1):  W10 ≈ 4.8, W20 ≈ 23, W30 ≈ 110, W40 ≈ 533, W50 ≈ 2570
+// Boss/mega get the softer curve so the 6-boss W50 fight isn't impossible.
 function buildWaves() {
   const waves = [];
   for (let w = 1; w <= NUM_WAVES; w++) {
     const hpMul = Math.pow(1.18, w - 1);
+    const bossMul = Math.pow(1.17, w - 1);
     let spawns;
+    let trial = null;
     if (w === 10) spawns = [['boss', 1, 0.5]];
     else if (w === 20) spawns = [['boss', 2, 3.0], ['swarm', 22, 0.18]];
     else if (w === 30) spawns = [['boss', 3, 2.5], ['flyer', 10, 0.6]];
     else if (w === 40) spawns = [['mega', 1, 0.0], ['boss', 3, 2.0]];
     else if (w === 50) spawns = [['mega', 2, 3.5], ['boss', 6, 1.5], ['flyer', 18, 0.3]];
+
+    // === TRIAL WAVES (W5/15/25/35/45) — themed challenge between bosses ===
+    else if (w === 5) {
+      trial = 'SPEED';
+      spawns = [['runner', 24, 0.22], ['grunt', 12, 0.4]];
+    }
+    else if (w === 15) {
+      trial = 'AERIAL';
+      spawns = [['flyer', 18, 0.4], ['runner', 8, 0.5]];
+    }
+    else if (w === 25) {
+      trial = 'SWARM';
+      spawns = [['swarm', 42, 0.15], ['grunt', 12, 0.4]];
+    }
+    else if (w === 35) {
+      trial = 'ARMORED';
+      spawns = [['tank', 8, 1.1], ['grunt', 18, 0.5], ['runner', 8, 0.5]];
+    }
+    else if (w === 45) {
+      trial = 'ENDURANCE';
+      spawns = [['tank', 6, 1.0], ['flyer', 10, 0.5], ['swarm', 22, 0.18], ['grunt', 20, 0.4]];
+    }
+
+    // === REGULAR WAVES ===
     else {
       const count = Math.floor(8 + w * 0.9);
       const types = [];
@@ -475,10 +510,11 @@ function buildWaves() {
       if (w >= 4) types.push(['runner', Math.floor(count * 0.4), 0.4]);
       if (w >= 6 && w % 3 === 0) types.push(['swarm', Math.floor(count * 1.2), 0.18]);
       if (w >= 8 && w % 4 === 0) types.push(['tank', Math.max(1, Math.floor(w / 6)), 1.1]);
-      if (w >= 12 && w % 5 === 0) types.push(['flyer', Math.floor(count * 0.5), 0.45]);
+      // BOOSTED flyer frequency: every 4 from W12 (was every 5 from W12)
+      if (w >= 12 && w % 4 === 0) types.push(['flyer', Math.max(3, Math.floor(count * 0.4)), 0.45]);
       spawns = types;
     }
-    waves.push({ spawns, hpMul });
+    waves.push({ spawns, hpMul, bossMul, trial });
   }
   return waves;
 }
@@ -1146,9 +1182,10 @@ function Game({ onEnd, difficulty }) {
     const queue = [];
     let t = s.time + 0.8;
     for (const [type, count, gap] of w.spawns) {
+      const mul = (type === 'boss' || type === 'mega') ? w.bossMul : w.hpMul;
       for (let i = 0; i < count; i++) {
         t += gap;
-        queue.push({ type, atTime: t, hpMul: w.hpMul });
+        queue.push({ type, atTime: t, hpMul: mul });
       }
     }
     s.spawnQueue = queue;
@@ -1161,11 +1198,13 @@ function Game({ onEnd, difficulty }) {
     const apex = s.wave >= 31 && s.wave <= 40 && !isBossWave;
     const champion = s.wave >= 21 && s.wave <= 30 && !isBossWave;
     const elite = s.wave >= 11 && s.wave <= 20 && !isBossWave;
+    const trial = w.trial || null;
     s.waveBanner = {
       wave: s.wave,
       total: totalEnemies,
       boss: isBossWave,
       bossName: bossNames[s.wave] || null,
+      trial,
       elite,
       champion,
       apex,
@@ -6042,8 +6081,17 @@ function WaveBanner({ banner, time }) {
   else if (t < 0.7) opacity = 1;
   else opacity = (1 - t) / 0.3;
   const slide = (1 - opacity) * 30;
+  // Trial colours echo the trial's theme.
+  const trialColor = {
+    SPEED:     '#ffd166', // gold — fast = lightning
+    AERIAL:    '#a8e0ff', // sky-blue
+    SWARM:     '#ff8fab', // pink — bug horde
+    ARMORED:   '#cfd5e6', // steel grey
+    ENDURANCE: '#7be5d1', // teal — last stand
+  }[banner.trial];
   const accentColor = banner.finalWave ? '#ff4d6d'
     : banner.boss ? '#ff4d6d'
+    : banner.trial ? trialColor
     : banner.mythic ? '#ff6f1f'
     : banner.apex ? '#5cf28a'
     : banner.champion ? '#ffd166'
@@ -6083,6 +6131,7 @@ function WaveBanner({ banner, time }) {
         }}>
           {banner.finalWave ? '✦  THE FINAL WAVE  ✦'
             : banner.boss ? '⚠  BOSS WAVE  ⚠'
+            : banner.trial ? `⚔  ${banner.trial} TRIAL  ⚔`
             : banner.mythic ? '✦  MYTHIC WAVE  ✦'
             : banner.apex ? '◆  APEX WAVE  ◆'
             : banner.champion ? '☠  CHAMPION WAVE  ☠'
