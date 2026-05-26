@@ -49,7 +49,11 @@ import {
 //   • Natural P6 .............. NONE — merge/recipe only        (ROLL_ODDS)
 //   • Hero level cadence ...... HL = floor((W-1)/6)+1           (levelForWave)
 //   • Boss waves .............. boss-only, no minion adds       (buildWaves)
-//   • Difficulty names ........ Easy / Normal / Hard / Nightmare (DIFFICULTIES)
+//   • Difficulty .............. Easy/Normal/Hard/Nightmare, HP 0.5/1/1.5/2 (DIFFICULTIES)
+//   • Enemy HP ................ BASE_HP 3 × decelerating growth × coef × ramp × chaos
+//                               (computeEnemyHP — derived in spatial_sim.js, NOT 1.13)
+//   • Boss HP ................. regular × coef (boss 5×, mega 9×) (ENEMY_HP_COEF)
+//   • Onboarding ramp ......... W1-11 HP+speed                  (ONBOARDING_RAMP)
 //   • Damage types ............ full Physical/Magic/Poison/Burn (DAMAGE_TYPES) [P17]
 //   • Endless layer ........... in core scope, built after Gate 5 [PLAN Block G]
 //
@@ -62,12 +66,12 @@ import {
 //   Economy .......... KILL_GOLD_BY_WAVE, BOSS_GOLD_BONUS
 //   Gem stats ........ GEM_STATS  (8 families × 6 purities)
 //   Specials ......... SPECIAL_RECIPES (18) · RECIPE_GOLD_COST (per tier)
-//   Enemies .......... ENEMIES (base hp/speed/armor)
-//   Waves ............ buildWaves() (composition + per-type HP curve)
+//   Enemies .......... ENEMIES (speed/armor/flying — NO hp; hp via computeEnemyHP)
+//   Waves ............ buildWaves() (composition only; HP at spawn)
 //
-// CURVE STATUS: pre-doc-alignment. Blocks 0–A of PLAN.md migrate these to the
-// FINAL_VERIFIED formulas (BaseHP 40 + piecewise growth, W^1.15 economy, etc.).
-// Until a phase lands, the value in the named constant is authoritative.
+// CURVE STATUS: P5 LANDED — enemy HP migrated to the DPS-derived decelerating
+// curve (validated in spatial_sim.js, endless to W500). Economy still on the
+// table curve (P9 migrates to W^1.15 + killstreak). Damage types pending (P17).
 // ═════════════════════════════════════════════════════════════════════════════
 
 // ─── Board ───────────────────────────────────────────────────────────────────
@@ -116,40 +120,83 @@ const NUM_WAVES = 50;
 // Each difficulty multiplies enemy HP / speed / boss HP / gold and overrides
 // starting lives. Player-side stats and gem damage are NOT modified — the
 // challenge curve comes purely from the enemy side and economy.
+// Difficulty (P5/P8 + lock E1/B4). Names doc-canonical; HP spread 0.5/1/1.5/2
+// validated in spatial_sim.js to separate cleanly (endless walls 270/230/200/180).
+// Lives 50 flat (doc §63). goldMul = doc §60 reward mult.
 const DIFFICULTIES = {
-  newcomer:  {
-    id: 'newcomer',  name: 'NEWCOMER',  short: 'New here',
-    tagline: 'First crystals, kind waves',
-    hpMul: 0.70, speedMul: 0.90, bossMul: 0.70, goldMul: 1.30,
-    lives: 30, color: '#5cf28a',
+  easy:      {
+    id: 'easy',      name: 'EASY',      short: 'Newcomer-friendly',
+    tagline: 'Learn the maze. Kind waves, forgiving lives.',
+    hpMul: 0.50, speedMul: 0.90, goldMul: 1.25,
+    lives: 50, color: '#5cf28a',
   },
-  thatkid:   {
-    id: 'thatkid',   name: 'THATKID',   short: 'You know this game',
-    tagline: 'Standard challenge — the way it was designed',
-    hpMul: 1.00, speedMul: 1.00, bossMul: 1.00, goldMul: 1.00,
-    lives: 20, color: '#4cc9ff',
+  normal:    {
+    id: 'normal',    name: 'NORMAL',    short: 'As designed',
+    tagline: 'The intended challenge. Balanced for most players.',
+    hpMul: 1.00, speedMul: 1.00, goldMul: 1.00,
+    lives: 50, color: '#4cc9ff',
   },
-  coolkid:   {
-    id: 'coolkid',   name: 'COOLKID',   short: 'Too cool for the path',
-    tagline: 'You started skipping classes — and skipping defences',
-    hpMul: 1.25, speedMul: 1.05, bossMul: 1.30, goldMul: 1.05,
-    lives: 15, color: '#ffd166',
+  hard:      {
+    id: 'hard',      name: 'HARD',      short: 'Tighter timing',
+    tagline: 'Less slack. A real maze is required.',
+    hpMul: 1.50, speedMul: 1.05, goldMul: 1.10,
+    lives: 50, color: '#ffd166',
   },
-  principal: {
-    id: 'principal', name: "PRINCIPAL'S OFFICE", short: 'You went too far',
-    tagline: 'Detention, daily, eternal. The maze remembers.',
-    hpMul: 1.70, speedMul: 1.10, bossMul: 1.70, goldMul: 1.10,
-    lives: 12, color: '#ff4d6d',
+  nightmare: {
+    id: 'nightmare', name: 'NIGHTMARE', short: 'Edge of beatable',
+    tagline: 'No mercy. Every placement matters.',
+    hpMul: 2.00, speedMul: 1.10, goldMul: 1.25,
+    lives: 50, color: '#ff4d6d',
   },
 };
-const DIFFICULTY_ORDER = ['newcomer', 'thatkid', 'coolkid', 'principal'];
-const DEFAULT_DIFFICULTY = 'thatkid';
+const DIFFICULTY_ORDER = ['easy', 'normal', 'hard', 'nightmare'];
+const DEFAULT_DIFFICULTY = 'normal';
 const emptyPerDiff = () => ({
-  newcomer: { bestWave: 0 },
-  thatkid: { bestWave: 0 },
-  coolkid: { bestWave: 0 },
-  principal: { bestWave: 0 },
+  easy: { bestWave: 0 },
+  normal: { bestWave: 0 },
+  hard: { bestWave: 0 },
+  nightmare: { bestWave: 0 },
 });
+
+// ─── Enemy HP system (P5 — derived in spatial_sim.js, not hand-picked) ───────
+// One BaseHP + a DECELERATING growth (player power compounds, so the curve must
+// flatten late) + onboarding ramp (W1-11) + chaos band (±5%) + difficulty.
+// Per-type HP coefficients keep grunt/tank/swarm distinct off the single curve.
+const BASE_HP = 3;
+function hpGrowth(i) {
+  if (i <= 10)  return 1.28;   // steep early (tiny board)
+  if (i <= 25)  return 1.16;
+  if (i <= 40)  return 1.07;
+  if (i <= 50)  return 1.045;  // core tail — nearly flat (DPS skenar)
+  if (i <= 100) return 1.035;  // endless: still rising, board saturating
+  if (i <= 200) return 1.025;
+  return 1.018;                // deep endless: slow climb so a run still ends
+}
+const _regHpCache = [0, BASE_HP];
+function regularHP(wave) {
+  for (let i = _regHpCache.length; i <= wave; i++) _regHpCache[i] = _regHpCache[i - 1] * hpGrowth(i);
+  return _regHpCache[Math.max(1, wave)] || BASE_HP;
+}
+// Types differ off the one curve, not via bespoke base HP (DEVIATIONS B1).
+const ENEMY_HP_COEF = { grunt: 1.0, runner: 0.6, swarm: 0.4, flyer: 1.2, tank: 3.0, boss: 5.0, mega: 9.0 };
+// Onboarding ramp W1-11 (doc §62): [hpMul, speedMul]. W12+ = unscaled.
+const ONBOARDING_RAMP = {
+  1: [0.15, 0.45], 2: [0.30, 0.60], 3: [0.45, 0.72], 4: [0.60, 0.82],
+  5: [0.72, 0.90], 6: [0.82, 0.94], 7: [0.89, 0.97], 8: [0.94, 0.99],
+  9: [0.97, 1.00], 10: [0.99, 1.00], 11: [1.00, 1.00],
+};
+const rampHP = (w) => (ONBOARDING_RAMP[w] || [1, 1])[0];
+const rampSpeed = (w) => (ONBOARDING_RAMP[w] || [1, 1])[1];
+// Chaos band ±5%, deterministic per wave (consistent for all enemies in a wave).
+function chaosBand(wave) {
+  let x = Math.sin(wave * 12.9898) * 43758.5453;
+  x -= Math.floor(x);
+  return 0.95 + x * 0.10;
+}
+function computeEnemyHP(type, wave, diff) {
+  const coef = ENEMY_HP_COEF[type] || 1.0;
+  return Math.max(1, Math.floor(regularHP(wave) * coef * chaosBand(wave) * rampHP(wave) * diff.hpMul));
+}
 
 // ─── Purities (canonical names) ─────────────────────────────────────────────
 const TIERS = [
@@ -530,21 +577,18 @@ function ingredientLabel(ing) {
 }
 
 // ─── Enemies ─────────────────────────────────────────────────────────────────
-// V1 balance patch: bases lowered, HP curves per-type (regular 1.15, boss 1.13,
-// mega 1.12) so endgame is beatable with multiple mythic builds.
-// Base HP anchors:
-//   grunt  30   W50 ≈ 28k  (was 230k)
-//   tank   100  W50 ≈ 94k
-//   boss   1200 W50 ≈ 425k each
-//   mega   5000 W50 ≈ 1.4M each
+// HP is NOT stored here — it comes from computeEnemyHP(type, wave, diff) via the
+// single curve (BASE_HP × growth × coef × ramp × chaos × difficulty). This table
+// holds only the non-HP identity: speed (tiles/s), gold, colour, size, armor,
+// flying. (P5 — removes the stale per-type hp numbers to kill drift.)
 const ENEMIES = {
-  grunt:  { hp: 30,    speed: 1.4, gold: 1, color: '#c4b9ff', size: 0.55, armor: 0, flying: false },
-  runner: { hp: 18,    speed: 2.8, gold: 1, color: '#ffd166', size: 0.45, armor: 0, flying: false },
-  tank:   { hp: 100,   speed: 0.8, gold: 2, color: '#7d8aa8', size: 0.7,  armor: 4, flying: false },
-  swarm:  { hp: 12,    speed: 2.2, gold: 1, color: '#ff8fab', size: 0.4,  armor: 0, flying: false },
-  flyer:  { hp: 40,    speed: 2.0, gold: 1, color: '#88f088', size: 0.5,  armor: 1, flying: true  },
-  boss:   { hp: 1200,  speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
-  mega:   { hp: 5000,  speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
+  grunt:  { speed: 1.4, gold: 1, color: '#c4b9ff', size: 0.55, armor: 0, flying: false },
+  runner: { speed: 2.8, gold: 1, color: '#ffd166', size: 0.45, armor: 0, flying: false },
+  tank:   { speed: 0.8, gold: 2, color: '#7d8aa8', size: 0.7,  armor: 4, flying: false },
+  swarm:  { speed: 2.2, gold: 1, color: '#ff8fab', size: 0.4,  armor: 0, flying: false },
+  flyer:  { speed: 2.0, gold: 1, color: '#88f088', size: 0.5,  armor: 1, flying: true  },
+  boss:   { speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
+  mega:   { speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
 };
 
 // ─── Wave generator (50 waves) ───────────────────────────────────────────────
@@ -557,17 +601,16 @@ const ENEMIES = {
 function buildWaves() {
   const waves = [];
   for (let w = 1; w <= NUM_WAVES; w++) {
-    // V1 patch — softer growth so endgame is reachable.
-    const hpMul = Math.pow(1.15, w - 1);   // regular enemies
-    const bossMul = Math.pow(1.13, w - 1); // bosses
-    const megaMul = Math.pow(1.12, w - 1); // mega (softest)
+    // HP is computed at spawn via computeEnemyHP(type, wave, diff) — the wave
+    // table only defines COMPOSITION now (P5: single HP source of truth).
     let spawns;
     let trial = null;
+    // Boss waves are BOSS-ONLY (P4 / Lock C / doc §51.2) — no minion adds.
     if (w === 10) spawns = [['boss', 1, 0.5]];
-    else if (w === 20) spawns = [['boss', 2, 3.0], ['swarm', 22, 0.18]];
-    else if (w === 30) spawns = [['boss', 3, 2.5], ['flyer', 10, 0.6]];
+    else if (w === 20) spawns = [['boss', 2, 3.0]];
+    else if (w === 30) spawns = [['boss', 3, 2.5]];
     else if (w === 40) spawns = [['mega', 1, 0.0], ['boss', 3, 2.0]];
-    else if (w === 50) spawns = [['mega', 2, 3.5], ['boss', 6, 1.5], ['flyer', 18, 0.3]];
+    else if (w === 50) spawns = [['mega', 2, 3.5], ['boss', 6, 1.5]];
 
     // === TRIAL WAVES (W5/15/25/35/45) — themed challenge between bosses ===
     else if (w === 5) {
@@ -603,7 +646,7 @@ function buildWaves() {
       if (w >= 12 && w % 4 === 0) types.push(['flyer', Math.max(3, Math.floor(count * 0.4)), 0.45]);
       spawns = types;
     }
-    waves.push({ spawns, hpMul, bossMul, megaMul, trial });
+    waves.push({ spawns, trial });
   }
   return waves;
 }
@@ -849,7 +892,7 @@ function LobbyScreen({ stats, onStartSolo }) {
                 </View>
                 <Text style={styles.diffTagline}>{d.tagline}</Text>
                 <Text style={styles.diffStats}>
-                  HP ×{d.hpMul} · BOSS ×{d.bossMul} · GOLD ×{d.goldMul} · {d.lives} lives
+                  HP ×{d.hpMul} · SPD ×{d.speedMul} · GOLD ×{d.goldMul} · {d.lives} lives
                   {bestWave > 0 ? `   ·   best W${bestWave}` : ''}
                 </Text>
               </View>
@@ -1275,12 +1318,9 @@ function Game({ onEnd, difficulty }) {
     const queue = [];
     let t = s.time + 0.8;
     for (const [type, count, gap] of w.spawns) {
-      const mul = type === 'mega' ? w.megaMul
-                : type === 'boss' ? w.bossMul
-                : w.hpMul;
       for (let i = 0; i < count; i++) {
         t += gap;
-        queue.push({ type, atTime: t, hpMul: mul });
+        queue.push({ type, atTime: t });   // HP resolved at spawn via computeEnemyHP
       }
     }
     s.spawnQueue = queue;
@@ -6408,9 +6448,7 @@ function step(dt, s, onEnd) {
     const sp = s.spawnQueue.shift();
     const def = ENEMIES[sp.type];
     const diff = s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY];
-    const isBossOrMega = sp.type === 'boss' || sp.type === 'mega';
-    const bossExtra = isBossOrMega ? diff.bossMul : 1;
-    const hp = Math.floor(def.hp * sp.hpMul * diff.hpMul * bossExtra);
+    const hp = computeEnemyHP(sp.type, s.wave, diff);   // P5 single HP source
     const subPath = def.flying
       ? [SPAWN, GOAL] // flyers go direct
       : bfsCheckpoints(s.grid, SPAWN) || [SPAWN, GOAL];
@@ -6471,7 +6509,7 @@ function step(dt, s, onEnd) {
     const dc = target.c - e.c;
     const dist = Math.hypot(dr, dc);
     const diffSpeed = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).speedMul;
-    const move = def.speed * speedMul * diffSpeed * dt;
+    const move = def.speed * speedMul * diffSpeed * rampSpeed(s.wave) * dt;
     if (dist <= move) {
       e.r = target.r;
       e.c = target.c;
