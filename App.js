@@ -503,6 +503,11 @@ const SPECIAL_RECIPES = [
 ];
 const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 
+// Recipe gold cost per tier (PLAN P2 / DEVIATIONS A1). Lowered from doc §37's
+// 500-8000 so gold has a real spend decision without double-gating RNG.
+const RECIPE_GOLD_COST = { P2: 100, P3: 250, P4: 600, P5: 1500, P6: 3500 };
+const recipeGoldCost = (recipe) => RECIPE_GOLD_COST[recipe.tier] || 0;
+
 function matchesIngredient(tower, ing) {
   if (ing.specialId) return tower.kind === 'special' && tower.specialId === ing.specialId;
   return tower.kind === 'gem' && tower.gemType === ing.gemType && tower.tier === ing.tier;
@@ -1234,6 +1239,10 @@ function Game({ onEnd, difficulty }) {
     const pool = [...s.candidates, ...s.towers];
     const others = findRecipeMatch(anchor, pool, recipe);
     if (!others) { flash('Missing ingredients'); return; }
+    // Gold gate (PLAN P2): recipe tier cost must be affordable.
+    const cost = recipeGoldCost(recipe);
+    if (s.gold < cost) { flash(`Need ${cost}g to forge ${recipe.name}`); return; }
+    s.gold -= cost;
     // Consume committed-tower ingredients: free cells, mark as rocks
     for (const t of others) {
       if (s.towers.includes(t)) {
@@ -1475,6 +1484,7 @@ function Game({ onEnd, difficulty }) {
               <CandidateInspect
                 candidate={inspectCandidate}
                 allTowers={[...s.candidates, ...s.towers]}
+                gold={s.gold}
                 onKeep={() => resolveKeep(inspectCandidate.id)}
                 onMerge={(plus) => resolveMerge(inspectCandidate.id, plus)}
                 onCombine={(rid) => resolveCombine(inspectCandidate.id, rid)}
@@ -6261,7 +6271,7 @@ function WaveBanner({ banner, time }) {
 }
 
 // ─── Candidate inspect / action picker ───────────────────────────────────────
-function CandidateInspect({ candidate, allTowers, onKeep, onMerge, onCombine }) {
+function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onCombine }) {
   const g = GEMS[candidate.gemType];
   const t = tier(candidate.tier);
   const stats = gemStats(candidate.gemType, candidate.tier);
@@ -6327,23 +6337,31 @@ function CandidateInspect({ candidate, allTowers, onKeep, onMerge, onCombine }) 
       {craftable.length > 0 && (
         <View style={styles.craftSection}>
           <Text style={styles.craftSectionLabel}>COMBINE RECIPES READY</Text>
-          {craftable.map((r) => (
-            <TouchableOpacity
-              key={r.id}
-              style={[styles.craftBtn, { borderColor: r.accent }]}
-              onPress={() => onCombine(r.id)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.craftIcon, { backgroundColor: r.color, borderColor: r.accent }]}>
-                <Text style={styles.specialIconStar}>★</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.craftBtnName}>{r.name} <Text style={{ color: '#ffd166' }}>{r.tier}</Text></Text>
-                <Text style={styles.craftBtnDesc}>{r.description}</Text>
-              </View>
-              <Text style={styles.craftBtnArrow}>▶</Text>
-            </TouchableOpacity>
-          ))}
+          {craftable.map((r) => {
+            const cost = recipeGoldCost(r);
+            const affordable = gold >= cost;
+            return (
+              <TouchableOpacity
+                key={r.id}
+                style={[styles.craftBtn, { borderColor: r.accent }, !affordable && { opacity: 0.45 }]}
+                onPress={() => onCombine(r.id)}
+                activeOpacity={affordable ? 0.85 : 1}
+                disabled={!affordable}
+              >
+                <View style={[styles.craftIcon, { backgroundColor: r.color, borderColor: r.accent }]}>
+                  <Text style={styles.specialIconStar}>★</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.craftBtnName}>{r.name} <Text style={{ color: '#ffd166' }}>{r.tier}</Text></Text>
+                  <Text style={styles.craftBtnDesc}>{r.description}</Text>
+                  <Text style={[styles.craftBtnCost, { color: affordable ? '#ffd166' : '#ff6f6f' }]}>
+                    ⬡ {cost}g{affordable ? '' : `  (have ${gold})`}
+                  </Text>
+                </View>
+                <Text style={styles.craftBtnArrow}>▶</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       )}
     </>
@@ -6981,6 +6999,7 @@ const styles = StyleSheet.create({
   },
   craftBtnName: { color: '#fff', fontSize: 14, fontWeight: '800' },
   craftBtnDesc: { color: '#9aa3c7', fontSize: 12, marginTop: 1 },
+  craftBtnCost: { fontSize: 11, fontWeight: '800', marginTop: 3, letterSpacing: 0.5 },
   craftBtnArrow: { color: '#ffd166', fontSize: 18, fontWeight: '900', marginLeft: 6 },
 
   recipeBookCard: {
