@@ -35,10 +35,10 @@ const GEM_DPS = [3.4, 6.8, 12, 27, 54, 400];
 const GEM_RANGE = [7.5, 8, 8.5, 9, 10, 13];
 
 const DIFFICULTY = {
-  Easy:      { hp: 0.30, count: 0.50, speed: 0.90 },
-  Normal:    { hp: 0.90, count: 0.95, speed: 1.00 },
-  Hard:      { hp: 1.03, count: 1.00, speed: 1.05 },
-  Nightmare: { hp: 1.05, count: 1.00, speed: 1.10 },
+  Easy:      { hp: 0.50, count: 0.70, speed: 0.90 },
+  Normal:    { hp: 1.00, count: 0.95, speed: 1.00 },
+  Hard:      { hp: 1.50, count: 1.00, speed: 1.05 },
+  Nightmare: { hp: 2.00, count: 1.05, speed: 1.10 },
 };
 
 // ───────────────────────── ENEMY HP CURVE (candidate, extended endless) ─────
