@@ -55,6 +55,9 @@ import {
 //   • Boss HP ................. regular × coef (boss 5×, mega 9×) (ENEMY_HP_COEF)
 //   • Onboarding ramp ......... W1-11 HP+speed                  (ONBOARDING_RAMP)
 //   • Damage types ............ full Physical/Magic/Poison/Burn (DAMAGE_TYPES) [P17]
+//   • Difficulty count/spawn .. countMul + spawnDelayMul per tier (DIFFICULTIES) [P8]
+//   • Kill gold ............... table W1-50, W^1.15 endless extension (killGold) [P9]
+//   • Killstreak .............. +5%/20 kills, cap +25%, reset on leak (streakMult) [P9]
 //   • Endless layer ........... in core scope, built after Gate 5 [PLAN Block G]
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
@@ -127,25 +130,25 @@ const DIFFICULTIES = {
   easy:      {
     id: 'easy',      name: 'EASY',      short: 'Newcomer-friendly',
     tagline: 'Learn the maze. Kind waves, forgiving lives.',
-    hpMul: 0.50, speedMul: 0.90, goldMul: 1.25,
+    hpMul: 0.50, speedMul: 0.90, goldMul: 1.25, countMul: 0.70, spawnDelayMul: 1.20,
     lives: 50, color: '#5cf28a',
   },
   normal:    {
     id: 'normal',    name: 'NORMAL',    short: 'As designed',
     tagline: 'The intended challenge. Balanced for most players.',
-    hpMul: 1.00, speedMul: 1.00, goldMul: 1.00,
+    hpMul: 1.00, speedMul: 1.00, goldMul: 1.00, countMul: 0.95, spawnDelayMul: 1.00,
     lives: 50, color: '#4cc9ff',
   },
   hard:      {
     id: 'hard',      name: 'HARD',      short: 'Tighter timing',
     tagline: 'Less slack. A real maze is required.',
-    hpMul: 1.50, speedMul: 1.05, goldMul: 1.10,
+    hpMul: 1.50, speedMul: 1.05, goldMul: 1.10, countMul: 1.00, spawnDelayMul: 0.92,
     lives: 50, color: '#ffd166',
   },
   nightmare: {
     id: 'nightmare', name: 'NIGHTMARE', short: 'Edge of beatable',
     tagline: 'No mercy. Every placement matters.',
-    hpMul: 2.00, speedMul: 1.10, goldMul: 1.25,
+    hpMul: 2.00, speedMul: 1.10, goldMul: 1.25, countMul: 1.05, spawnDelayMul: 0.85,
     lives: 50, color: '#ff4d6d',
   },
 };
@@ -301,6 +304,24 @@ const KILL_GOLD_BY_WAVE = [
 const BOSS_GOLD_BONUS = {
   10: 150, 20: 500, 30: 1200, 40: 2500, 50: 6000,
 };
+// Per-kill gold (P9). The hand-tuned table governs the core (W1-50, validated);
+// beyond it the curve CONTINUES at ~W^1.15 so endless stays economically sane
+// (the old table returned 1g past W50, soft-locking endless recipes/spends).
+function killGold(wave) {
+  if (wave <= 50) return KILL_GOLD_BY_WAVE[wave] || 1;
+  return Math.round(180 * Math.pow(wave / 50, 1.15));
+}
+function bossGoldBonus(wave) {
+  if (wave % 10 !== 0) return 0;
+  if (wave <= 50) return BOSS_GOLD_BONUS[wave] || 0;
+  return Math.round(6000 * Math.pow(wave / 50, 1.15));
+}
+// Killstreak (P9): consecutive kills without a leak grant up to +25% gold —
+// rewards a clean defence. Resets to 0 on any leak. Anti-farm: gold is ONLY
+// from kills (no idle/interest income), so there is no stall-to-farm exploit.
+function streakMult(streak) {
+  return 1 + Math.min(0.25, Math.floor(streak / 20) * 0.05);
+}
 
 // ─── Gems (8 families) ──────────────────────────────────────────────────────
 // `letter` is the on-board label prefix: first letter of the gem name, except
@@ -1079,6 +1100,7 @@ function Game({ onEnd, difficulty }) {
       nextTowerId: 1,
       nextFxId: 1,
       gold: STARTING_GOLD,
+      killStreak: 0,
       lives: diff.lives,
       score: 0,
       speed: 1,
@@ -1315,11 +1337,17 @@ function Game({ onEnd, difficulty }) {
     s.wave += 1;
     s.playerLevel = levelForWave(s.wave);
     const w = WAVES[s.wave - 1];
+    const diff = s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY];
     const queue = [];
     let t = s.time + 0.8;
     for (const [type, count, gap] of w.spawns) {
-      for (let i = 0; i < count; i++) {
-        t += gap;
+      // Difficulty count/spawn-delay (P8). Boss & mega counts are fixed (scaling
+      // a single boss by 0.7 would delete it) — only minion counts flex.
+      const isBig = type === 'boss' || type === 'mega';
+      const n = isBig ? count : Math.max(1, Math.round(count * diff.countMul));
+      const g = gap * diff.spawnDelayMul;
+      for (let i = 0; i < n; i++) {
+        t += g;
         queue.push({ type, atTime: t });   // HP resolved at spawn via computeEnemyHP
       }
     }
@@ -1407,6 +1435,13 @@ function Game({ onEnd, difficulty }) {
           <View style={[styles.diffPillDot, { backgroundColor: diff.color }]} />
           <Text style={[styles.diffPillText, { color: diff.color }]}>{diff.name}</Text>
         </View>
+        {streakMult(s.killStreak) > 1 && (
+          <View style={[styles.diffPill, { borderColor: '#ff9f43', marginLeft: 8 }]}>
+            <Text style={[styles.diffPillText, { color: '#ff9f43' }]}>
+              STREAK {s.killStreak} · +{Math.round((streakMult(s.killStreak) - 1) * 100)}% gold
+            </Text>
+          </View>
+        )}
       </View>
 
       <View
@@ -6517,6 +6552,7 @@ function step(dt, s, onEnd) {
       if (e.pathIdx >= e.subPath.length) {
         e.hp = -1;
         s.lives -= 1;
+        s.killStreak = 0;   // leak breaks the streak (P9)
       }
     } else {
       e.r += (dr / dist) * move;
@@ -6557,13 +6593,15 @@ function step(dt, s, onEnd) {
   });
   const diffGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
   const goldMul = (goldAuraActive ? 2 : 1) * diffGold;
-  const wavePerKill = KILL_GOLD_BY_WAVE[s.wave] || 1;
+  const wavePerKill = killGold(s.wave);
 
   const alive = [];
   for (const e of s.enemies) {
     if (e.hp <= 0) {
       if (e.subPath && e.pathIdx < e.subPath.length) {
-        s.gold += wavePerKill * goldMul;
+        s.killStreak += 1;   // clean kill extends the streak (P9)
+        const reward = Math.max(1, Math.round(wavePerKill * goldMul * streakMult(s.killStreak)));
+        s.gold += reward;
         s.score += wavePerKill * 4;
         // Death burst: 8 particles radiating outward
         const def = ENEMIES[e.type];
@@ -6593,7 +6631,7 @@ function step(dt, s, onEnd) {
   // Wave end?
   if (s.spawnQueue.length === 0 && s.enemies.length === 0) {
     const diffMulGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
-    const bossBonus = Math.floor((BOSS_GOLD_BONUS[s.wave] || 0) * diffMulGold);
+    const bossBonus = Math.floor(bossGoldBonus(s.wave) * diffMulGold);
     if (bossBonus > 0) {
       s.gold += bossBonus;
       s.score += bossBonus;
