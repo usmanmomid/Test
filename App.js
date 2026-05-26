@@ -232,19 +232,13 @@ function rollWithPity(s) {
   else s.pity.highTierStreak += 1;
   return { tier, gemType };
 }
-// Hand-tuned hero-level table (V1 balance patch).
-//   L1 W1-4   L2 W5-8   L3 W9-13   L4 W14-19   L5 W20-27
-//   L6 W28-35  L7 W36-43  L8 W44-50
-// Slower ramp at higher levels so each level represents real progress.
+// Hero level = doc V4 §A16 cadence: HL = floor((W-1)/6)+1, clamped to the
+// 8-row ROLL_ODDS table (PLAN P3 / DEVIATIONS A3). Every 6 waves a new level.
+//   HL1 W1-6 · HL2 W7-12 · HL3 W13-18 · HL4 W19-24 · HL5 W25-30
+//   HL6 W31-36 · HL7 W37-42 · HL8 W43-50
+// P6 stays merge/recipe-only (no P6 column in ROLL_ODDS) per DEVIATIONS A2.
 function levelForWave(wave) {
-  if (wave <= 4)  return 1;
-  if (wave <= 8)  return 2;
-  if (wave <= 13) return 3;
-  if (wave <= 19) return 4;
-  if (wave <= 27) return 5;
-  if (wave <= 35) return 6;
-  if (wave <= 43) return 7;
-  return 8;
+  return Math.min(8, Math.floor((wave - 1) / 6) + 1);
 }
 
 // ─── Kill gold curve (V1 balance patch anchors) ──────────────────────────────
