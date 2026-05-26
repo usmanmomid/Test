@@ -37,6 +37,39 @@ import {
 //   • 50 waves total. Bosses on 10, 20, 30, 40, 50.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ═════════════════════════════════════════════════════════════════════════════
+// BALANCE — SINGLE SOURCE OF TRUTH  (PLAN.md P1)
+// -----------------------------------------------------------------------------
+// Every live balance number is defined ONCE, in the constant it names below.
+// Do NOT restate any balance number anywhere else (prose, commit msg, doc).
+// To read the whole balance picture, read the constants this block points to.
+//
+// LOCKED DESIGN DECISIONS (see DEVIATIONS.md):
+//   • Recipe gold cost ........ 100 / 250 / 600 / 1500 / 3500  (RECIPE_GOLD_COST)
+//   • Natural P6 .............. NONE — merge/recipe only        (ROLL_ODDS)
+//   • Hero level cadence ...... HL = floor((W-1)/6)+1           (levelForWave)
+//   • Boss waves .............. boss-only, no minion adds       (buildWaves)
+//   • Difficulty names ........ Easy / Normal / Hard / Nightmare (DIFFICULTIES)
+//   • Damage types ............ full Physical/Magic/Poison/Burn (DAMAGE_TYPES) [P17]
+//   • Endless layer ........... in core scope, built after Gate 5 [PLAN Block G]
+//
+// CONFIG INDEX (the numbers live in these — edit here, nowhere else):
+//   Board ............ COLS, ROWS, TILE, SPAWN, CHECKPOINTS, GOAL
+//   Match ............ STARTING_GOLD, MAX_PLACEMENTS, NUM_WAVES
+//   Difficulty ....... DIFFICULTIES (hp/speed/boss/gold mult + lives)
+//   Roll odds ........ ROLL_ODDS  (per hero level)   · rollPurity / rollWithPity
+//   Hero level ....... levelForWave(wave)
+//   Economy .......... KILL_GOLD_BY_WAVE, BOSS_GOLD_BONUS
+//   Gem stats ........ GEM_STATS  (8 families × 6 purities)
+//   Specials ......... SPECIAL_RECIPES (18) · RECIPE_GOLD_COST (per tier)
+//   Enemies .......... ENEMIES (base hp/speed/armor)
+//   Waves ............ buildWaves() (composition + per-type HP curve)
+//
+// CURVE STATUS: pre-doc-alignment. Blocks 0–A of PLAN.md migrate these to the
+// FINAL_VERIFIED formulas (BaseHP 40 + piecewise growth, W^1.15 economy, etc.).
+// Until a phase lands, the value in the named constant is authoritative.
+// ═════════════════════════════════════════════════════════════════════════════
+
 // ─── Board ───────────────────────────────────────────────────────────────────
 const COLS = 41;
 const ROWS = 41;

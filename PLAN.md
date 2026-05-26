@@ -210,7 +210,7 @@ Done when: `npm run simulate` prints a per-wave pass/fail table.
 
 ---
 
-## BLOCK G — DEFERRED (post-core)  [DEF]
+## BLOCK G — Endless layer  [CORE per user lock E3 — build in core pass]
 
 **P40 — Game modes.** Quick 50 / Standard 100 / Endless 9999 + reward mults.
 Done when: mode select changes wave count + rewards.
@@ -236,4 +236,8 @@ model stays compatible; not built in the RN client.
 - **Gate 5 (end of F):** Self-test green W1–50 × 4 difficulties; 60fps; no
   soft-locks. → launch-ready core.
 
-Block G only starts after Gate 5.
+Block G is in-scope for the core release (user lock E3) but still BUILT after
+Gate 5 — solo W1–50 must be proven before the endless layer extends it.
+
+Locked decisions (2026-05-24): difficulty names = Easy/Normal/Hard/Nightmare ·
+damage types = full Physical/Magic/Poison/Burn · endless layer = in core scope.

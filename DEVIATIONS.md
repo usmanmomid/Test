@@ -117,19 +117,22 @@ is solo. Data model kept compatible but the client is not built (PLAN P42).
 
 ---
 
-## E. OPEN — needs your lock before the relevant phase
+## E. LOCKED (user, 2026-05-24)
 
-**E1. Difficulty names.** Doc = Easy / Normal / Hard / Nightmare. You earlier
-chose the playful set Newcomer / ThatKid / CoolKid / Principal. **Which wins?**
-(Values align to doc either way per B4 — this is names only.)
+**E1. Difficulty names → Easy / Normal / Hard / Nightmare.** LOCKED.
+Doc-canonical names win. Values per B4 (0.30 / 0.90 / 1.03 / 1.05). The playful
+Newcomer/ThatKid/CoolKid/Principal set is dropped.
 
-**E2. Damage-type depth on mobile.** Full Physical/Magic/Poison/Burn + 70% resist
-+ immunities (§A17) is a big system. **Full model, or a simplified
-physical/magic split** for the first mobile pass? (Affects P17 scope.)
+**E2. Damage-type depth → FULL model.** LOCKED.
+Physical / Magic / Poison / Burn + 70% resist cap + Magic-immune / Physical-immune
+per §A17. P17 builds the full system (required for real enemy-ability counters).
 
-**E3. Endless / mutations / milestones.** Doc has them live (Roblox). My scope
-advice = DEFER on mobile until core is proven (PLAN Block G). **Confirm defer**,
-or do you want them in the core build?
+**E3. Endless / mutations / milestones → BUILD IN CORE PASS.** LOCKED.
+Block G is no longer deferred — it ships as part of the core build. Sequencing
+still sane: solo W1–50 core (Blocks 0–F) is built first so it's verifiable, then
+endless/mutations/milestones/modes follow within the same release scope (not a
+separate post-launch). QA-surface risk acknowledged; mitigated by the P39
+headless harness covering the extended wave range.
 
 ---
 
