@@ -2397,23 +2397,67 @@ function PathLayer({ path, time }) {
           </View>
         );
       })}
-      {/* animated cyan wave overlay */}
+      {/* animated red pulse — thin centered strip per path-tile,
+          pulses in the direction enemies travel (Start → CP1..5 → Goal). */}
       {path.map((p, i) => {
         const dist = head - i;
         let brightness = 0;
-        if (dist >= 0 && dist < 8) brightness = 1 - dist / 8;
+        if (dist >= 0 && dist < 10) brightness = 1 - dist / 10;
         if (brightness <= 0.05) return null;
         return (
           <View key={`pw${i}`} pointerEvents="none" style={{
             position: 'absolute',
-            left: p.c * TILE, top: p.r * TILE,
-            width: TILE, height: TILE,
-            backgroundColor: '#4cc9ff',
-            opacity: brightness * 0.45,
+            left: p.c * TILE + TILE * 0.28,
+            top: p.r * TILE + TILE * 0.28,
+            width: TILE * 0.44,
+            height: TILE * 0.44,
+            borderRadius: TILE * 0.22,
+            backgroundColor: '#ff4d6d',
+            opacity: brightness * 0.55,
+            shadowColor: '#ff4d6d',
+            shadowOpacity: brightness * 0.9,
+            shadowRadius: 6,
           }} />
         );
       })}
     </>
+  );
+}
+
+// Tutorial / hint speech-balloon. Rounded rect with a small tail pointing
+// toward the subject. Usage: <DialogBalloon text="Pinch to zoom" x={120} y={80} tail="down" />
+function DialogBalloon({ text, x, y, tail = 'down', accent = '#ffd166', maxWidth = 220 }) {
+  const tailSize = 10;
+  return (
+    <View pointerEvents="none" style={{
+      position: 'absolute', left: x, top: y, maxWidth, alignItems: 'center',
+    }}>
+      <View style={{
+        backgroundColor: '#0f1428ee',
+        borderRadius: 10,
+        paddingHorizontal: 12, paddingVertical: 8,
+        borderWidth: 1.5, borderColor: accent,
+        shadowColor: accent, shadowOpacity: 0.6, shadowRadius: 8,
+      }}>
+        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{text}</Text>
+      </View>
+      {tail === 'down' && (
+        <View style={{
+          width: 0, height: 0, marginTop: -1,
+          borderLeftWidth: tailSize, borderRightWidth: tailSize, borderTopWidth: tailSize,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent',
+          borderTopColor: accent,
+        }} />
+      )}
+      {tail === 'up' && (
+        <View style={{
+          width: 0, height: 0, marginBottom: -1, position: 'absolute', top: -tailSize, alignSelf: 'center',
+          borderLeftWidth: tailSize, borderRightWidth: tailSize, borderBottomWidth: tailSize,
+          borderLeftColor: 'transparent', borderRightColor: 'transparent',
+          borderBottomColor: accent,
+        }} />
+      )}
+    </View>
   );
 }
 
