@@ -64,9 +64,12 @@ import {
 //   • P5 synergy .............. iso ×0.75, clustered ×1.20 within 3 tiles (doc §A7)
 //   • P6 rule-breaks .......... Diamond no-armor · Topaz +2 mål · Amethyst armor×2 ·
 //                               Sapphire slow→95% · Ruby 5-hop chain · Emerald
-//                               poison-spread-on-kill (doc §A8; Aquamarine/Opal
-//                               are hooks pending Phase D mutations)
-//   • Endless layer ........... mutations W75 + milestones W100 — PENDING [Phase D]
+//                               poison-spread · Aquamarine 2×AS-in-mutation · Opal
+//                               global-reveal-thru-fog (all 8 live)
+//   • Game modes .............. Quick 50 / Standard 100 / Endless 9999 (doc §60.6)
+//   • Mutations ............... 8-pool, W75 gate (1 mut), W150 (2 muts) (doc §A6/§56)
+//   • Milestones .............. W100+, ±5% speed/armor per W25 alternating (doc §57)
+//   • Wave generation ......... W1-50 curated table, W51+ procedural 70/20/10 (doc §A2)
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
 //   Board ............ COLS, ROWS, TILE, SPAWN, CHECKPOINTS, GOAL
@@ -125,6 +128,16 @@ function isReserved(r, c) {
 const STARTING_GOLD = 0;
 const MAX_PLACEMENTS = 5;
 const STONE_REFUND = 0;     // rocks can't be sold under standard rules
+
+// Game modes — doc §60.6 V4 (Marathon dropped). 3 mode set, default Standard.
+// Endless is bounded by board saturation + milestones, not a wave count.
+const MODES = {
+  quick:    { id: 'quick',    name: 'QUICK',    waves: 50,   rewardMult: 1.00, desc: 'Fast match · standard rewards' },
+  standard: { id: 'standard', name: 'STANDARD', waves: 100,  rewardMult: 1.20, desc: 'Full-length · +20% rewards' },
+  endless:  { id: 'endless',  name: 'ENDLESS',  waves: 9999, rewardMult: 1.50, desc: 'Forever · milestones from W100' },
+};
+const MODE_ORDER = ['quick', 'standard', 'endless'];
+const DEFAULT_MODE = 'standard';
 const NUM_WAVES = 50;
 
 // ─── Difficulty ─────────────────────────────────────────────────────────────
@@ -241,6 +254,8 @@ const RESISTANCE_CAP = 0.70;   // doc §53.4: max damage reduction; no immunitie
 // Enemy resist fields (physicalResist / magicResist / poisonResist / burnResist)
 // default to 0; specific enemy types or mutations set higher values up to the cap.
 function damageMultByType(enemy, dmgType) {
+  // ShieldRotations mutation: full immunity to ONE type at a time (doc §A.1b).
+  if (enemy._shieldBlockType === dmgType) return 0;
   const r = dmgType === 'physical' ? (enemy.physicalResist || 0)
           : dmgType === 'magic'    ? (enemy.magicResist    || 0)
           : dmgType === 'poison'   ? (enemy.poisonResist   || 0)
@@ -277,6 +292,92 @@ const isP6 = (t) => t.kind === 'gem' && t.tier === 6;
 // signature rule-break at P6 (doc §A8). Aquamarine and Opal are no-ops until
 // mutations land (Phase D).
 const p6Family = (t) => (isP6(t) ? t.gemType : null);
+
+// ─── Endless layer — modes, milestones, mutations (Phase D / doc §A6/§A9) ────
+// Milestones: every W25 from W100 add cumulative ±5% speed/armor in alternating
+// pattern (W100 +5% armor, W125 +5% speed, W150 +5% armor, ...). Applied at
+// enemy spawn (doc §57).
+function milestoneMults(wave) {
+  if (wave < 100) return { speed: 1, armor: 1 };
+  const steps = Math.floor((wave - 100) / 25) + 1;
+  let speed = 1, armor = 1;
+  for (let i = 1; i <= steps; i++) {
+    if (i % 2 === 1) armor *= 1.05;
+    else speed *= 1.05;
+  }
+  return { speed, armor };
+}
+
+// Mutations: 8-strong pool, activate W75 (doc §A6 / §56). One per wave W75-149,
+// two W150+. Deterministic per (matchSeed, wave) so multi-player sees the same.
+const MUTATION_POOL = [
+  'ArmorBloom', 'SpeedSurge', 'RegenWaves', 'ResistShifts',           // §A.1a stat
+  'SplitEvolution', 'ShieldRotations', 'FogOfWarLanes', 'EliteSpawns', // §A.1b harder
+];
+// Deterministic PRNG seeded by (matchSeed, wave).
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function mutationsForWave(matchSeed, wave) {
+  if (wave < 75) return [];
+  const n = wave >= 150 ? 2 : 1;
+  const rng = mulberry32((matchSeed >>> 0) ^ (wave * 2654435761 >>> 0));
+  const picked = [];
+  const pool = MUTATION_POOL.slice();
+  while (picked.length < n && pool.length) {
+    const idx = Math.floor(rng() * pool.length);
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+  return picked;
+}
+// Tunables (doc §56.4 verbatim).
+const MUT_ARMOR_BLOOM_PER     = 5;     // +5 armor every 10s, cap 12 stacks
+const MUT_ARMOR_BLOOM_PERIOD  = 10;
+const MUT_ARMOR_BLOOM_MAX     = 12;
+const MUT_SPEED_SURGE_PERIOD  = 6;     // sine cycle seconds
+const MUT_REGEN_IDLE          = 3;     // seconds since last damage before regen
+const MUT_REGEN_FRACTION      = 0.02;  // 2% hpMax/s
+const MUT_RESIST_FLIP_PERIOD  = 8;     // seconds between Magic↔Physical
+const MUT_RESIST_VALUE        = 0.70;  // capped at the cap anyway
+const MUT_SPLIT_CHANCE        = 0.06;  // 6% per hit, max 1 split per enemy
+const MUT_SHIELD_PERIOD       = 8;     // seconds per immune-type rotation
+const MUT_ELITE_FRACTION      = 0.20;  // 20% promoted at spawn
+const MUT_ELITE_HP            = 1.50;
+const MUT_ELITE_SPEED         = 1.20;
+const MUT_ELITE_ARMOR         = 5;
+
+// Apply EliteSpawns + ResistShifts initial state etc. at spawn (called from
+// the spawn-from-queue block). Mutates the enemy in place.
+function applyMutationsOnSpawn(enemy, mutations, rng) {
+  if (mutations.includes('EliteSpawns') && (enemy.type !== 'boss' && enemy.type !== 'mega') && rng() < MUT_ELITE_FRACTION) {
+    enemy.hp = Math.floor(enemy.hp * MUT_ELITE_HP);
+    enemy.maxHp = enemy.hp;
+    enemy._eliteSpeed = MUT_ELITE_SPEED;
+    enemy.armor = (enemy.armor || 0) + MUT_ELITE_ARMOR;
+    enemy._elite = true;
+  }
+  if (mutations.includes('ResistShifts')) {
+    enemy._resistFlipT = 0;       // sim time of last flip
+    enemy._resistState = 'magic'; // start with magic resist
+    enemy.magicResist = MUT_RESIST_VALUE;
+  }
+  if (mutations.includes('ShieldRotations')) {
+    enemy._shieldT = 0;
+    enemy._shieldTypes = ['physical', 'magic', 'poison', 'burn'];
+    enemy._shieldIdx = 0;
+    enemy._shieldBlockType = enemy._shieldTypes[0];
+  }
+  if (mutations.includes('ArmorBloom')) {
+    enemy._bloomStacks = 0;
+    enemy._bloomNextT = MUT_ARMOR_BLOOM_PERIOD;
+  }
+}
 
 // ─── Purities (canonical names) ─────────────────────────────────────────────
 const TIERS = [
@@ -748,6 +849,40 @@ function buildWaves() {
 }
 const WAVES = buildWaves();
 
+// Lazy wave lookup — W1-50 are the curated table, W51+ generate procedurally
+// for Endless mode (doc §A2 70/20/10 composition, count capped at 30 by §44).
+// Boss waves every 10, trial waves on the 5-offset, regular otherwise.
+function getWave(w) {
+  if (w >= 1 && w <= 50 && WAVES[w - 1]) return WAVES[w - 1];
+  if (w % 10 === 0) {
+    const bossCount = Math.min(8, 2 + Math.floor((w - 50) / 30));
+    const megaCount = Math.min(4, 1 + Math.floor((w - 50) / 50));
+    return { spawns: [['mega', megaCount, 3.0], ['boss', bossCount, 1.5]], trial: null };
+  }
+  if (w % 10 === 5) {
+    const trials = ['SPEED', 'AERIAL', 'SWARM', 'ARMORED', 'ENDURANCE'];
+    const trial = trials[Math.floor((w - 5) / 10) % trials.length];
+    if (trial === 'SPEED')   return { spawns: [['runner', 28, 0.2], ['grunt', 14, 0.4]], trial };
+    if (trial === 'AERIAL')  return { spawns: [['flyer', 22, 0.4], ['runner', 10, 0.5]], trial };
+    if (trial === 'SWARM')   return { spawns: [['swarm', 30, 0.15], ['grunt', 14, 0.4]], trial };
+    if (trial === 'ARMORED') return { spawns: [['tank', 10, 1.1], ['grunt', 18, 0.5]], trial };
+    return { spawns: [['tank', 8, 1.0], ['flyer', 12, 0.5], ['swarm', 20, 0.18], ['grunt', 20, 0.4]], trial };
+  }
+  // 70/20/10 endless composition: basic / specialist / elite (champion).
+  const count = Math.min(30, 22 + Math.floor((w - 50) * 0.3));
+  const basic = Math.round(count * 0.70);
+  const specialist = Math.round(count * 0.20);
+  const elite = Math.max(1, count - basic - specialist);
+  return {
+    spawns: [
+      ['grunt', basic, 0.45],
+      ['runner', specialist, 0.4],
+      ['champion', elite, 0.7],
+    ],
+    trial: null,
+  };
+}
+
 // ─── BFS (4-directional, no diagonals) ──────────────────────────────────────
 function bfs(grid, start, goal) {
   const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
@@ -800,6 +935,7 @@ export default function App() {
   const [screen, setScreen] = useState('lobby');
   const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0, difficulty: DEFAULT_DIFFICULTY });
   const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY);
+  const [mode, setMode] = useState(DEFAULT_MODE);
   const [stats, setStats] = useState({
     bestScore: 0, bestWave: 0, gamesPlayed: 0, wins: 0,
     // per-difficulty bests
@@ -839,7 +975,7 @@ export default function App() {
       onLobby={() => setScreen('lobby')}
     />
   );
-  return <Game onEnd={recordResult} difficulty={difficulty} />;
+  return <Game onEnd={recordResult} difficulty={difficulty} mode={mode} />;
 }
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
@@ -960,6 +1096,32 @@ function LobbyScreen({ stats, onStartSolo }) {
         {stats.gamesPlayed === 0 && (
           <Text style={styles.statsHint}>No games yet. Pick a difficulty to start.</Text>
         )}
+      </View>
+
+      <View style={{ marginBottom: 10 }}>
+        <Text style={styles.soloHeader}>MODE</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+          {MODE_ORDER.map((mid) => {
+            const m = MODES[mid];
+            const selected = mode === mid;
+            return (
+              <TouchableOpacity
+                key={mid}
+                onPress={() => setMode(mid)}
+                style={{
+                  flex: 1, paddingVertical: 8, paddingHorizontal: 6,
+                  borderRadius: 8, borderWidth: 2,
+                  borderColor: selected ? '#ffd166' : '#2a335f',
+                  backgroundColor: selected ? '#1d2240' : '#101630',
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: selected ? '#ffd166' : '#9aa3c7', fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{m.name}</Text>
+                <Text style={{ color: '#7a83a8', fontSize: 9, textAlign: 'center', marginTop: 2 }}>{m.waves === 9999 ? '∞' : m.waves}w · ×{m.rewardMult}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.modeList}>
@@ -1152,8 +1314,9 @@ function EndScreen({ won, score, waveReached, difficulty, stats, onPlayAgain, on
 }
 
 // ─── Game ────────────────────────────────────────────────────────────────────
-function Game({ onEnd, difficulty }) {
+function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
   const diff = DIFFICULTIES[difficulty] || DIFFICULTIES[DEFAULT_DIFFICULTY];
+  const modeCfg = MODES[mode] || MODES[DEFAULT_MODE];
   const stateRef = useRef(null);
   if (!stateRef.current) {
     stateRef.current = {
@@ -1177,6 +1340,14 @@ function Game({ onEnd, difficulty }) {
       gold: STARTING_GOLD,
       killStreak: 0,
       lives: diff.lives,
+      // Endless layer (Phase D): mode/totalWaves/rewardMult from props.
+      // matchSeed feeds mutationsForWave so a given match has consistent picks.
+      mode: modeCfg.id,
+      totalWaves: modeCfg.waves,
+      rewardMult: modeCfg.rewardMult,
+      matchSeed: (Math.random() * 0xFFFFFFFF) >>> 0,
+      activeMutations: [],          // mutationsForWave(matchSeed, wave) cached per wave
+      fogZones: [],                 // [{start,end}] path-fraction ranges (FogOfWarLanes)
       score: 0,
       speed: 1,
       difficulty: diff,
@@ -1411,7 +1582,18 @@ function Game({ onEnd, difficulty }) {
     // Begin the wave's spawn queue
     s.wave += 1;
     s.playerLevel = levelForWave(s.wave);
-    const w = WAVES[s.wave - 1];
+    // Endless: compute this wave's active mutations (doc §A6 W75 gate, 1 → 2 at W150).
+    s.activeMutations = mutationsForWave(s.matchSeed, s.wave);
+    // FogOfWarLanes: 2 path-zones of 15% each, deterministic per (matchSeed, wave).
+    if (s.activeMutations.includes('FogOfWarLanes')) {
+      const rng = mulberry32((s.matchSeed >>> 0) ^ (s.wave * 0xA3D7) >>> 0);
+      const a = 0.15 + rng() * 0.30;
+      const b = 0.55 + rng() * 0.30;
+      s.fogZones = [{ start: a, end: a + 0.15 }, { start: b, end: b + 0.15 }];
+    } else {
+      s.fogZones = [];
+    }
+    const w = getWave(s.wave);
     const diff = s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY];
     const queue = [];
     let t = s.time + 0.8;
@@ -1493,7 +1675,7 @@ function Game({ onEnd, difficulty }) {
   } else if (s.phase === 'choosing') {
     bottomMessage = 'Tap a placed gem to choose Keep / Merge / Combine';
   } else if (s.phase === 'attacking') {
-    bottomMessage = `Wave ${s.wave}/${NUM_WAVES} in progress · pinch · drag`;
+    bottomMessage = `Wave ${s.wave}/${s.totalWaves === 9999 ? '∞' : s.totalWaves} in progress · pinch · drag`;
   }
 
   return (
@@ -1502,7 +1684,7 @@ function Game({ onEnd, difficulty }) {
       <View style={styles.hud}>
         <HudStat label="LIVES" value={s.lives} color="#ff4d6d" />
         <HudStat label="GOLD" value={s.gold} color="#ffd166" />
-        <HudStat label="WAVE" value={`${s.wave}/${NUM_WAVES}`} color="#4cc9ff" />
+        <HudStat label="WAVE" value={`${s.wave}/${s.totalWaves === 9999 ? '∞' : s.totalWaves}`} color="#4cc9ff" />
         <HudStat label="LVL" value={s.playerLevel} color="#b08bff" />
       </View>
       <View style={styles.diffStrip}>
@@ -6595,10 +6777,24 @@ function step(dt, s, onEnd) {
       bossVariant,
       spawnWave: s.wave,
       spawnedAt: s.time,                  // for killstreak anti-farm (doc §54.3)
+      _lastDmgT: s.time,                  // RegenWaves idle tracker
     });
+    // Apply milestone evolution at spawn (doc §57.2) for W100+.
+    const ms = milestoneMults(s.wave);
+    if (ms.speed !== 1 || ms.armor !== 1) {
+      const last = s.enemies[s.enemies.length - 1];
+      last._milestoneSpeed = ms.speed;
+      last.armor = Math.round(last.armor * ms.armor);
+    }
+    // Apply mutation on-spawn effects (Elite, ResistShifts, ShieldRotations, ArmorBloom).
+    if (s.activeMutations.length) {
+      const rng = mulberry32((s.matchSeed >>> 0) ^ (s.nextEnemyId * 0x9E3779B1) >>> 0);
+      applyMutationsOnSpawn(s.enemies[s.enemies.length - 1], s.activeMutations, rng);
+    }
   }
 
   // Move enemies
+  const muts = s.activeMutations || [];
   for (const e of s.enemies) {
     if (e.hp <= 0) continue;
     const def = ENEMIES[e.type];
@@ -6607,6 +6803,34 @@ function step(dt, s, onEnd) {
     for (const ef of e.effects) {
       if (ef.type === 'slow') speedMul = Math.min(speedMul, ef.factor);
       if (ef.type === 'poison') e.hp -= ef.dps * dt * damageMultByType(e, 'poison');
+    }
+    // Per-tick mutation effects (doc §56).
+    if (muts.length) {
+      if (muts.includes('ArmorBloom') && (e._bloomNextT || 0) <= s.time && (e._bloomStacks || 0) < MUT_ARMOR_BLOOM_MAX) {
+        e.armor = (e.armor || 0) + MUT_ARMOR_BLOOM_PER;
+        e._bloomStacks = (e._bloomStacks || 0) + 1;
+        e._bloomNextT = s.time + MUT_ARMOR_BLOOM_PERIOD;
+      }
+      if (muts.includes('RegenWaves') && (s.time - (e._lastDmgT || 0)) >= MUT_REGEN_IDLE) {
+        e.hp = Math.min(e.maxHp || e.hp, e.hp + (e.maxHp || e.hp) * MUT_REGEN_FRACTION * dt);
+      }
+      if (muts.includes('ResistShifts') && s.time - (e._resistFlipT || 0) >= MUT_RESIST_FLIP_PERIOD) {
+        e._resistFlipT = s.time;
+        if (e._resistState === 'magic') { e._resistState = 'physical'; e.magicResist = 0; e.physicalResist = MUT_RESIST_VALUE; }
+        else { e._resistState = 'magic'; e.physicalResist = 0; e.magicResist = MUT_RESIST_VALUE; }
+      }
+      if (muts.includes('ShieldRotations') && s.time - (e._shieldT || 0) >= MUT_SHIELD_PERIOD && e._shieldTypes) {
+        e._shieldT = s.time;
+        e._shieldIdx = ((e._shieldIdx || 0) + 1) % e._shieldTypes.length;
+        e._shieldBlockType = e._shieldTypes[e._shieldIdx];
+      }
+      if (muts.includes('SpeedSurge')) {
+        speedMul *= 1 + 0.4 * Math.sin((s.time / MUT_SPEED_SURGE_PERIOD) * Math.PI * 2);
+      }
+      if (muts.includes('FogOfWarLanes') && e.subPath && e.subPath.length) {
+        const frac = e.pathIdx / e.subPath.length;
+        e._inFog = s.fogZones.some((z) => frac >= z.start && frac <= z.end);
+      }
     }
     if (e.hp <= 0) continue;
     if (!e.subPath || e.pathIdx >= e.subPath.length) {
@@ -6620,7 +6844,8 @@ function step(dt, s, onEnd) {
     const dc = target.c - e.c;
     const dist = Math.hypot(dr, dc);
     const diffSpeed = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).speedMul;
-    const move = def.speed * speedMul * diffSpeed * rampSpeed(s.wave) * dt;
+    const move = def.speed * speedMul * diffSpeed * rampSpeed(s.wave)
+               * (e._eliteSpeed || 1) * (e._milestoneSpeed || 1) * dt;
     if (dist <= move) {
       e.r = target.r;
       e.c = target.c;
@@ -6647,14 +6872,21 @@ function step(dt, s, onEnd) {
     if (!stats) continue;
     const color = t.kind === 'gem' ? GEMS[t.gemType].color : SPECIAL_BY_ID[t.specialId].accent;
     const inRange = [];
+    const isOpalTower = t.kind === 'gem' && t.gemType === 'opal';
+    const opalP6Active = s.towers.some((x) => x.kind === 'gem' && x.gemType === 'opal' && x.tier === 6);
     for (const e of s.enemies) {
       if (e.hp <= 0) continue;
+      // FogOfWarLanes: non-Opal towers skip fogged enemies (doc §A.1b),
+      // unless any Opal P6 is on the board (doc §A8.Opal: global reveal).
+      if (e._inFog && !isOpalTower && !opalP6Active) continue;
       const d = Math.hypot(e.r - t.r, e.c - t.c);
       if (d <= stats.range) inRange.push({ e, d });
     }
     if (inRange.length === 0) continue;
     inRange.sort((a, b) => a.d - b.d);
-    t.cooldown = stats.cooldown;
+    // Aquamarine P6 (doc §A8.Aquamarine): ×2 attack speed when any mutation active.
+    const cdMult = (p6Family(t) === 'aquamarine' && s.activeMutations.length > 0) ? 0.5 : 1;
+    t.cooldown = stats.cooldown * cdMult;
     fireAt(t, inRange, stats, color, s);
   }
 
@@ -6668,7 +6900,7 @@ function step(dt, s, onEnd) {
     return r && r.stats.goldAura;
   });
   const diffGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
-  const goldMul = (goldAuraActive ? 2 : 1) * diffGold;
+  const goldMul = (goldAuraActive ? 2 : 1) * diffGold * (s.rewardMult || 1);
 
   const alive = [];
   for (const e of s.enemies) {
@@ -6730,7 +6962,7 @@ function step(dt, s, onEnd) {
     s.score += 50 + s.wave * 10;
     s.flash = { text: `Wave ${s.wave} cleared!`, until: s.time + 2.0 };
 
-    if (s.wave >= NUM_WAVES) {
+    if (s.wave >= s.totalWaves) {
       onEnd(true, s.score, s.wave);
       return;
     }
@@ -6780,6 +7012,19 @@ function fireAt(tower, inRange, stats, color, s) {
       reduced = typed * (100 / (100 + effectiveArmor * 6));
     }
     enemy.hp -= reduced;
+    enemy._lastDmgT = s.time;                            // RegenWaves idle tracker
+    // SplitEvolution mutation (doc §A.1b): 6% per hit, max 1 split per enemy.
+    if (s.activeMutations.includes('SplitEvolution') && !enemy._splitDone && enemy.hp > 0 && Math.random() < MUT_SPLIT_CHANCE) {
+      enemy._splitDone = true;
+      const halfHp = Math.max(1, Math.floor((enemy.maxHp || enemy.hp) * 0.5));
+      s.enemies.push({
+        ...enemy,
+        id: s.nextEnemyId++,
+        hp: halfHp, maxHp: halfHp,
+        effects: [],
+        _splitDone: true,
+      });
+    }
     // Slow — Sapphire P6 pushes slow factor to 0.05 (= 95% slow, doc §A8.Sapphire).
     if (typeof stats.slow === 'number' && stats.slow > 0) {
       const factor = p6 === 'sapphire' ? 0.05 : 1 - stats.slow;
