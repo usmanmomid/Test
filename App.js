@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   TouchableOpacity,
   Dimensions,
   SafeAreaView,
@@ -845,6 +846,63 @@ const SPECIAL_RECIPES = [
   },
 ];
 const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
+
+// ─── Asset pipeline (G1 foundation) ─────────────────────────────────────────
+// All require() calls resolve at build time, so the file MUST exist on disk
+// before Metro bundles. Placeholder PNGs (1x1+ coloured rings) ship in the
+// repo so this map is never undefined; drop a real PNG over a placeholder
+// with the same filename and it auto-replaces in the next build — no edits.
+// See assets/README.md for naming conventions.
+const ASSET_MAP = {
+  towers: {
+    MoonsteelPrism:        require('./assets/towers/01_moonsteel_prism.png'),
+    VerdantArcstone:       require('./assets/towers/02_verdant_arcstone.png'),
+    EmberstarObelisk:      require('./assets/towers/03_ember_obelisk.png'),
+    RoseglassFocus:        require('./assets/towers/04_roseglass.png'),
+    JadeVeilLens:          require('./assets/towers/05_jade_oracle.png'),
+    StormsplitReactor:     require('./assets/towers/06_stormsplit.png'),
+    GildedHexcore:         require('./assets/towers/07_goldhex.png'),
+    MoonsteelWarden:       require('./assets/towers/08_silver_warden.png'),
+    VerdantCascade:        require('./assets/towers/09_seraph.png'),
+    ObsidianBreaker:       require('./assets/towers/10_obsidian_breaker.png'),
+    SkyquartzSentinel:     require('./assets/towers/11_skylar.png'),
+    RoyalRoseglass:        require('./assets/towers/12_monarch.png'),
+    CrimsonThunderheart:   require('./assets/towers/13_thunderheart.png'),
+    CoralResonance:        require('./assets/towers/14_coral_resonance.png'),
+    FrostsunEye:           require('./assets/towers/15_eye_of_the_frozen_sun.png'),
+    SovereignDiamondLens:  require('./assets/towers/16_sovereign_diamond.png'),
+    PrismaticWorldcore:    require('./assets/towers/17_core_of_the_world.png'),
+    AbyssbreakerMonolith:  require('./assets/towers/18_luna.png'),
+  },
+  bosses: {
+    wraith_captain:   require('./assets/bosses/01_wraith_captain.png'),
+    eye_magus:        require('./assets/bosses/02_eye_magus.png'),
+    lava_lord:        require('./assets/bosses/03_lava_lord.png'),
+    ice_lich:         require('./assets/bosses/04_ice_lich.png'),
+    crystal_dragon:   require('./assets/bosses/05_crystal_dragon.png'),
+    lava_scorpion:    require('./assets/bosses/06_lava_scorpion.png'),
+    plague_ogre:      require('./assets/bosses/07_plague_ogre.png'),
+    forest_treant:    require('./assets/bosses/08_forest_treant.png'),
+    lava_cerberus:    require('./assets/bosses/09_lava_cerberus.png'),
+    eldritch_horror:  require('./assets/bosses/10_eldritch_horror.png'),
+    demon_warlord:    require('./assets/bosses/11_demon_warlord.png'),
+    crystal_serpent:  require('./assets/bosses/12_crystal_serpent.png'),
+  },
+  decor: {
+    spawn_portal:     require('./assets/decor/spawn_portal.png'),
+    castle_keep:      require('./assets/decor/castle_keep.png'),
+    crystal_monument: require('./assets/decor/crystal_monument.png'),
+    recipe_master:    require('./assets/decor/recipe_master.png'),
+  },
+};
+// Master switch — flip to true when sprite-art quality > current SVG quality.
+// Placeholder mode keeps SVG on so you don't see ring-icons until real PNGs
+// land. Per-category overrides below.
+const USE_SPRITES = {
+  towers: false,   // flip when real tower PNGs land in assets/towers/
+  bosses: false,   // flip when real boss PNGs land in assets/bosses/
+  decor:  false,   // flip when meshy-exported decor lands
+};
 
 // Recipe gold cost per tier — doc §67 V5 lock (LIVE 2026-05-22, unchanged V5).
 // P6 12k forces a real economy choice; with the W^1.15 gold formula a single
@@ -3702,6 +3760,17 @@ function SpecialSvg({ recipe, time = 0, id: towerId = 0 }) {
   const tier = parseInt(recipe.tier.slice(1), 10);
   const scale = SPECIAL_TIER_SCALE[tier] || 1;
   const px = TILE * scale;
+  // G1 sprite path — if USE_SPRITES.towers is on AND an asset exists for this
+  // recipe id, render the PNG instead of the SVG. Keeps SVG as guaranteed
+  // fallback so the game never blanks if a require() goes missing.
+  if (USE_SPRITES.towers && ASSET_MAP.towers[recipe.id]) {
+    return (
+      <Image
+        source={ASSET_MAP.towers[recipe.id]}
+        style={{ width: px, height: px, resizeMode: 'contain' }}
+      />
+    );
+  }
   const id = useRef(nextGid()).current;
   const main = recipe.color;
   const accent = recipe.accent;
@@ -4400,6 +4469,7 @@ function EnemyView({ e, time }) {
           flap={flap}
           tier={e.tier || 0}
           bossVariant={e.bossVariant}
+          rosterId={e.rosterId}
         />
       </View>
       {slowed && (
@@ -4423,7 +4493,7 @@ function EnemyView({ e, time }) {
   );
 }
 
-function CreatureSvg({ type, size, burning, flap, tier, bossVariant }) {
+function CreatureSvg({ type, size, burning, flap, tier, bossVariant, rosterId }) {
   const t = tier || 0;
   if (type === 'grunt') {
     if (t === 4) return <MythicGruntSvg size={size} burning={burning} />;
@@ -4459,6 +4529,11 @@ function CreatureSvg({ type, size, burning, flap, tier, bossVariant }) {
     return <FlyerSvg size={size} burning={burning} flap={flap} />;
   }
   if (type === 'boss') {
+    // G1 sprite path — endless cycle bosses (W60+) carry rosterId; if PNG
+    // exists and sprites are enabled, render the asset over the SVG fallback.
+    if (USE_SPRITES.bosses && rosterId && ASSET_MAP.bosses[rosterId]) {
+      return <Image source={ASSET_MAP.bosses[rosterId]} style={{ width: size, height: size, resizeMode: 'contain' }} />;
+    }
     if (bossVariant === 'ender') return <WorldEnderBossSvg size={size} burning={burning} />;
     if (bossVariant === 'destroyer') return <DestroyerBossSvg size={size} burning={burning} />;
     if (bossVariant === 'blood') return <BloodBossSvg size={size} burning={burning} />;
