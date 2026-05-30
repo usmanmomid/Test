@@ -45,20 +45,21 @@ import {
 // To read the whole balance picture, read the constants this block points to.
 //
 // LOCKED DESIGN DECISIONS (see DEVIATIONS.md):
-//   • Recipe gold cost ........ 100 / 250 / 600 / 1500 / 3500  (RECIPE_GOLD_COST)
-//   • Natural P6 .............. NONE — merge/recipe only        (ROLL_ODDS)
-//   • Hero level cadence ...... HL = floor((W-1)/6)+1           (levelForWave)
-//   • Boss waves .............. boss-only, no minion adds       (buildWaves)
-//   • Difficulty .............. Easy/Normal/Hard/Nightmare, HP 0.5/1/1.5/2 (DIFFICULTIES)
-//   • Enemy HP ................ BASE_HP 3 × decelerating growth × coef × ramp × chaos
-//                               (computeEnemyHP — derived in spatial_sim.js, NOT 1.13)
-//   • Boss HP ................. regular × coef (boss 5×, mega 9×) (ENEMY_HP_COEF)
-//   • Onboarding ramp ......... W1-11 HP+speed                  (ONBOARDING_RAMP)
+//   • Recipe gold cost ........ doc §67 V5: 250/500/1200/3000/12000 (RECIPE_GOLD_COST)
+//   • Roll odds (HL→purity) ... doc §10 6-tier table, 5% natural P6 from HL6+
+//   • Hero level cadence ...... HL = min(6, floor((W-1)/6)+1)    (levelForWave)
+//   • Boss waves .............. boss-only, no minion adds (doc §51.2) (buildWaves)
+//   • Difficulty .............. doc §60 V5: HP 0.30/0.90/1.03/1.05 (DIFFICULTIES)
+//   • Enemy HP ................ doc §59 V5: BASE_HP 40 × 1.13/1.07/1.06/1.04
+//                               × coef × ramp × chaos × difficulty × bossMult
+//   • Boss HP ................. wave-aware 1.6/2.0/2.5 (doc §61) (bossHPMult)
+//   • Onboarding ramp ......... W1-11 HP+speed (doc §62)         (ONBOARDING_RAMP)
+//   • Kill gold ............... max(1, floor(W^1.15)) (doc §54.1) (killGold)
+//   • Boss gold ............... 5× per-kill, NO lump (doc §54.2) (killGoldFor)
+//   • Killstreak .............. ladder {1, 1.10, 1.18, 1.25} (doc §54.3) (streakMult)
+//   • Anti-farm ............... streak gated by ≥25% path OR ≥1.5s alive (doc §54.3)
 //   • Damage types ............ full Physical/Magic/Poison/Burn (DAMAGE_TYPES) [P17]
-//   • Difficulty count/spawn .. countMul + spawnDelayMul per tier (DIFFICULTIES) [P8]
-//   • Kill gold ............... table W1-50, W^1.15 endless extension (killGold) [P9]
-//   • Killstreak .............. +5%/20 kills, cap +25%, reset on leak (streakMult) [P9]
-//   • Endless layer ........... in core scope, built after Gate 5 [PLAN Block G]
+//   • Endless layer ........... mutations W75 + milestones W100 — PENDING [Phase D]
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
 //   Board ............ COLS, ROWS, TILE, SPAWN, CHECKPOINTS, GOAL
@@ -66,7 +67,7 @@ import {
 //   Difficulty ....... DIFFICULTIES (hp/speed/boss/gold mult + lives)
 //   Roll odds ........ ROLL_ODDS  (per hero level)   · rollPurity / rollWithPity
 //   Hero level ....... levelForWave(wave)
-//   Economy .......... KILL_GOLD_BY_WAVE, BOSS_GOLD_BONUS
+//   Economy .......... killGold (W^1.15), killGoldFor (5× boss), streakMult
 //   Gem stats ........ GEM_STATS  (8 families × 6 purities)
 //   Specials ......... SPECIAL_RECIPES (18) · RECIPE_GOLD_COST (per tier)
 //   Enemies .......... ENEMIES (speed/armor/flying — NO hp; hp via computeEnemyHP)
@@ -123,32 +124,35 @@ const NUM_WAVES = 50;
 // Each difficulty multiplies enemy HP / speed / boss HP / gold and overrides
 // starting lives. Player-side stats and gem damage are NOT modified — the
 // challenge curve comes purely from the enemy side and economy.
-// Difficulty (P5/P8 + lock E1/B4). Names doc-canonical; HP spread 0.5/1/1.5/2
-// validated in spatial_sim.js to separate cleanly (endless walls 270/230/200/180).
-// Lives 50 flat (doc §63). goldMul = doc §60 reward mult.
+// Difficulty (P5/P8 + lock E1/B4) — doc V5 §60 canonical values (2026-05-23,
+// F5-playtested in Roblox; tower stats are byte-identical across mobile/Roblox
+// per gem-stat verification, so the doc curve ports directly). Lives 50 flat
+// (doc §63). goldMul = doc §60 RewardMult. speedMul kept at 1.0 across all —
+// doc has no difficulty SpeedMult; difficulty speed differences come from
+// mutations/milestones instead.
 const DIFFICULTIES = {
   easy:      {
     id: 'easy',      name: 'EASY',      short: 'Newcomer-friendly',
     tagline: 'Learn the maze. Kind waves, forgiving lives.',
-    hpMul: 0.50, speedMul: 0.90, goldMul: 1.25, countMul: 0.70, spawnDelayMul: 1.20,
+    hpMul: 0.30, speedMul: 1.00, goldMul: 1.25, countMul: 0.50, spawnDelayMul: 1.20,
     lives: 50, color: '#5cf28a',
   },
   normal:    {
     id: 'normal',    name: 'NORMAL',    short: 'As designed',
     tagline: 'The intended challenge. Balanced for most players.',
-    hpMul: 1.00, speedMul: 1.00, goldMul: 1.00, countMul: 0.95, spawnDelayMul: 1.00,
+    hpMul: 0.90, speedMul: 1.00, goldMul: 1.00, countMul: 0.95, spawnDelayMul: 1.05,
     lives: 50, color: '#4cc9ff',
   },
   hard:      {
     id: 'hard',      name: 'HARD',      short: 'Tighter timing',
     tagline: 'Less slack. A real maze is required.',
-    hpMul: 1.50, speedMul: 1.05, goldMul: 1.10, countMul: 1.00, spawnDelayMul: 0.92,
+    hpMul: 1.03, speedMul: 1.00, goldMul: 1.10, countMul: 1.00, spawnDelayMul: 0.95,
     lives: 50, color: '#ffd166',
   },
   nightmare: {
     id: 'nightmare', name: 'NIGHTMARE', short: 'Edge of beatable',
     tagline: 'No mercy. Every placement matters.',
-    hpMul: 2.00, speedMul: 1.10, goldMul: 1.25, countMul: 1.05, spawnDelayMul: 0.85,
+    hpMul: 1.05, speedMul: 1.00, goldMul: 1.25, countMul: 1.00, spawnDelayMul: 1.00,
     lives: 50, color: '#ff4d6d',
   },
 };
@@ -161,28 +165,35 @@ const emptyPerDiff = () => ({
   nightmare: { bestWave: 0 },
 });
 
-// ─── Enemy HP system (P5 — derived in spatial_sim.js, not hand-picked) ───────
-// One BaseHP + a DECELERATING growth (player power compounds, so the curve must
-// flatten late) + onboarding ramp (W1-11) + chaos band (±5%) + difficulty.
-// Per-type HP coefficients keep grunt/tank/swarm distinct off the single curve.
-const BASE_HP = 3;
-function hpGrowth(i) {
-  if (i <= 10)  return 1.28;   // steep early (tiny board)
-  if (i <= 25)  return 1.16;
-  if (i <= 40)  return 1.07;
-  if (i <= 50)  return 1.045;  // core tail — nearly flat (DPS skenar)
-  if (i <= 100) return 1.035;  // endless: still rising, board saturating
-  if (i <= 200) return 1.025;
-  return 1.018;                // deep endless: slow climb so a run still ends
+// ─── Enemy HP system — doc V5 §A3/§59 CANONICAL (LIVE 2026-05-23) ────────────
+// HP(W) = BaseHP × ∏ Growth(i) × ChaosBand × Difficulty × Ramp × LocalMult.
+// Curve was F5-playtested in Roblox after V4 (1.18) walled at W50. Gem tower
+// stats are byte-identical across mobile/Roblox (verified 8/8 families), so
+// the same HP curve applies. Type coefficients preserve mobile enemy identity
+// (tank chunkier, swarm tinier) atop the one curve.
+const BASE_HP = 40;                                    // doc §59 V5
+function hpGrowth(i) {                                 // doc §59 V5 piecewise
+  if (i <= 50)  return 1.13;
+  if (i <= 100) return 1.07;
+  if (i <= 200) return 1.06;
+  return 1.04;                                         // endless soft-cap
 }
 const _regHpCache = [0, BASE_HP];
 function regularHP(wave) {
   for (let i = _regHpCache.length; i <= wave; i++) _regHpCache[i] = _regHpCache[i - 1] * hpGrowth(i);
   return _regHpCache[Math.max(1, wave)] || BASE_HP;
 }
-// Types differ off the one curve, not via bespoke base HP (DEVIATIONS B1).
-const ENEMY_HP_COEF = { grunt: 1.0, runner: 0.6, swarm: 0.4, flyer: 1.2, tank: 3.0, boss: 5.0, mega: 9.0 };
-// Onboarding ramp W1-11 (doc §62): [hpMul, speedMul]. W12+ = unscaled.
+// Type coefficients ≈ doc enemy modifiers (Vitality 1.4 for tank, Flying 1.2).
+// boss/mega use 1.0 because bossHPMult(wave) supplies their multiplier.
+const ENEMY_HP_COEF = { grunt: 1.0, runner: 0.6, swarm: 0.4, flyer: 1.2, tank: 1.4, boss: 1.0, mega: 1.5 };
+// Boss HP wave-aware multiplier — doc §61 V5 (replaces flat 2.5 that walled at W10).
+function bossHPMult(wave) {
+  if (wave <= 10) return 1.6;
+  if (wave <  20) return 2.0;
+  return 2.5;
+}
+const CHAMPION_HP_MULT = 1.4;                          // doc §A3 (champion type pending)
+// Onboarding ramp W1-11 — doc §62 verbatim.
 const ONBOARDING_RAMP = {
   1: [0.15, 0.45], 2: [0.30, 0.60], 3: [0.45, 0.72], 4: [0.60, 0.82],
   5: [0.72, 0.90], 6: [0.82, 0.94], 7: [0.89, 0.97], 8: [0.94, 0.99],
@@ -190,7 +201,8 @@ const ONBOARDING_RAMP = {
 };
 const rampHP = (w) => (ONBOARDING_RAMP[w] || [1, 1])[0];
 const rampSpeed = (w) => (ONBOARDING_RAMP[w] || [1, 1])[1];
-// Chaos band ±5%, deterministic per wave (consistent for all enemies in a wave).
+// Chaos band — doc §A3 deterministic per-wave ±5% (early; widens later but
+// kept at ±5% for mobile until endless mutations land).
 function chaosBand(wave) {
   let x = Math.sin(wave * 12.9898) * 43758.5453;
   x -= Math.floor(x);
@@ -198,7 +210,11 @@ function chaosBand(wave) {
 }
 function computeEnemyHP(type, wave, diff) {
   const coef = ENEMY_HP_COEF[type] || 1.0;
-  return Math.max(1, Math.floor(regularHP(wave) * coef * chaosBand(wave) * rampHP(wave) * diff.hpMul));
+  const isBoss = type === 'boss' || type === 'mega';
+  const localMult = isBoss ? bossHPMult(wave) : 1;     // champion 1.4 wires when type exists
+  return Math.max(1, Math.floor(
+    regularHP(wave) * coef * chaosBand(wave) * rampHP(wave) * diff.hpMul * localMult
+  ));
 }
 
 // ─── Purities (canonical names) ─────────────────────────────────────────────
@@ -221,17 +237,15 @@ const sellValue = (t) => Math.floor(5 * Math.pow(2.5, t - 1));
 // Levels 6–8 added so late game keeps progressing — at L7+ (W25+) P1 is
 // completely gone, and P5 becomes the dominant roll.
 const ROLL_ODDS = [
-  /* level 1 */ [1.00, 0.00, 0.00, 0.00, 0.00],
-  /* level 2 */ [0.70, 0.30, 0.00, 0.00, 0.00],
-  /* level 3 */ [0.50, 0.30, 0.20, 0.00, 0.00],
-  /* level 4 */ [0.30, 0.30, 0.30, 0.10, 0.00],
-  /* level 5 */ [0.10, 0.25, 0.30, 0.25, 0.10],
-  /* level 6 */ [0.05, 0.15, 0.30, 0.35, 0.15],
-  /* level 7 */ [0.00, 0.10, 0.25, 0.40, 0.25],
-  /* level 8 */ [0.00, 0.05, 0.15, 0.40, 0.40],
+  /* HL1   */ [1.00, 0.00, 0.00, 0.00, 0.00, 0.00],
+  /* HL2   */ [0.60, 0.40, 0.00, 0.00, 0.00, 0.00],
+  /* HL3   */ [0.30, 0.50, 0.20, 0.00, 0.00, 0.00],
+  /* HL4   */ [0.15, 0.35, 0.35, 0.15, 0.00, 0.00],
+  /* HL5   */ [0.10, 0.25, 0.30, 0.25, 0.10, 0.00],
+  /* HL6+  */ [0.08, 0.20, 0.30, 0.25, 0.12, 0.05],   // doc §10: 5% natural P6 from HL6
 ];
 function rollPurity(level) {
-  const row = ROLL_ODDS[Math.min(level, 8) - 1];
+  const row = ROLL_ODDS[Math.min(level, 6) - 1];
   const r = Math.random();
   let cum = 0;
   for (let i = 0; i < row.length; i++) {
@@ -282,46 +296,42 @@ function rollWithPity(s) {
   else s.pity.highTierStreak += 1;
   return { tier, gemType };
 }
-// Hero level = doc V4 §A16 cadence: HL = floor((W-1)/6)+1, clamped to the
-// 8-row ROLL_ODDS table (PLAN P3 / DEVIATIONS A3). Every 6 waves a new level.
-//   HL1 W1-6 · HL2 W7-12 · HL3 W13-18 · HL4 W19-24 · HL5 W25-30
-//   HL6 W31-36 · HL7 W37-42 · HL8 W43-50
-// P6 stays merge/recipe-only (no P6 column in ROLL_ODDS) per DEVIATIONS A2.
+// Hero level = doc §54.5 / §A16: HL = floor((W-1)/6)+1, capped at 6 (the
+// ROLL_ODDS table ends at HL6+). HL6+ unlocks 5% natural P6 (doc §10).
+//   HL1 W1-6 · HL2 W7-12 · HL3 W13-18 · HL4 W19-24 · HL5 W25-30 · HL6+ W31+
 function levelForWave(wave) {
-  return Math.min(8, Math.floor((wave - 1) / 6) + 1);
+  return Math.min(6, Math.floor((wave - 1) / 6) + 1);
 }
 
-// ─── Kill gold curve (V1 balance patch anchors) ──────────────────────────────
-// W1=1, W5=4, W10=10, W20=25, W30=55, W40=110, W50=180.
-const KILL_GOLD_BY_WAVE = [
-  0,                                       // index 0 unused (wave 1 → KILL_GOLD_BY_WAVE[1])
-  1, 1, 2, 2, 4, 5, 6, 7, 8, 10,            // waves 1-10
-  12, 13, 15, 16, 18, 20, 21, 22, 24, 25,   // 11-20
-  28, 31, 34, 37, 40, 43, 46, 49, 52, 55,   // 21-30
-  61, 67, 73, 79, 85, 91, 97, 103, 107, 110, // 31-40
-  117, 124, 131, 138, 145, 154, 162, 170, 175, 180, // 41-50
-];
-const BOSS_GOLD_BONUS = {
-  10: 150, 20: 500, 30: 1200, 40: 2500, 50: 6000,
-};
-// Per-kill gold (P9). The hand-tuned table governs the core (W1-50, validated);
-// beyond it the curve CONTINUES at ~W^1.15 so endless stays economically sane
-// (the old table returned 1g past W50, soft-locking endless recipes/spends).
+// ─── Economy — doc §54 (V4 §A5) CANONICAL ────────────────────────────────────
+// Per-kill gold is a smooth formula across the whole game (no W50 table cliff).
+//   GoldPerKill(W) = max(1, floor(W^1.15))   [doc §54.1 V3 FINAL: W^1.15]
+//   Boss kill     = 5 × GoldPerKill          [doc §54.2 — NO separate lump]
+//   Champion kill = 2 × GoldPerKill          [doc §54.2; champion type pending]
 function killGold(wave) {
-  if (wave <= 50) return KILL_GOLD_BY_WAVE[wave] || 1;
-  return Math.round(180 * Math.pow(wave / 50, 1.15));
+  return Math.max(1, Math.floor(Math.pow(wave, 1.15)));
 }
-function bossGoldBonus(wave) {
-  if (wave % 10 !== 0) return 0;
-  if (wave <= 50) return BOSS_GOLD_BONUS[wave] || 0;
-  return Math.round(6000 * Math.pow(wave / 50, 1.15));
+function killGoldFor(type, wave) {
+  const base = killGold(wave);
+  if (type === 'boss' || type === 'mega') return base * 5;
+  // champion → base * 2 (when champion enemy type is added)
+  return base;
 }
-// Killstreak (P9): consecutive kills without a leak grant up to +25% gold —
-// rewards a clean defence. Resets to 0 on any leak. Anti-farm: gold is ONLY
-// from kills (no idle/interest income), so there is no stall-to-farm exploit.
+// Killstreak ladder — doc §54.3: {1.00, 1.10, 1.18, 1.25}, cap 1.25×. Streak
+// index resets on leak OR on wave clear. Anti-farm (doc): a kill counts toward
+// the streak only if the enemy traveled ≥25% of its path OR was alive ≥1.5s.
+// Gold is still paid for the kill — only the streak multiplier is gated.
+const KILLSTREAK_LADDER     = [1.00, 1.10, 1.18, 1.25];
+const KILLSTREAK_THRESHOLDS = [0,    15,   30,   50  ];   // kills required per rung
 function streakMult(streak) {
-  return 1 + Math.min(0.25, Math.floor(streak / 20) * 0.05);
+  let m = KILLSTREAK_LADDER[0];
+  for (let i = 0; i < KILLSTREAK_THRESHOLDS.length; i++) {
+    if (streak >= KILLSTREAK_THRESHOLDS[i]) m = KILLSTREAK_LADDER[i];
+  }
+  return m;
 }
+const STREAK_MIN_PATH_FRACTION = 0.25;   // doc §54.3 KillValidation
+const STREAK_MIN_ALIVE_SECONDS = 1.5;
 
 // ─── Gems (8 families) ──────────────────────────────────────────────────────
 // `letter` is the on-board label prefix: first letter of the gem name, except
@@ -565,9 +575,10 @@ const SPECIAL_RECIPES = [
 ];
 const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 
-// Recipe gold cost per tier (PLAN P2 / DEVIATIONS A1). Lowered from doc §37's
-// 500-8000 so gold has a real spend decision without double-gating RNG.
-const RECIPE_GOLD_COST = { P2: 100, P3: 250, P4: 600, P5: 1500, P6: 3500 };
+// Recipe gold cost per tier — doc §67 V5 lock (LIVE 2026-05-22, unchanged V5).
+// P6 12k forces a real economy choice; with the W^1.15 gold formula a single
+// P6 = ~all gold earned through W25.
+const RECIPE_GOLD_COST = { P2: 250, P3: 500, P4: 1200, P5: 3000, P6: 12000 };
 const recipeGoldCost = (recipe) => RECIPE_GOLD_COST[recipe.tier] || 0;
 
 function matchesIngredient(tower, ing) {
@@ -913,7 +924,7 @@ function LobbyScreen({ stats, onStartSolo }) {
                 </View>
                 <Text style={styles.diffTagline}>{d.tagline}</Text>
                 <Text style={styles.diffStats}>
-                  HP ×{d.hpMul} · SPD ×{d.speedMul} · GOLD ×{d.goldMul} · {d.lives} lives
+                  HP ×{d.hpMul} · CNT ×{d.countMul} · GOLD ×{d.goldMul} · {d.lives} lives
                   {bestWave > 0 ? `   ·   best W${bestWave}` : ''}
                 </Text>
               </View>
@@ -6519,6 +6530,7 @@ function step(dt, s, onEnd) {
       elite,
       bossVariant,
       spawnWave: s.wave,
+      spawnedAt: s.time,                  // for killstreak anti-farm (doc §54.3)
     });
   }
 
@@ -6593,16 +6605,21 @@ function step(dt, s, onEnd) {
   });
   const diffGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
   const goldMul = (goldAuraActive ? 2 : 1) * diffGold;
-  const wavePerKill = killGold(s.wave);
 
   const alive = [];
   for (const e of s.enemies) {
     if (e.hp <= 0) {
       if (e.subPath && e.pathIdx < e.subPath.length) {
-        s.killStreak += 1;   // clean kill extends the streak (P9)
-        const reward = Math.max(1, Math.round(wavePerKill * goldMul * streakMult(s.killStreak)));
+        // Anti-farm gate for streak only (doc §54.3): a too-quick-too-shallow
+        // kill still pays gold, just doesn't extend the killstreak ladder.
+        const pathFrac = e.subPath.length > 0 ? e.pathIdx / e.subPath.length : 1;
+        const aliveSec = s.time - (e.spawnedAt || s.time);
+        const validForStreak = pathFrac >= STREAK_MIN_PATH_FRACTION || aliveSec >= STREAK_MIN_ALIVE_SECONDS;
+        if (validForStreak) s.killStreak += 1;
+        const perKill = killGoldFor(e.type, s.wave);
+        const reward = Math.max(1, Math.round(perKill * goldMul * streakMult(s.killStreak)));
         s.gold += reward;
-        s.score += wavePerKill * 4;
+        s.score += perKill * 4;
         // Death burst: 8 particles radiating outward
         const def = ENEMIES[e.type];
         const burstCount = e.type === 'boss' || e.type === 'mega' ? 16 : 8;
@@ -6630,14 +6647,11 @@ function step(dt, s, onEnd) {
 
   // Wave end?
   if (s.spawnQueue.length === 0 && s.enemies.length === 0) {
-    const diffMulGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
-    const bossBonus = Math.floor(bossGoldBonus(s.wave) * diffMulGold);
-    if (bossBonus > 0) {
-      s.gold += bossBonus;
-      s.score += bossBonus;
-    }
+    // Boss lump bonus removed — doc §54.2 V4 pays boss reward per-kill at 5×,
+    // already credited above via killGoldFor.
+    s.killStreak = 0;                  // doc §54.3: streak resets on wave clear
     s.score += 50 + s.wave * 10;
-    s.flash = { text: `Wave ${s.wave} cleared!${bossBonus ? ` +${bossBonus}g boss bonus` : ''}`, until: s.time + 2.0 };
+    s.flash = { text: `Wave ${s.wave} cleared!`, until: s.time + 2.0 };
 
     if (s.wave >= NUM_WAVES) {
       onEnd(true, s.score, s.wave);
