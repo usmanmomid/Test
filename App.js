@@ -61,6 +61,11 @@ import {
 //   • Damage types ............ doc: per-family Physical/Magic/Poison/Burn (FAMILY_DAMAGE_TYPE)
 //   • Resistance cap .......... 0.70 max reduction, no immunities (doc §53.4) (damageMultByType)
 //   • Champion enemy .......... 1.4× HP, 2× gold (doc §A3) (ENEMIES.champion)
+//   • P5 synergy .............. iso ×0.75, clustered ×1.20 within 3 tiles (doc §A7)
+//   • P6 rule-breaks .......... Diamond no-armor · Topaz +2 mål · Amethyst armor×2 ·
+//                               Sapphire slow→95% · Ruby 5-hop chain · Emerald
+//                               poison-spread-on-kill (doc §A8; Aquamarine/Opal
+//                               are hooks pending Phase D mutations)
 //   • Endless layer ........... mutations W75 + milestones W100 — PENDING [Phase D]
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
@@ -247,6 +252,31 @@ function towerDamageType(tower) {
   if (tower.kind === 'gem') return FAMILY_DAMAGE_TYPE[tower.gemType] || 'physical';
   return 'physical';   // specials → Phase F per-recipe types
 }
+
+// ─── P5 synergy + P6 rule-breaks — doc §55 / §A7 / §A8 (Phase C) ─────────────
+// P5: isolated (no same-family P5 within 3 tiles ≈ 12 studs) → dmg ×0.75;
+// clustered → ×1.20. Punishes "spam one P5 of every family"; rewards focused
+// merging into one family's P5 trio. Applied to FINAL outgoing damage.
+const P5_SYNERGY_RANGE = 3;
+const P5_SYNERGY_ISO   = 0.75;
+const P5_SYNERGY_CLUS  = 1.20;
+function p5SynergyMult(tower, s) {
+  if (tower.kind !== 'gem' || tower.tier !== 5) return 1;
+  const r2 = P5_SYNERGY_RANGE * P5_SYNERGY_RANGE;
+  for (const t of s.towers) {
+    if (t === tower || t.kind !== 'gem' || t.tier !== 5) continue;
+    if (t.gemType !== tower.gemType) continue;
+    const dr = t.r - tower.r, dc = t.c - tower.c;
+    if (dr * dr + dc * dc <= r2) return P5_SYNERGY_CLUS;
+  }
+  return P5_SYNERGY_ISO;
+}
+const isP6 = (t) => t.kind === 'gem' && t.tier === 6;
+// Returns the rule-break family ('diamond'/'topaz'/'amethyst'/'sapphire'/
+// 'emerald'/'ruby'/'aquamarine'/'opal') or null. Each gem family gets ONE
+// signature rule-break at P6 (doc §A8). Aquamarine and Opal are no-ops until
+// mutations land (Phase D).
+const p6Family = (t) => (isP6(t) ? t.gemType : null);
 
 // ─── Purities (canonical names) ─────────────────────────────────────────────
 const TIERS = [
@@ -6654,6 +6684,19 @@ function step(dt, s, onEnd) {
         const reward = Math.max(1, Math.round(perKill * goldMul * streakMult(s.killStreak)));
         s.gold += reward;
         s.score += perKill * 4;
+        // Emerald P6 rule-break (doc §A8.Emerald): poison spreads on kill to
+        // enemies within 3 tiles, 12s remaining. _spreadCopy on the effect
+        // prevents recursive spreading.
+        const ep = e.effects && e.effects.find((ef) => ef.type === 'poison' && ef.source === 'emerald-p6' && !ef._spreadCopy);
+        if (ep) {
+          for (const o of s.enemies) {
+            if (o === e || o.hp <= 0) continue;
+            const dr = o.r - e.r, dc = o.c - e.c;
+            if (dr * dr + dc * dc > 9) continue;          // 3 tiles
+            o.effects = o.effects.filter((ef) => ef.type !== 'poison');
+            o.effects.push({ type: 'poison', dps: ep.dps, until: s.time + 12, source: 'emerald-p6', _spreadCopy: true });
+          }
+        }
         // Death burst: 8 particles radiating outward
         const def = ENEMIES[e.type];
         const burstCount = e.type === 'boss' || e.type === 'mega' ? 16 : 8;
@@ -6712,8 +6755,12 @@ function fireAt(tower, inRange, stats, color, s) {
     start: s.time,
     until: s.time + 0.16,
   });
+  // P5 synergy multiplier (doc §A7) — same for every hit this attack.
+  const synMult = p5SynergyMult(tower, s);
+  const p6 = p6Family(tower);
+  // P6 rule-break: Amethyst doubles armor reduction (doc §A8.Amethyst).
+  const effArmorBreak = (stats.armorBreak || 0) * (p6 === 'amethyst' ? 2 : 1);
   const handleHit = (enemy, dmg) => {
-    // Impact sparks at enemy
     s.fx.push({
       id: s.nextFxId++,
       type: 'impact',
@@ -6723,47 +6770,66 @@ function fireAt(tower, inRange, stats, color, s) {
       start: s.time,
       until: s.time + 0.28,
     });
-    // Resist applies BEFORE armor (doc §53.4): rawDmg × (1 - min(0.70, resist))
-    const typed = dmg * damageMultByType(enemy, towerDamageType(tower));
-    const effectiveArmor = Math.max(0, enemy.armor - (stats.armorBreak || 0));
-    const reduced = typed * (100 / (100 + effectiveArmor * 6));
+    // Resist (doc §53.4) → optional armor bypass (Diamond P6) → armor.
+    const typed = dmg * synMult * damageMultByType(enemy, towerDamageType(tower));
+    let reduced;
+    if (p6 === 'diamond') {
+      reduced = typed;                                   // doc §A8.Diamond: crit-bypass-armor
+    } else {
+      const effectiveArmor = Math.max(0, enemy.armor - effArmorBreak);
+      reduced = typed * (100 / (100 + effectiveArmor * 6));
+    }
     enemy.hp -= reduced;
-    // slow: number (gem sapphire stat) OR object {factor, duration} (special)
+    // Slow — Sapphire P6 pushes slow factor to 0.05 (= 95% slow, doc §A8.Sapphire).
     if (typeof stats.slow === 'number' && stats.slow > 0) {
+      const factor = p6 === 'sapphire' ? 0.05 : 1 - stats.slow;
       enemy.effects = enemy.effects.filter((ef) => ef.type !== 'slow');
-      enemy.effects.push({ type: 'slow', factor: 1 - stats.slow, until: s.time + 1.2 });
+      enemy.effects.push({ type: 'slow', factor, until: s.time + 1.2 });
     } else if (stats.slow && typeof stats.slow === 'object') {
       enemy.effects = enemy.effects.filter((ef) => ef.type !== 'slow');
       enemy.effects.push({ type: 'slow', factor: stats.slow.factor, until: s.time + stats.slow.duration });
     }
     if (stats.poison) {
       enemy.effects = enemy.effects.filter((ef) => ef.type !== 'poison');
-      enemy.effects.push({ type: 'poison', dps: stats.poison.dps, until: s.time + stats.poison.duration });
+      enemy.effects.push({
+        type: 'poison',
+        dps: stats.poison.dps,
+        until: s.time + stats.poison.duration,
+        source: p6 === 'emerald' ? 'emerald-p6' : null,  // doc §A8.Emerald spread-on-kill marker
+      });
     }
   };
 
-  if (stats.multi) {
-    const targets = inRange.slice(0, stats.multi);
+  // P6 rule-break: Topaz P6 fires +2 targets (5 total — doc §A8.Topaz).
+  const effMulti = stats.multi ? stats.multi + (p6 === 'topaz' ? 2 : 0) : 0;
+  // P6 rule-break: Ruby P6 turns splash into a 5-hop chain (doc §A8.Ruby).
+  const rubyP6Chain = p6 === 'ruby' && stats.splash;
+
+  if (effMulti) {
+    const targets = inRange.slice(0, effMulti);
     for (const { e } of targets) {
       handleHit(e, stats.damage);
       s.projectiles.push(makeProjectile(tower, e, color, s));
     }
-  } else if (stats.chain) {
+  } else if (stats.chain || rubyP6Chain) {
+    // Ruby P6: 5 hops, -25% damage per hop. Standard chain: stats.chain hops, -30%.
+    const hops = rubyP6Chain ? 5 : stats.chain;
+    const decay = rubyP6Chain ? 0.75 : 0.7;
     let prev = inRange[0].e;
-    handleHit(prev, stats.damage);
+    let mult = 1;
+    handleHit(prev, stats.damage * mult);
     s.projectiles.push(makeProjectile(tower, prev, color, s));
-    let remaining = stats.chain - 1;
     const hit = new Set([prev.id]);
-    while (remaining > 0) {
-      let best = null;
-      let bestD = Infinity;
+    for (let h = 1; h < hops; h++) {
+      mult *= decay;
+      let best = null, bestD = Infinity;
       for (const e of s.enemies) {
         if (hit.has(e.id) || e.hp <= 0) continue;
         const d = Math.hypot(e.r - prev.r, e.c - prev.c);
         if (d <= stats.range && d < bestD) { best = e; bestD = d; }
       }
       if (!best) break;
-      handleHit(best, stats.damage * 0.7);
+      handleHit(best, stats.damage * mult);
       s.projectiles.push({
         id: s.nextProjectileId++,
         fromX: prev.c * TILE + TILE / 2, fromY: prev.r * TILE + TILE / 2,
@@ -6772,7 +6838,6 @@ function fireAt(tower, inRange, stats, color, s) {
       });
       hit.add(best.id);
       prev = best;
-      remaining -= 1;
     }
   } else {
     const target = inRange[0].e;
