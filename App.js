@@ -58,7 +58,9 @@ import {
 //   • Boss gold ............... 5× per-kill, NO lump (doc §54.2) (killGoldFor)
 //   • Killstreak .............. ladder {1, 1.10, 1.18, 1.25} (doc §54.3) (streakMult)
 //   • Anti-farm ............... streak gated by ≥25% path OR ≥1.5s alive (doc §54.3)
-//   • Damage types ............ full Physical/Magic/Poison/Burn (DAMAGE_TYPES) [P17]
+//   • Damage types ............ doc: per-family Physical/Magic/Poison/Burn (FAMILY_DAMAGE_TYPE)
+//   • Resistance cap .......... 0.70 max reduction, no immunities (doc §53.4) (damageMultByType)
+//   • Champion enemy .......... 1.4× HP, 2× gold (doc §A3) (ENEMIES.champion)
 //   • Endless layer ........... mutations W75 + milestones W100 — PENDING [Phase D]
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
@@ -185,7 +187,7 @@ function regularHP(wave) {
 }
 // Type coefficients ≈ doc enemy modifiers (Vitality 1.4 for tank, Flying 1.2).
 // boss/mega use 1.0 because bossHPMult(wave) supplies their multiplier.
-const ENEMY_HP_COEF = { grunt: 1.0, runner: 0.6, swarm: 0.4, flyer: 1.2, tank: 1.4, boss: 1.0, mega: 1.5 };
+const ENEMY_HP_COEF = { grunt: 1.0, runner: 0.6, swarm: 0.4, flyer: 1.2, tank: 1.4, champion: 1.4, boss: 1.0, mega: 1.5 };
 // Boss HP wave-aware multiplier — doc §61 V5 (replaces flat 2.5 that walled at W10).
 function bossHPMult(wave) {
   if (wave <= 10) return 1.6;
@@ -215,6 +217,35 @@ function computeEnemyHP(type, wave, diff) {
   return Math.max(1, Math.floor(
     regularHP(wave) * coef * chaosBand(wave) * rampHP(wave) * diff.hpMul * localMult
   ));
+}
+
+// ─── Damage types + resistance cap — doc §53.4 / §A17 (Phase B) ─────────────
+// Per-family damage type (mapped from gem identity in doc §11). Specials
+// default to physical until §A8 per-recipe types land (Phase F).
+const FAMILY_DAMAGE_TYPE = {
+  sapphire:   'magic',    // slow / control
+  diamond:    'physical', // raw boss-killer
+  opal:       'physical', // aura support
+  emerald:    'poison',   // DoT
+  amethyst:   'physical', // armor break + raw
+  aquamarine: 'magic',    // fast magic
+  ruby:       'physical', // splash
+  topaz:      'physical', // multi-hit
+};
+const RESISTANCE_CAP = 0.70;   // doc §53.4: max damage reduction; no immunities.
+// Enemy resist fields (physicalResist / magicResist / poisonResist / burnResist)
+// default to 0; specific enemy types or mutations set higher values up to the cap.
+function damageMultByType(enemy, dmgType) {
+  const r = dmgType === 'physical' ? (enemy.physicalResist || 0)
+          : dmgType === 'magic'    ? (enemy.magicResist    || 0)
+          : dmgType === 'poison'   ? (enemy.poisonResist   || 0)
+          : dmgType === 'burn'     ? (enemy.burnResist     || 0)
+          : 0;
+  return 1 - Math.min(RESISTANCE_CAP, r);
+}
+function towerDamageType(tower) {
+  if (tower.kind === 'gem') return FAMILY_DAMAGE_TYPE[tower.gemType] || 'physical';
+  return 'physical';   // specials → Phase F per-recipe types
 }
 
 // ─── Purities (canonical names) ─────────────────────────────────────────────
@@ -314,7 +345,7 @@ function killGold(wave) {
 function killGoldFor(type, wave) {
   const base = killGold(wave);
   if (type === 'boss' || type === 'mega') return base * 5;
-  // champion → base * 2 (when champion enemy type is added)
+  if (type === 'champion') return base * 2;             // doc §54.2
   return base;
 }
 // Killstreak ladder — doc §54.3: {1.00, 1.10, 1.18, 1.25}, cap 1.25×. Streak
@@ -614,13 +645,16 @@ function ingredientLabel(ing) {
 // holds only the non-HP identity: speed (tiles/s), gold, colour, size, armor,
 // flying. (P5 — removes the stale per-type hp numbers to kill drift.)
 const ENEMIES = {
-  grunt:  { speed: 1.4, gold: 1, color: '#c4b9ff', size: 0.55, armor: 0, flying: false },
-  runner: { speed: 2.8, gold: 1, color: '#ffd166', size: 0.45, armor: 0, flying: false },
-  tank:   { speed: 0.8, gold: 2, color: '#7d8aa8', size: 0.7,  armor: 4, flying: false },
-  swarm:  { speed: 2.2, gold: 1, color: '#ff8fab', size: 0.4,  armor: 0, flying: false },
-  flyer:  { speed: 2.0, gold: 1, color: '#88f088', size: 0.5,  armor: 1, flying: true  },
-  boss:   { speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
-  mega:   { speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
+  grunt:    { speed: 1.4, gold: 1, color: '#c4b9ff', size: 0.55, armor: 0, flying: false },
+  runner:   { speed: 2.8, gold: 1, color: '#ffd166', size: 0.45, armor: 0, flying: false },
+  tank:     { speed: 0.8, gold: 2, color: '#7d8aa8', size: 0.7,  armor: 4, flying: false },
+  swarm:    { speed: 2.2, gold: 1, color: '#ff8fab', size: 0.4,  armor: 0, flying: false },
+  flyer:    { speed: 2.0, gold: 1, color: '#88f088', size: 0.5,  armor: 1, flying: true  },
+  // Champion — doc §A3 / EliteSpawns: gold-tinted elite mob, 1.4× HP & 2× gold.
+  // Spawns via mutation EliteSpawns (Phase D) or hand-placed in late waves.
+  champion: { speed: 1.2, gold: 4, color: '#ffd166', size: 0.65, armor: 2, flying: false },
+  boss:     { speed: 1.0, gold: 6, color: '#ff4d6d', size: 0.9,  armor: 5, flying: false },
+  mega:     { speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
 };
 
 // ─── Wave generator (50 waves) ───────────────────────────────────────────────
@@ -6542,7 +6576,7 @@ function step(dt, s, onEnd) {
     let speedMul = 1;
     for (const ef of e.effects) {
       if (ef.type === 'slow') speedMul = Math.min(speedMul, ef.factor);
-      if (ef.type === 'poison') e.hp -= ef.dps * dt;
+      if (ef.type === 'poison') e.hp -= ef.dps * dt * damageMultByType(e, 'poison');
     }
     if (e.hp <= 0) continue;
     if (!e.subPath || e.pathIdx >= e.subPath.length) {
@@ -6689,8 +6723,10 @@ function fireAt(tower, inRange, stats, color, s) {
       start: s.time,
       until: s.time + 0.28,
     });
+    // Resist applies BEFORE armor (doc §53.4): rawDmg × (1 - min(0.70, resist))
+    const typed = dmg * damageMultByType(enemy, towerDamageType(tower));
     const effectiveArmor = Math.max(0, enemy.armor - (stats.armorBreak || 0));
-    const reduced = dmg * (100 / (100 + effectiveArmor * 6));
+    const reduced = typed * (100 / (100 + effectiveArmor * 6));
     enemy.hp -= reduced;
     // slow: number (gem sapphire stat) OR object {factor, duration} (special)
     if (typeof stats.slow === 'number' && stats.slow > 0) {
