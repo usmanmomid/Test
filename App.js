@@ -848,51 +848,54 @@ const SPECIAL_RECIPES = [
 const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 
 // ─── Asset pipeline (G1 foundation) ─────────────────────────────────────────
-// All require() calls resolve at build time, so the file MUST exist on disk
-// before Metro bundles. Placeholder PNGs (1x1+ coloured rings) ship in the
-// repo so this map is never undefined; drop a real PNG over a placeholder
-// with the same filename and it auto-replaces in the next build — no edits.
-// See assets/README.md for naming conventions.
+// Snack-safe: these are optional remote Image sources, not local require()s.
+// That means App.js can be copied into Expo Snack without uploading the assets
+// folder. Drop higher-quality PNGs into GitHub using the same paths and the
+// image updates after GitHub raw cache refreshes. For App Store offline builds,
+// this can later move back to bundled require() assets.
+const RAW_ASSET_BASE =
+  'https://raw.githubusercontent.com/usmanmomid/Test/claude/mobile-game-development-PjMjg/';
+const remoteAsset = (path) => ({ uri: RAW_ASSET_BASE + path });
 const ASSET_MAP = {
   towers: {
-    MoonsteelPrism:        require('./assets/towers/01_moonsteel_prism.png'),
-    VerdantArcstone:       require('./assets/towers/02_verdant_arcstone.png'),
-    EmberstarObelisk:      require('./assets/towers/03_ember_obelisk.png'),
-    RoseglassFocus:        require('./assets/towers/04_roseglass.png'),
-    JadeVeilLens:          require('./assets/towers/05_jade_oracle.png'),
-    StormsplitReactor:     require('./assets/towers/06_stormsplit.png'),
-    GildedHexcore:         require('./assets/towers/07_goldhex.png'),
-    MoonsteelWarden:       require('./assets/towers/08_silver_warden.png'),
-    VerdantCascade:        require('./assets/towers/09_seraph.png'),
-    ObsidianBreaker:       require('./assets/towers/10_obsidian_breaker.png'),
-    SkyquartzSentinel:     require('./assets/towers/11_skylar.png'),
-    RoyalRoseglass:        require('./assets/towers/12_monarch.png'),
-    CrimsonThunderheart:   require('./assets/towers/13_thunderheart.png'),
-    CoralResonance:        require('./assets/towers/14_coral_resonance.png'),
-    FrostsunEye:           require('./assets/towers/15_eye_of_the_frozen_sun.png'),
-    SovereignDiamondLens:  require('./assets/towers/16_sovereign_diamond.png'),
-    PrismaticWorldcore:    require('./assets/towers/17_core_of_the_world.png'),
-    AbyssbreakerMonolith:  require('./assets/towers/18_luna.png'),
+    MoonsteelPrism:        remoteAsset('assets/towers/01_moonsteel_prism.png'),
+    VerdantArcstone:       remoteAsset('assets/towers/02_verdant_arcstone.png'),
+    EmberstarObelisk:      remoteAsset('assets/towers/03_ember_obelisk.png'),
+    RoseglassFocus:        remoteAsset('assets/towers/04_roseglass.png'),
+    JadeVeilLens:          remoteAsset('assets/towers/05_jade_oracle.png'),
+    StormsplitReactor:     remoteAsset('assets/towers/06_stormsplit.png'),
+    GildedHexcore:         remoteAsset('assets/towers/07_goldhex.png'),
+    MoonsteelWarden:       remoteAsset('assets/towers/08_silver_warden.png'),
+    VerdantCascade:        remoteAsset('assets/towers/09_seraph.png'),
+    ObsidianBreaker:       remoteAsset('assets/towers/10_obsidian_breaker.png'),
+    SkyquartzSentinel:     remoteAsset('assets/towers/11_skylar.png'),
+    RoyalRoseglass:        remoteAsset('assets/towers/12_monarch.png'),
+    CrimsonThunderheart:   remoteAsset('assets/towers/13_thunderheart.png'),
+    CoralResonance:        remoteAsset('assets/towers/14_coral_resonance.png'),
+    FrostsunEye:           remoteAsset('assets/towers/15_eye_of_the_frozen_sun.png'),
+    SovereignDiamondLens:  remoteAsset('assets/towers/16_sovereign_diamond.png'),
+    PrismaticWorldcore:    remoteAsset('assets/towers/17_core_of_the_world.png'),
+    AbyssbreakerMonolith:  remoteAsset('assets/towers/18_luna.png'),
   },
   bosses: {
-    wraith_captain:   require('./assets/bosses/01_wraith_captain.png'),
-    eye_magus:        require('./assets/bosses/02_eye_magus.png'),
-    lava_lord:        require('./assets/bosses/03_lava_lord.png'),
-    ice_lich:         require('./assets/bosses/04_ice_lich.png'),
-    crystal_dragon:   require('./assets/bosses/05_crystal_dragon.png'),
-    lava_scorpion:    require('./assets/bosses/06_lava_scorpion.png'),
-    plague_ogre:      require('./assets/bosses/07_plague_ogre.png'),
-    forest_treant:    require('./assets/bosses/08_forest_treant.png'),
-    lava_cerberus:    require('./assets/bosses/09_lava_cerberus.png'),
-    eldritch_horror:  require('./assets/bosses/10_eldritch_horror.png'),
-    demon_warlord:    require('./assets/bosses/11_demon_warlord.png'),
-    crystal_serpent:  require('./assets/bosses/12_crystal_serpent.png'),
+    wraith_captain:   remoteAsset('assets/bosses/01_wraith_captain.png'),
+    eye_magus:        remoteAsset('assets/bosses/02_eye_magus.png'),
+    lava_lord:        remoteAsset('assets/bosses/03_lava_lord.png'),
+    ice_lich:         remoteAsset('assets/bosses/04_ice_lich.png'),
+    crystal_dragon:   remoteAsset('assets/bosses/05_crystal_dragon.png'),
+    lava_scorpion:    remoteAsset('assets/bosses/06_lava_scorpion.png'),
+    plague_ogre:      remoteAsset('assets/bosses/07_plague_ogre.png'),
+    forest_treant:    remoteAsset('assets/bosses/08_forest_treant.png'),
+    lava_cerberus:    remoteAsset('assets/bosses/09_lava_cerberus.png'),
+    eldritch_horror:  remoteAsset('assets/bosses/10_eldritch_horror.png'),
+    demon_warlord:    remoteAsset('assets/bosses/11_demon_warlord.png'),
+    crystal_serpent:  remoteAsset('assets/bosses/12_crystal_serpent.png'),
   },
   decor: {
-    spawn_portal:     require('./assets/decor/spawn_portal.png'),
-    castle_keep:      require('./assets/decor/castle_keep.png'),
-    crystal_monument: require('./assets/decor/crystal_monument.png'),
-    recipe_master:    require('./assets/decor/recipe_master.png'),
+    spawn_portal:     remoteAsset('assets/decor/spawn_portal.png'),
+    castle_keep:      remoteAsset('assets/decor/castle_keep.png'),
+    crystal_monument: remoteAsset('assets/decor/crystal_monument.png'),
+    recipe_master:    remoteAsset('assets/decor/recipe_master.png'),
   },
 };
 // Master switch — flip to true when sprite-art quality > current SVG quality.
