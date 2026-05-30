@@ -70,6 +70,9 @@ import {
 //   • Mutations ............... 8-pool, W75 gate (1 mut), W150 (2 muts) (doc §A6/§56)
 //   • Milestones .............. W100+, ±5% speed/armor per W25 alternating (doc §57)
 //   • Wave generation ......... W1-50 curated table, W51+ procedural 70/20/10 (doc §A2)
+//   • Gold utilities .......... 13 active skills, gold sinks (doc) (UTILITIES)
+//   • Boss signatures ......... 5 bosses · 1 mechanic each (doc §A13) (BOSS_SIGNATURES)
+//   • Recipe damage types ..... inferred from stats (poison/slow/raw) (towerDamageType)
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
 //   Board ............ COLS, ROWS, TILE, SPAWN, CHECKPOINTS, GOAL
@@ -254,8 +257,10 @@ const RESISTANCE_CAP = 0.70;   // doc §53.4: max damage reduction; no immunitie
 // Enemy resist fields (physicalResist / magicResist / poisonResist / burnResist)
 // default to 0; specific enemy types or mutations set higher values up to the cap.
 function damageMultByType(enemy, dmgType) {
-  // ShieldRotations mutation: full immunity to ONE type at a time (doc §A.1b).
+  // ShieldRotations mutation OR boss PhaseShields signature: full immunity to
+  // one type at a time (doc §A.1b / §A13.PhaseShields).
   if (enemy._shieldBlockType === dmgType) return 0;
+  if (enemy._bossShieldType === dmgType) return 0;
   const r = dmgType === 'physical' ? (enemy.physicalResist || 0)
           : dmgType === 'magic'    ? (enemy.magicResist    || 0)
           : dmgType === 'poison'   ? (enemy.poisonResist   || 0)
@@ -265,7 +270,14 @@ function damageMultByType(enemy, dmgType) {
 }
 function towerDamageType(tower) {
   if (tower.kind === 'gem') return FAMILY_DAMAGE_TYPE[tower.gemType] || 'physical';
-  return 'physical';   // specials → Phase F per-recipe types
+  if (tower.kind === 'special') {
+    const r = SPECIAL_BY_ID[tower.specialId];
+    if (r?.stats?.damageType) return r.stats.damageType;   // explicit recipe override
+    if (r?.stats?.poison)     return 'poison';             // DoT-led identity
+    if (r?.stats?.slow)       return 'magic';              // control-led identity
+    return 'physical';                                     // raw single-target default
+  }
+  return 'physical';
 }
 
 // ─── P5 synergy + P6 rule-breaks — doc §55 / §A7 / §A8 (Phase C) ─────────────
@@ -351,6 +363,17 @@ const MUT_ELITE_FRACTION      = 0.20;  // 20% promoted at spawn
 const MUT_ELITE_HP            = 1.50;
 const MUT_ELITE_SPEED         = 1.20;
 const MUT_ELITE_ARMOR         = 5;
+
+// ─── Boss signatures (Phase F / doc §57.3 / §A13) ───────────────────────────
+// One signature per boss variant. Replaces the V3 multi-mechanic boss model.
+// Mapped to mobile's bossVariant identities.
+const BOSS_SIGNATURES = {
+  demon:     'HoundSprint',       // W10 — Iron Prism Hound
+  void:      'JudgmentSlam',      // W20 — Forgeback Behemoth
+  blood:     'SkyCourtAdds',      // W30 — Astra Carpet Tyrant
+  destroyer: 'InvisibilityPulse', // W40 — Stormglass Ghost
+  ender:     'PhaseShields',      // W50 — Worldheart Hatchling
+};
 
 // Apply EliteSpawns + ResistShifts initial state etc. at spawn (called from
 // the spawn-from-queue block). Mutates the enemy in place.
@@ -6827,6 +6850,67 @@ function HudStat({ label, value, color }) {
   );
 }
 
+// Boss signature tick (Phase F). Runs once per step before tower firing.
+function applyBossSignatures(s, dt) {
+  for (const e of s.enemies) {
+    if (e.hp <= 0) continue;
+    const sig = BOSS_SIGNATURES[e.bossVariant];
+    if (!sig) continue;
+    e._sigT = (e._sigT || 0) + dt;
+    if (sig === 'HoundSprint') {
+      if (e._sigT >= 6) { e._sigT = 0; e._sigBurstEnd = s.time + 2; }
+      // _eliteSpeed is read in movement; HoundSprint sets it to 1.6 during burst.
+      e._eliteSpeed = (s.time < (e._sigBurstEnd || 0)) ? 1.6 : (e._elite ? MUT_ELITE_SPEED : 1);
+    } else if (sig === 'JudgmentSlam') {
+      if (e._sigT >= 10) {
+        e._sigT = 0;
+        // Stun the 3 nearest firing towers for 1.5s.
+        const cands = [];
+        for (const t of s.towers) {
+          if (t.kind !== 'gem' && t.kind !== 'special') continue;
+          cands.push({ t, d: Math.hypot(t.r - e.r, t.c - e.c) });
+        }
+        cands.sort((a, b) => a.d - b.d);
+        for (const c of cands.slice(0, 3)) c.t._stunUntil = s.time + 1.5;
+      }
+    } else if (sig === 'SkyCourtAdds') {
+      if (e._sigT >= 8) {
+        e._sigT = 0;
+        const def = ENEMIES.swarm;
+        const hp = computeEnemyHP('swarm', s.wave, s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]);
+        for (let i = 0; i < 2; i++) {
+          s.enemies.push({
+            id: s.nextEnemyId++,
+            r: e.r, c: e.c,
+            hp, maxHp: hp,
+            type: 'swarm',
+            armor: def.armor,
+            subPath: e.subPath ? e.subPath.slice(Math.max(0, e.pathIdx)) : [{ r: e.r, c: e.c }, GOAL],
+            pathIdx: 0,
+            effects: [],
+            tier: 0, elite: false, bossVariant: null,
+            spawnWave: s.wave, spawnedAt: s.time, _lastDmgT: s.time,
+          });
+        }
+      }
+    } else if (sig === 'InvisibilityPulse') {
+      if (e._sigT >= 8) { e._sigT = 0; e._sigInvisEnd = s.time + 3; }
+      // _inFog gate is consulted in target picking (added in Phase D).
+      if (s.time < (e._sigInvisEnd || 0)) e._inFog = true;
+    } else if (sig === 'PhaseShields') {
+      if (e._sigT >= 6) {
+        e._sigT = 0;
+        const types = ['physical', 'magic', 'poison', 'burn'];
+        e._sigShieldIdx = ((e._sigShieldIdx || 0) + 1) % types.length;
+        e._sigShieldEnd = s.time + 2;
+        e._bossShieldType = types[e._sigShieldIdx];
+      } else if (s.time >= (e._sigShieldEnd || 0)) {
+        e._bossShieldType = null;
+      }
+    }
+  }
+}
+
 // ─── Game step (combat phase) ────────────────────────────────────────────────
 function step(dt, s, onEnd) {
   s.time += dt;
@@ -6981,9 +7065,14 @@ function step(dt, s, onEnd) {
     }
   }
 
+  // Boss signatures per tick (Phase F) — must run before tower fire so
+  // JudgmentSlam stuns / InvisibilityPulse fog take effect this frame.
+  applyBossSignatures(s, dt);
+
   // Towers fire (gems and specials, never rocks/candidates)
   for (const t of s.towers) {
     if (t.kind !== 'gem' && t.kind !== 'special') continue;
+    if (t._stunUntil && t._stunUntil > s.time) continue;   // JudgmentSlam stun
     t.cooldown = Math.max(0, t.cooldown - dt);
     if (t.cooldown > 0) continue;
     const stats = t.kind === 'gem'
