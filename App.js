@@ -1100,7 +1100,7 @@ const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(fals
 // ─── App shell ───────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState('lobby');
-  const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0, difficulty: DEFAULT_DIFFICULTY });
+  const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0, difficulty: DEFAULT_DIFFICULTY, mode: DEFAULT_MODE });
   const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY);
   const [mode, setMode] = useState(DEFAULT_MODE);
   const [stats, setStats] = useState({
@@ -1110,7 +1110,7 @@ export default function App() {
   });
 
   const recordResult = (won, score, waveReached) => {
-    setLastResult({ won, score, waveReached, difficulty });
+    setLastResult({ won, score, waveReached, difficulty, mode });
     setStats((prev) => {
       const prevDiff = prev.perDiff || emptyPerDiff();
       const prevForDiff = prevDiff[difficulty] || { bestWave: 0 };
@@ -1130,13 +1130,14 @@ export default function App() {
     setScreen('game');
   };
 
-  if (screen === 'lobby') return <LobbyScreen stats={stats} onStartSolo={startSolo} />;
+  if (screen === 'lobby') return <LobbyScreen stats={stats} mode={mode} onModeChange={setMode} onStartSolo={startSolo} />;
   if (screen === 'win' || screen === 'lose') return (
     <EndScreen
       won={screen === 'win'}
       score={lastResult.score}
       waveReached={lastResult.waveReached}
       difficulty={lastResult.difficulty}
+      mode={lastResult.mode}
       stats={stats}
       onPlayAgain={() => setScreen('game')}
       onLobby={() => setScreen('lobby')}
@@ -1215,7 +1216,7 @@ function LobbyBackground({ width, height }) {
   );
 }
 
-function LobbyScreen({ stats, onStartSolo }) {
+function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
   const [recipeBookOpen, setRecipeBookOpen] = useState(false);
   return (
     <SafeAreaView style={styles.lobbyRoot}>
@@ -1254,7 +1255,7 @@ function LobbyScreen({ stats, onStartSolo }) {
         <Text style={styles.statsCardLabel}>· YOUR STATS ·</Text>
         <View style={styles.statsRow}>
           <StatTile label="BEST SCORE" value={stats.bestScore} color="#ffd166" />
-          <StatTile label="HIGHEST WAVE" value={`${stats.bestWave}/${NUM_WAVES}`} color="#4cc9ff" />
+          <StatTile label="HIGHEST WAVE" value={stats.bestWave} color="#4cc9ff" />
         </View>
         <View style={styles.statsRow}>
           <StatTile label="GAMES" value={stats.gamesPlayed} color="#fff" />
@@ -1274,7 +1275,7 @@ function LobbyScreen({ stats, onStartSolo }) {
             return (
               <TouchableOpacity
                 key={mid}
-                onPress={() => setMode(mid)}
+                onPress={() => onModeChange(mid)}
                 style={{
                   flex: 1, paddingVertical: 8, paddingHorizontal: 6,
                   borderRadius: 8, borderWidth: 2,
@@ -1422,9 +1423,11 @@ function RecipeBookModal({ visible, onClose }) {
   );
 }
 
-function EndScreen({ won, score, waveReached, difficulty, stats, onPlayAgain, onLobby }) {
+function EndScreen({ won, score, waveReached, difficulty, mode, stats, onPlayAgain, onLobby }) {
   const newBest = score > 0 && score === stats.bestScore;
   const diff = DIFFICULTIES[difficulty] || DIFFICULTIES[DEFAULT_DIFFICULTY];
+  const modeCfg = MODES[mode] || MODES[DEFAULT_MODE];
+  const totalWaves = modeCfg.waves === 9999 ? '∞' : modeCfg.waves;
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
@@ -1459,7 +1462,7 @@ function EndScreen({ won, score, waveReached, difficulty, stats, onPlayAgain, on
         <Text style={styles.statsCardLabel}>· THIS RUN ·</Text>
         <View style={styles.statsRow}>
           <StatTile label="SCORE" value={score} color="#ffd166" />
-          <StatTile label="WAVE REACHED" value={`${waveReached}/${NUM_WAVES}`} color="#4cc9ff" />
+          <StatTile label="WAVE REACHED" value={`${waveReached}/${totalWaves}`} color="#4cc9ff" />
         </View>
         {newBest && <Text style={styles.newBestText}>★ NEW BEST SCORE ★</Text>}
       </View>
