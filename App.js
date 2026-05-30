@@ -699,7 +699,7 @@ function gemStats(gemId, t) {
 
 // ─── Special tower recipes (canonical 18 from the rename doc) ────────────────
 const SPECIAL_RECIPES = [
-  { id: 'MoonsteelPrism', name: 'Moonsteel', tier: 'P2',
+  { id: 'MoonsteelPrism', name: 'Moonsteel Prism', tier: 'P2',
     color: '#d8e1f2', accent: '#7eb6ff',
     description: 'Single-target · armor break · light slow',
     ingredients: [
@@ -707,7 +707,7 @@ const SPECIAL_RECIPES = [
     ],
     stats: { damage: 80, range: 8.5, cooldown: 0.7, armorBreak: 8, slow: { factor: 0.5, duration: 1.2 } },
   },
-  { id: 'VerdantArcstone', name: 'Wildroot', tier: 'P2',
+  { id: 'VerdantArcstone', name: 'Verdant Arcstone', tier: 'P2',
     color: '#5cf28a', accent: '#88f088',
     description: 'Poison surge · support · reveal',
     ingredients: [
@@ -755,7 +755,7 @@ const SPECIAL_RECIPES = [
     ],
     stats: { damage: 90, range: 8.5, cooldown: 0.7, armorBreak: 16, goldAura: true },
   },
-  { id: 'MoonsteelWarden', name: 'Lunar Warden', tier: 'P4',
+  { id: 'MoonsteelWarden', name: 'Silver Warden', tier: 'P4',
     color: '#c0d8ff', accent: '#fff',
     description: 'Slow / cleave · armored frontline',
     ingredients: [
@@ -803,7 +803,7 @@ const SPECIAL_RECIPES = [
     ],
     stats: { damage: 220, range: 9, cooldown: 0.5, splash: 2.2, chain: 4, poison: { dps: 70, duration: 4 } },
   },
-  { id: 'CoralResonance', name: 'Coral Choir', tier: 'P5',
+  { id: 'CoralResonance', name: 'Coral Resonance', tier: 'P5',
     color: '#7be5d1', accent: '#5cf28a',
     description: 'Harmony · multi-target · slow',
     ingredients: [
@@ -811,7 +811,7 @@ const SPECIAL_RECIPES = [
     ],
     stats: { damage: 180, range: 9.5, cooldown: 0.3, multi: 3, slow: { factor: 0.35, duration: 1.8 } },
   },
-  { id: 'FrostsunEye', name: 'Frozen Sun', tier: 'P5',
+  { id: 'FrostsunEye', name: 'Eye of the Frozen Sun', tier: 'P5',
     color: '#a8e0ff', accent: '#ffd166',
     description: 'Protector · chain · slow · versatile',
     ingredients: [
@@ -819,7 +819,7 @@ const SPECIAL_RECIPES = [
     ],
     stats: { damage: 240, range: 10, cooldown: 0.4, chain: 6, slow: { factor: 0.5, duration: 2 } },
   },
-  { id: 'SovereignDiamondLens', name: 'Diamond Sovereign', tier: 'P6',
+  { id: 'SovereignDiamondLens', name: 'Sovereign Diamond', tier: 'P6',
     color: '#fff', accent: '#ffd166',
     description: 'MYTHIC · timeless guardian · time control',
     ingredients: [
