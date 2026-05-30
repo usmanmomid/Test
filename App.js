@@ -495,6 +495,54 @@ function streakMult(streak) {
 const STREAK_MIN_PATH_FRACTION = 0.25;   // doc §54.3 KillValidation
 const STREAK_MIN_ALIVE_SECONDS = 1.5;
 
+// ─── Gold utilities — doc Section "Skill ... Cost ... Cooldown ... Effect" ──
+// 13 active skills, real gold sinks (the main reason recipe P6 is 12kg — the
+// player needs alternative gold spends or saves into a wall). Effects fall
+// into 3 shapes: instant (Heal/GoldFlash/WaveSkip/HealOverTime), time-bounded
+// (Freeze/DamageBoost/GoldBlessing/SpeedShield/CritBoost/TowerEcho/GoldRain),
+// next-event (Timelapse/CandyLure).
+const UTILITIES = [
+  { id: 'GoldFlash',    name: 'Gold Flash',    cost: 200,  cd: 60,   color: '#ffd166', desc: '+500 gold instantly' },
+  { id: 'Heal',         name: 'Heal',          cost: 300,  cd: 90,   color: '#ff8fab', desc: '+10 lives' },
+  { id: 'Freeze',       name: 'Freeze',        cost: 600,  cd: 120,  color: '#88ddff', desc: 'Full freeze 4s' },
+  { id: 'DamageBoost',  name: 'Damage Boost',  cost: 500,  cd: 90,   color: '#ff6b6b', desc: '×2 DPS for 10s' },
+  { id: 'GoldBlessing', name: 'Gold Blessing', cost: 400,  cd: 90,   color: '#ffd166', desc: 'Kill gold +50% 15s' },
+  { id: 'WaveSkip',     name: 'Wave Skip',     cost: 1500, cd: 300,  color: '#b08bff', desc: 'Skip next wave (rewards paid)' },
+  { id: 'GoldRain',     name: 'Gold Rain',     cost: 500,  cd: 120,  color: '#ffd166', desc: '+50g/s for 15s' },
+  { id: 'HealOverTime', name: 'Mend',          cost: 500,  cd: 120,  color: '#ff8fab', desc: '+1 life/wave for 5 waves' },
+  { id: 'SpeedShield',  name: 'Speed Shield',  cost: 400,  cd: 75,   color: '#88ddff', desc: 'Pause enemy speed 8s' },
+  { id: 'CritBoost',    name: 'Crit Boost',    cost: 700,  cd: 120,  color: '#ff6b6b', desc: 'Crit on every shot 8s' },
+  { id: 'TowerEcho',    name: 'Tower Echo',    cost: 600,  cd: 100,  color: '#5cf28a', desc: 'Towers double-fire 6s' },
+  { id: 'Timelapse',    name: 'Timelapse',     cost: 800,  cd: 150,  color: '#b08bff', desc: 'Spawn delay -50% next wave' },
+  { id: 'CandyLure',    name: 'Candy Lure',    cost: 600,  cd: 90,   color: '#ff8fab', desc: 'Slow first 3 enemies 50% 5s' },
+];
+function emptyCooldowns() { const o = {}; for (const u of UTILITIES) o[u.id] = 0; return o; }
+const UTIL_BY_ID = Object.fromEntries(UTILITIES.map((u) => [u.id, u]));
+
+function castUtility(s, id) {
+  const u = UTIL_BY_ID[id];
+  if (!u || (s.skillCooldowns[id] || 0) > 0 || s.gold < u.cost) return false;
+  s.gold -= u.cost;
+  s.skillCooldowns[id] = u.cd;
+  switch (id) {
+    case 'GoldFlash':    s.gold += 500; break;
+    case 'Heal':         s.lives += 10; break;
+    case 'Freeze':       s.effectEnds.Freeze       = s.time + 4; break;
+    case 'DamageBoost':  s.effectEnds.DamageBoost  = s.time + 10; break;
+    case 'GoldBlessing': s.effectEnds.GoldBlessing = s.time + 15; break;
+    case 'GoldRain':     s.effectEnds.GoldRain     = s.time + 15; s.goldRainAcc = 0; break;
+    case 'SpeedShield':  s.effectEnds.SpeedShield  = s.time + 8; break;
+    case 'CritBoost':    s.effectEnds.CritBoost    = s.time + 8; break;
+    case 'TowerEcho':    s.effectEnds.TowerEcho    = s.time + 6; break;
+    case 'WaveSkip':     s.pendingWaveSkip = true; break;
+    case 'HealOverTime': s.healOverTimeWaves = 5; break;
+    case 'Timelapse':    s.timelapseNext = true; break;
+    case 'CandyLure':    s.candyLureRemaining = 3; s.effectEnds.CandyLure = s.time + 5; break;
+  }
+  return true;
+}
+const effectActive = (s, key) => (s.effectEnds[key] || 0) > s.time;
+
 // ─── Gems (8 families) ──────────────────────────────────────────────────────
 // `letter` is the on-board label prefix: first letter of the gem name, except
 // Aquamarine which is Q to avoid clashing with Amethyst.
@@ -1348,6 +1396,14 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
       matchSeed: (Math.random() * 0xFFFFFFFF) >>> 0,
       activeMutations: [],          // mutationsForWave(matchSeed, wave) cached per wave
       fogZones: [],                 // [{start,end}] path-fraction ranges (FogOfWarLanes)
+      // Gold utilities (Phase E)
+      skillCooldowns: emptyCooldowns(),
+      effectEnds: {},                // { DamageBoost: time, Freeze: time, ... }
+      healOverTimeWaves: 0,
+      timelapseNext: false,
+      candyLureRemaining: 0,
+      goldRainAcc: 0,
+      pendingWaveSkip: false,
       score: 0,
       speed: 1,
       difficulty: diff,
@@ -1582,6 +1638,18 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     // Begin the wave's spawn queue
     s.wave += 1;
     s.playerLevel = levelForWave(s.wave);
+    // Phase E: WaveSkip pays expected rewards and immediately ends the wave.
+    if (s.pendingWaveSkip) {
+      s.pendingWaveSkip = false;
+      const skipped = getWave(s.wave);
+      const totalSpawns = skipped.spawns.reduce((n, [, c]) => n + c, 0);
+      const reward = totalSpawns * killGold(s.wave) * (s.rewardMult || 1);
+      s.gold += Math.round(reward);
+      s.flash = { text: `Wave ${s.wave} skipped · +${Math.round(reward)}g`, until: s.time + 2.0 };
+      s.phase = 'placing';
+      s.spawnQueue = [];
+      return;
+    }
     // Endless: compute this wave's active mutations (doc §A6 W75 gate, 1 → 2 at W150).
     s.activeMutations = mutationsForWave(s.matchSeed, s.wave);
     // FogOfWarLanes: 2 path-zones of 15% each, deterministic per (matchSeed, wave).
@@ -1597,15 +1665,16 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     const diff = s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY];
     const queue = [];
     let t = s.time + 0.8;
+    // Phase E: Timelapse cuts spawn gaps in half for this wave (consumed).
+    const timelapseMult = s.timelapseNext ? 0.5 : 1;
+    s.timelapseNext = false;
     for (const [type, count, gap] of w.spawns) {
-      // Difficulty count/spawn-delay (P8). Boss & mega counts are fixed (scaling
-      // a single boss by 0.7 would delete it) — only minion counts flex.
       const isBig = type === 'boss' || type === 'mega';
       const n = isBig ? count : Math.max(1, Math.round(count * diff.countMul));
-      const g = gap * diff.spawnDelayMul;
+      const g = gap * diff.spawnDelayMul * timelapseMult;
       for (let i = 0; i < n; i++) {
         t += g;
-        queue.push({ type, atTime: t });   // HP resolved at spawn via computeEnemyHP
+        queue.push({ type, atTime: t });
       }
     }
     s.spawnQueue = queue;
@@ -1700,6 +1769,34 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
           </View>
         )}
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ maxHeight: 50, marginBottom: 4 }} contentContainerStyle={{ paddingHorizontal: 8, gap: 6 }}>
+        {UTILITIES.map((u) => {
+          const cd = s.skillCooldowns?.[u.id] || 0;
+          const canCast = cd <= 0 && s.gold >= u.cost;
+          return (
+            <TouchableOpacity
+              key={u.id}
+              onPress={() => { if (castUtility(s, u.id)) flash(`${u.name}`); }}
+              disabled={!canCast}
+              style={{
+                paddingHorizontal: 8, paddingVertical: 4,
+                borderRadius: 6, borderWidth: 1.5,
+                borderColor: canCast ? u.color : '#2a335f',
+                backgroundColor: canCast ? '#101630' : '#0a0e1f',
+                opacity: canCast ? 1 : 0.5,
+                minWidth: 70, alignItems: 'center',
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: u.color, fontSize: 10, fontWeight: '800' }}>{u.name.toUpperCase()}</Text>
+              <Text style={{ color: cd > 0 ? '#ff9f43' : '#9aa3c7', fontSize: 9 }}>
+                {cd > 0 ? `${Math.ceil(cd)}s` : `${u.cost}g`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
       <View
         style={{ width: VIEWPORT_W, height: VIEWPORT_H, backgroundColor: '#06081a', overflow: 'hidden' }}
@@ -6733,6 +6830,20 @@ function HudStat({ label, value, color }) {
 // ─── Game step (combat phase) ────────────────────────────────────────────────
 function step(dt, s, onEnd) {
   s.time += dt;
+  // Utility cooldown tick + Gold Rain accumulator (Phase E).
+  if (s.skillCooldowns) {
+    for (const u of UTILITIES) {
+      if (s.skillCooldowns[u.id] > 0) s.skillCooldowns[u.id] = Math.max(0, s.skillCooldowns[u.id] - dt);
+    }
+  }
+  if (effectActive(s, 'GoldRain')) {
+    s.goldRainAcc = (s.goldRainAcc || 0) + 50 * dt;
+    if (s.goldRainAcc >= 1) {
+      const add = Math.floor(s.goldRainAcc);
+      s.gold += add;
+      s.goldRainAcc -= add;
+    }
+  }
   if (s.phase !== 'attacking') return;
 
   // Spawn from queue
@@ -6791,6 +6902,12 @@ function step(dt, s, onEnd) {
       const rng = mulberry32((s.matchSeed >>> 0) ^ (s.nextEnemyId * 0x9E3779B1) >>> 0);
       applyMutationsOnSpawn(s.enemies[s.enemies.length - 1], s.activeMutations, rng);
     }
+    // CandyLure (Phase E): tag the next 3 spawns with a 50% slow for 5s.
+    if (s.candyLureRemaining > 0 && effectActive(s, 'CandyLure')) {
+      const last = s.enemies[s.enemies.length - 1];
+      last.effects.push({ type: 'slow', factor: 0.5, until: s.time + 5 });
+      s.candyLureRemaining -= 1;
+    }
   }
 
   // Move enemies
@@ -6844,6 +6961,9 @@ function step(dt, s, onEnd) {
     const dc = target.c - e.c;
     const dist = Math.hypot(dr, dc);
     const diffSpeed = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).speedMul;
+    // Phase E: Freeze fully stops; SpeedShield pauses; CandyLure tags first
+    // few spawned enemies with a manual slow (applied at spawn — see below).
+    if (effectActive(s, 'Freeze') || effectActive(s, 'SpeedShield')) speedMul = 0;
     const move = def.speed * speedMul * diffSpeed * rampSpeed(s.wave)
                * (e._eliteSpeed || 1) * (e._milestoneSpeed || 1) * dt;
     if (dist <= move) {
@@ -6888,6 +7008,12 @@ function step(dt, s, onEnd) {
     const cdMult = (p6Family(t) === 'aquamarine' && s.activeMutations.length > 0) ? 0.5 : 1;
     t.cooldown = stats.cooldown * cdMult;
     fireAt(t, inRange, stats, color, s);
+    // TowerEcho (Phase E): a second shot follows immediately. Re-evaluates
+    // in-range (the first volley may have killed the target).
+    if (effectActive(s, 'TowerEcho')) {
+      const inRange2 = inRange.filter((x) => x.e.hp > 0);
+      if (inRange2.length) fireAt(t, inRange2, stats, color, s);
+    }
   }
 
   s.projectiles = s.projectiles.filter((p) => p.until > s.time);
@@ -6900,7 +7026,8 @@ function step(dt, s, onEnd) {
     return r && r.stats.goldAura;
   });
   const diffGold = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).goldMul;
-  const goldMul = (goldAuraActive ? 2 : 1) * diffGold * (s.rewardMult || 1);
+  const blessing = effectActive(s, 'GoldBlessing') ? 1.5 : 1;
+  const goldMul = (goldAuraActive ? 2 : 1) * diffGold * (s.rewardMult || 1) * blessing;
 
   const alive = [];
   for (const e of s.enemies) {
@@ -6960,6 +7087,11 @@ function step(dt, s, onEnd) {
     // already credited above via killGoldFor.
     s.killStreak = 0;                  // doc §54.3: streak resets on wave clear
     s.score += 50 + s.wave * 10;
+    // HealOverTime (Phase E): +1 life per wave for up to 5 waves.
+    if (s.healOverTimeWaves > 0) {
+      s.lives += 1;
+      s.healOverTimeWaves -= 1;
+    }
     s.flash = { text: `Wave ${s.wave} cleared!`, until: s.time + 2.0 };
 
     if (s.wave >= s.totalWaves) {
@@ -6992,6 +7124,9 @@ function fireAt(tower, inRange, stats, color, s) {
   const p6 = p6Family(tower);
   // P6 rule-break: Amethyst doubles armor reduction (doc §A8.Amethyst).
   const effArmorBreak = (stats.armorBreak || 0) * (p6 === 'amethyst' ? 2 : 1);
+  // Phase E active effects on the volley:
+  const dmgBoost = effectActive(s, 'DamageBoost') ? 2 : 1;
+  const critForced = effectActive(s, 'CritBoost');
   const handleHit = (enemy, dmg) => {
     s.fx.push({
       id: s.nextFxId++,
@@ -7002,11 +7137,11 @@ function fireAt(tower, inRange, stats, color, s) {
       start: s.time,
       until: s.time + 0.28,
     });
-    // Resist (doc §53.4) → optional armor bypass (Diamond P6) → armor.
-    const typed = dmg * synMult * damageMultByType(enemy, towerDamageType(tower));
+    // Resist (doc §53.4) → optional armor bypass (Diamond P6 / CritBoost crit) → armor.
+    const typed = dmg * synMult * dmgBoost * damageMultByType(enemy, towerDamageType(tower));
     let reduced;
-    if (p6 === 'diamond') {
-      reduced = typed;                                   // doc §A8.Diamond: crit-bypass-armor
+    if (p6 === 'diamond' || critForced) {
+      reduced = typed;                                   // crit / Diamond P6: bypass armor
     } else {
       const effectiveArmor = Math.max(0, enemy.armor - effArmorBreak);
       reduced = typed * (100 / (100 + effectiveArmor * 6));
