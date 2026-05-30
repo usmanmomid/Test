@@ -71,8 +71,10 @@ import {
 //   • Milestones .............. W100+, ±5% speed/armor per W25 alternating (doc §57)
 //   • Wave generation ......... W1-50 curated table, W51+ procedural 70/20/10 (doc §A2)
 //   • Gold utilities .......... 13 active skills, gold sinks (doc) (UTILITIES)
-//   • Boss signatures ......... 5 bosses · 1 mechanic each (doc §A13) (BOSS_SIGNATURES)
+//   • Boss signatures ......... 5 core + 12 endless-roster bosses (BOSS_SIGNATURES)
+//   • Endless boss cycle ...... 20-slot roster, W60+ cycles deterministically (BOSS_ROSTER)
 //   • Recipe damage types ..... inferred from stats (poison/slow/raw) (towerDamageType)
+//   • Opal SVG rendering ...... iridescent rainbow body gradient (GemSvg isOpal)
 //
 // CONFIG INDEX (the numbers live in these — edit here, nowhere else):
 //   Board ............ COLS, ROWS, TILE, SPAWN, CHECKPOINTS, GOAL
@@ -367,12 +369,48 @@ const MUT_ELITE_ARMOR         = 5;
 // ─── Boss signatures (Phase F / doc §57.3 / §A13) ───────────────────────────
 // One signature per boss variant. Replaces the V3 multi-mechanic boss model.
 // Mapped to mobile's bossVariant identities.
-const BOSS_SIGNATURES = {
+const CORE_BOSS_SIGNATURES = {
   demon:     'HoundSprint',       // W10 — Iron Prism Hound
   void:      'JudgmentSlam',      // W20 — Forgeback Behemoth
   blood:     'SkyCourtAdds',      // W30 — Astra Carpet Tyrant
   destroyer: 'InvisibilityPulse', // W40 — Stormglass Ghost
   ender:     'PhaseShields',      // W50 — Worldheart Hatchling
+};
+
+// Endless boss roster — 20 total, cycled on boss waves W60+. User-delivered
+// art for the first 12; slots 13-20 are placeholders that reuse earlier roster
+// entries until art lands. Boss-wave index n at W=10n picks roster[(n-6) % 20].
+// Each entry has: id (variant key for signature lookup), name (banner), color
+// (future tint), signature (one of 5 mechanics), skin (current SVG renderer
+// fallback among demon/void/blood/destroyer/ender until per-roster art ships).
+const BOSS_ROSTER = [
+  { id: 'wraith_captain',  name: 'Wraith Captain',  color: '#b08bff', signature: 'InvisibilityPulse', skin: 'void' },
+  { id: 'eye_magus',       name: 'Eye Magus',       color: '#a86bff', signature: 'JudgmentSlam',      skin: 'void' },
+  { id: 'lava_lord',       name: 'Lava Lord',       color: '#ff8a4d', signature: 'HoundSprint',       skin: 'destroyer' },
+  { id: 'ice_lich',        name: 'Ice Lich King',   color: '#88ddff', signature: 'PhaseShields',      skin: 'ender' },
+  { id: 'crystal_dragon',  name: 'Crystal Dragon',  color: '#d9b3ff', signature: 'InvisibilityPulse', skin: 'demon' },
+  { id: 'lava_scorpion',   name: 'Lava Scorpion',   color: '#ff6b3d', signature: 'HoundSprint',       skin: 'destroyer' },
+  { id: 'plague_ogre',     name: 'Plague Ogre',     color: '#a8c93a', signature: 'SkyCourtAdds',      skin: 'blood' },
+  { id: 'forest_treant',   name: 'Forest Treant',   color: '#5cf28a', signature: 'SkyCourtAdds',      skin: 'blood' },
+  { id: 'lava_cerberus',   name: 'Lava Cerberus',   color: '#ff4d2d', signature: 'HoundSprint',       skin: 'destroyer' },
+  { id: 'eldritch_horror', name: 'Eldritch Horror', color: '#5ce8c0', signature: 'InvisibilityPulse', skin: 'void' },
+  { id: 'demon_warlord',   name: 'Demon Warlord',   color: '#ff2244', signature: 'JudgmentSlam',      skin: 'blood' },
+  { id: 'crystal_serpent', name: 'Crystal Serpent', color: '#9b66ff', signature: 'PhaseShields',      skin: 'ender' },
+];
+// Pad to 20 by reusing entries until art lands (deterministic order: indices
+// 0,5,10,1,6,11,2,7 picked to space the visual repeat as far as possible).
+while (BOSS_ROSTER.length < 20) {
+  const pickOrder = [0, 5, 10, 1, 6, 11, 2, 7];
+  BOSS_ROSTER.push({ ...BOSS_ROSTER[pickOrder[BOSS_ROSTER.length - 12]], _placeholder: true });
+}
+function endlessBossEntry(wave) {
+  if (wave < 60 || wave % 10 !== 0) return null;
+  return BOSS_ROSTER[(Math.floor(wave / 10) - 6) % BOSS_ROSTER.length];
+}
+// Combined lookup — core variants by skin name, endless by roster id.
+const BOSS_SIGNATURES = {
+  ...CORE_BOSS_SIGNATURES,
+  ...Object.fromEntries(BOSS_ROSTER.map((b) => [b.id, b.signature])),
 };
 
 // Apply EliteSpawns + ResistShifts initial state etc. at spawn (called from
@@ -1706,6 +1744,9 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     const totalEnemies = queue.length;
     const isBossWave = s.wave % 10 === 0;
     const bossNames = { 10: 'DEMON LORD', 20: 'VOID KING', 30: 'BLOOD TYRANT', 40: 'DESTROYER', 50: 'WORLD ENDER' };
+    // Endless (W60+): use the cycled roster entry's display name.
+    const endlessBoss = endlessBossEntry(s.wave);
+    if (endlessBoss) bossNames[s.wave] = endlessBoss.name.toUpperCase();
     const mythic = s.wave >= 41 && !isBossWave;
     const apex = s.wave >= 31 && s.wave <= 40 && !isBossWave;
     const champion = s.wave >= 21 && s.wave <= 30 && !isBossWave;
@@ -3306,6 +3347,10 @@ function GemSvg({ gemType, tier }) {
   const dark = darken(g.color, 0.55);
   const veryDark = darken(g.color, 0.75);
   const labelColor = tier >= 4 ? '#0b1020' : '#fff';
+  // Opal renders with an iridescent rainbow body gradient (same geometry as
+  // every other gem family). Stops shift through pearl-white → pink → blue
+  // → green → yellow to give the "play of colour" Opal is known for.
+  const isOpal = gemType === 'opal';
 
   return (
     <View pointerEvents="none" style={{
@@ -3314,12 +3359,24 @@ function GemSvg({ gemType, tier }) {
     }}>
       <Svg width={px} height={px} viewBox="0 0 100 100">
         <Defs>
-          <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="rgba(255,255,255,0.4)" />
-            <Stop offset="0.18" stopColor={light} />
-            <Stop offset="0.6" stopColor={light} />
-            <Stop offset="1" stopColor={dark} />
-          </LinearGradient>
+          {isOpal ? (
+            <LinearGradient id={`${id}b`} x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0"    stopColor="rgba(255,255,255,0.7)" />
+              <Stop offset="0.15" stopColor="#ffd4f0" />
+              <Stop offset="0.35" stopColor="#a8d4ff" />
+              <Stop offset="0.55" stopColor="#a8f0c4" />
+              <Stop offset="0.75" stopColor="#ffe89e" />
+              <Stop offset="0.90" stopColor="#ffb3d6" />
+              <Stop offset="1"    stopColor="#7a6890" />
+            </LinearGradient>
+          ) : (
+            <LinearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor="rgba(255,255,255,0.4)" />
+              <Stop offset="0.18" stopColor={light} />
+              <Stop offset="0.6" stopColor={light} />
+              <Stop offset="1" stopColor={dark} />
+            </LinearGradient>
+          )}
           <RadialGradient id={`${id}halo`} cx="0.5" cy="0.5" r="0.5">
             <Stop offset="0" stopColor={light} stopOpacity={0.5} />
             <Stop offset="1" stopColor={light} stopOpacity="0" />
@@ -6854,7 +6911,9 @@ function HudStat({ label, value, color }) {
 function applyBossSignatures(s, dt) {
   for (const e of s.enemies) {
     if (e.hp <= 0) continue;
-    const sig = BOSS_SIGNATURES[e.bossVariant];
+    // Endless bosses (W60+) carry a rosterId — prefer it so each boss in the
+    // 20-cycle keeps its own signature even when sharing a skin renderer.
+    const sig = BOSS_SIGNATURES[e.rosterId] || BOSS_SIGNATURES[e.bossVariant];
     if (!sig) continue;
     e._sigT = (e._sigT || 0) + dt;
     if (sig === 'HoundSprint') {
@@ -6950,12 +7009,21 @@ function step(dt, s, onEnd) {
     const elite = tier >= 1;
     // Boss + mega skins by milestone wave.
     let bossVariant = null;
+    let rosterId = null;
     if (sp.type === 'boss') {
-      bossVariant = s.wave === 20 ? 'void'
-        : s.wave === 30 ? 'blood'
-        : s.wave === 40 ? 'destroyer'
-        : s.wave === 50 ? 'ender'
-        : 'demon';
+      // Endless cycle (W60+): pick from BOSS_ROSTER and reuse the matching
+      // core SVG renderer until per-roster art lands.
+      const endlessEntry = endlessBossEntry(s.wave);
+      if (endlessEntry) {
+        bossVariant = endlessEntry.skin;
+        rosterId = endlessEntry.id;
+      } else {
+        bossVariant = s.wave === 20 ? 'void'
+          : s.wave === 30 ? 'blood'
+          : s.wave === 40 ? 'destroyer'
+          : s.wave === 50 ? 'ender'
+          : 'demon';
+      }
     } else if (sp.type === 'mega') {
       bossVariant = s.wave === 50 ? 'ender-mega' : 'colossus';
     }
@@ -6970,6 +7038,7 @@ function step(dt, s, onEnd) {
       tier,
       elite,
       bossVariant,
+      rosterId,                           // endless-cycle roster id (W60+ bosses)
       spawnWave: s.wave,
       spawnedAt: s.time,                  // for killstreak anti-farm (doc §54.3)
       _lastDmgT: s.time,                  // RegenWaves idle tracker
