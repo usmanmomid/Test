@@ -850,63 +850,85 @@ const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 // ─── Asset pipeline (G1 foundation) ─────────────────────────────────────────
 // Snack-safe: these are optional remote Image sources, not local require()s.
 // That means App.js can be copied into Expo Snack without uploading the assets
-// folder while USE_SPRITES is off. If sprite switches are enabled in Snack, the
-// GitHub raw asset URLs must be public; private repos return 404 to Expo. For
-// App Store offline builds, this can later move back to bundled require() assets.
+// folder. If sprite switches are enabled in Snack, the GitHub raw asset URLs
+// must be public; private repos return 404 to Expo, and RemoteSprite falls back
+// to SVG. For App Store offline builds, this can later move back to bundled
+// require() assets.
 const RAW_ASSET_BASE =
-  'https://raw.githubusercontent.com/usmanmomid/Test/claude/mobile-game-development-PjMjg/';
+  'https://github.com/usmanmomid/Test/raw/refs/heads/claude/mobile-game-development-PjMjg/';
 const remoteAsset = (path) => ({ uri: encodeURI(RAW_ASSET_BASE + path) });
 const ASSET_MAP = {
   towers: {
-    MoonsteelPrism:        remoteAsset('assets/towers/Special_Tower_01_mesh_full_transparent.png'),
-    VerdantArcstone:       remoteAsset('assets/towers/Special_Tower_02_mesh_full_transparent.png'),
-    EmberstarObelisk:      remoteAsset('assets/towers/Special_Tower_03_mesh_full_transparent.png'),
-    RoseglassFocus:        remoteAsset('assets/towers/Special_Tower_04_mesh_full_transparent.png'),
-    JadeVeilLens:          remoteAsset('assets/towers/Special_Tower_05_mesh_full_transparent.png'),
-    StormsplitReactor:     remoteAsset('assets/towers/Special_Tower_06_mesh_full_transparent.png'),
-    GildedHexcore:         remoteAsset('assets/towers/Special_Tower_07_mesh_full_transparent.png'),
-    MoonsteelWarden:       remoteAsset('assets/towers/Special_Tower_08_mesh_full_transparent.png'),
-    VerdantCascade:        remoteAsset('assets/towers/Special_Tower_09_mesh_full_transparent.png'),
-    ObsidianBreaker:       remoteAsset('assets/towers/Special_Tower_10_mesh_full_transparent.png'),
-    SkyquartzSentinel:     remoteAsset('assets/towers/Special_Tower_11_mesh_full_transparent.png'),
-    RoyalRoseglass:        remoteAsset('assets/towers/Special_Tower_12_mesh_full_transparent.png'),
-    CrimsonThunderheart:   remoteAsset('assets/towers/Special_Tower_13_mesh_full_transparent.png'),
-    CoralResonance:        remoteAsset('assets/towers/Special_Tower_14_mesh_full_transparent.png'),
-    FrostsunEye:           remoteAsset('assets/towers/Special_Tower_15_mesh_full_transparent.png'),
-    SovereignDiamondLens:  remoteAsset('assets/towers/Special_Tower_16_mesh_full_transparent.png'),
-    PrismaticWorldcore:    remoteAsset('assets/towers/Special_Tower_17_mesh_full_transparent.png'),
-    AbyssbreakerMonolith:  remoteAsset('assets/towers/Special_Tower_18_mesh_full_transparent.png'),
+    MoonsteelPrism:        remoteAsset('assets/runtime/towers/special_01.png'),
+    VerdantArcstone:       remoteAsset('assets/runtime/towers/special_02.png'),
+    EmberstarObelisk:      remoteAsset('assets/runtime/towers/special_03.png'),
+    RoseglassFocus:        remoteAsset('assets/runtime/towers/special_04.png'),
+    JadeVeilLens:          remoteAsset('assets/runtime/towers/special_05.png'),
+    StormsplitReactor:     remoteAsset('assets/runtime/towers/special_06.png'),
+    GildedHexcore:         remoteAsset('assets/runtime/towers/special_07.png'),
+    MoonsteelWarden:       remoteAsset('assets/runtime/towers/special_08.png'),
+    VerdantCascade:        remoteAsset('assets/runtime/towers/special_09.png'),
+    ObsidianBreaker:       remoteAsset('assets/runtime/towers/special_10.png'),
+    SkyquartzSentinel:     remoteAsset('assets/runtime/towers/special_11.png'),
+    RoyalRoseglass:        remoteAsset('assets/runtime/towers/special_12.png'),
+    CrimsonThunderheart:   remoteAsset('assets/runtime/towers/special_13.png'),
+    CoralResonance:        remoteAsset('assets/runtime/towers/special_14.png'),
+    FrostsunEye:           remoteAsset('assets/runtime/towers/special_15.png'),
+    SovereignDiamondLens:  remoteAsset('assets/runtime/towers/special_16.png'),
+    PrismaticWorldcore:    remoteAsset('assets/runtime/towers/special_17.png'),
+    AbyssbreakerMonolith:  remoteAsset('assets/runtime/towers/special_18.png'),
   },
   bosses: {
-    wraith_captain:   remoteAsset('assets/bosses/1. Pirate King.png'),
-    eye_magus:        remoteAsset('assets/bosses/2. Void Monarch.png'),
-    lava_lord:        remoteAsset('assets/bosses/3. Hellforge Brute.png'),
-    ice_lich:         remoteAsset('assets/bosses/4. Frost Lich.png'),
-    crystal_dragon:   remoteAsset('assets/bosses/5. Storm Crawler.png'),
-    lava_scorpion:    remoteAsset('assets/bosses/6. Ogre King.png'),
-    plague_ogre:      remoteAsset('assets/bosses/7. Roots.png'),
-    forest_treant:    remoteAsset('assets/bosses/8. Ashfang.png'),
-    lava_cerberus:    remoteAsset('assets/bosses/9. Kraken.png'),
-    eldritch_horror:  remoteAsset('assets/bosses/10. Scorpion King.png'),
-    demon_warlord:    remoteAsset('assets/bosses/11. Maze Bull.png'),
-    crystal_serpent:  remoteAsset('assets/bosses/12. Medusa.png'),
+    demon:            remoteAsset('assets/runtime/bosses/boss_01_pirate_king.png'),
+    void:             remoteAsset('assets/runtime/bosses/boss_02_void_monarch.png'),
+    destroyer:        remoteAsset('assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ender:            remoteAsset('assets/runtime/bosses/boss_04_frost_lich.png'),
+    blood:            remoteAsset('assets/runtime/bosses/boss_12_medusa.png'),
+    colossus:         remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
+    'ender-mega':     remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
+    wraith_captain:   remoteAsset('assets/runtime/bosses/boss_01_pirate_king.png'),
+    eye_magus:        remoteAsset('assets/runtime/bosses/boss_02_void_monarch.png'),
+    lava_lord:        remoteAsset('assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ice_lich:         remoteAsset('assets/runtime/bosses/boss_04_frost_lich.png'),
+    crystal_dragon:   remoteAsset('assets/runtime/bosses/boss_05_storm_crawler.png'),
+    lava_scorpion:    remoteAsset('assets/runtime/bosses/boss_06_ogre_king.png'),
+    plague_ogre:      remoteAsset('assets/runtime/bosses/boss_07_roots.png'),
+    forest_treant:    remoteAsset('assets/runtime/bosses/boss_08_ashfang.png'),
+    lava_cerberus:    remoteAsset('assets/runtime/bosses/boss_09_kraken.png'),
+    eldritch_horror:  remoteAsset('assets/runtime/bosses/boss_10_scorpion_king.png'),
+    demon_warlord:    remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
+    crystal_serpent:  remoteAsset('assets/runtime/bosses/boss_12_medusa.png'),
   },
   decor: {
-    spawn_portal:     remoteAsset('assets/decor/Hells Gate (Spawn Portal).png'),
-    castle_keep:      remoteAsset('assets/decor/Central Crystal (Goal of enemies).png'),
-    crystal_monument: remoteAsset('assets/decor/Central Crystal (Goal of enemies).png'),
-    recipe_master:    remoteAsset('assets/decor/RecipeMaster.png'),
-    maze_background:  remoteAsset('assets/decor/Maze.png'),
+    spawn_portal:     remoteAsset('assets/runtime/decor/spawn_portal.png'),
+    castle_keep:      remoteAsset('assets/runtime/decor/central_crystal.png'),
+    crystal_monument: remoteAsset('assets/runtime/decor/central_crystal.png'),
+    recipe_master:    remoteAsset('assets/runtime/decor/recipe_master.png'),
+    maze_background:  remoteAsset('assets/runtime/decor/maze_background.png'),
   },
 };
 // Master switch — flip to true when sprite-art quality > current SVG quality.
 // Placeholder mode keeps SVG on so you don't see ring-icons until real PNGs
 // land. Per-category overrides below.
 const USE_SPRITES = {
-  towers: false,   // flip when real tower PNGs land in assets/towers/
-  bosses: false,   // flip when real boss PNGs land in assets/bosses/
-  decor:  false,   // flip when meshy-exported decor lands
+  towers: true,
+  bosses: true,
+  decor:  true,
 };
+
+function RemoteSprite({ source, style, children, onLoad, resizeMode = 'contain' }) {
+  const [failed, setFailed] = useState(false);
+  if (!source || failed) return children || null;
+  return (
+    <Image
+      source={source}
+      style={style}
+      resizeMode={resizeMode}
+      onLoad={onLoad}
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 // Recipe gold cost per tier — doc §67 V5 lock (LIVE 2026-05-22, unchanged V5).
 // P6 12k forces a real economy choice; with the W^1.15 gold formula a single
@@ -1866,6 +1888,23 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
 
   const boardLeft = (VIEWPORT_W - BOARD_W) / 2 + s.pan.x;
   const boardTop = (VIEWPORT_H - BOARD_H) / 2 + s.pan.y;
+  const boardActors = [
+    ...s.towers.map((t) => ({
+      key: `tw${t.id}`,
+      depth: t.r * 100 + t.c,
+      node: <TowerView t={t} time={s.time} />,
+    })),
+    ...s.candidates.map((t) => ({
+      key: `c${t.id}`,
+      depth: t.r * 100 + t.c + 0.25,
+      node: <CandidateView t={t} time={s.time} />,
+    })),
+    ...s.enemies.map((e) => ({
+      key: `e${e.id}`,
+      depth: e.r * 100 + e.c + 0.5,
+      node: <EnemyView e={e} time={s.time} />,
+    })),
+  ].sort((a, b) => a.depth - b.depth);
 
   let bottomMessage = '';
   if (s.phase === 'placing') {
@@ -1963,14 +2002,8 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
           {/* tap layer */}
           <Pressable onPress={onBoardPress} style={{ position: 'absolute', left: 0, top: 0, width: BOARD_W, height: BOARD_H }} />
 
-          {/* committed towers (gems, specials, rocks) */}
-          {s.towers.map((t) => <TowerView key={`tw${t.id}`} t={t} time={s.time} />)}
-
-          {/* candidates (highlighted pulsing) */}
-          {s.candidates.map((t) => <CandidateView key={`c${t.id}`} t={t} time={s.time} />)}
-
-          {/* enemies */}
-          {s.enemies.map((e) => <EnemyView key={`e${e.id}`} e={e} time={s.time} />)}
+          {/* y-sorted actors — cheap 2.5D depth without a new renderer */}
+          {boardActors.map((a) => <React.Fragment key={a.key}>{a.node}</React.Fragment>)}
 
           {/* projectiles */}
           {s.projectiles.map((p) => <ProjectileView key={`pr${p.id}`} p={p} />)}
@@ -2313,6 +2346,21 @@ const BoardChrome = React.memo(function BoardChrome() {
       {/* SVG-based stone floor (slabs, cracks, moss, vignette) */}
       <StoneFloor />
 
+      {USE_SPRITES.decor && ASSET_MAP.decor.maze_background && (
+        <RemoteSprite
+          source={ASSET_MAP.decor.maze_background}
+          resizeMode="cover"
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: BOARD_W,
+            height: BOARD_H,
+            opacity: 0.26,
+          }}
+        />
+      )}
+
       {/* Decorative crystals outside the play area */}
       {CRYSTAL_SPECS.map((c, i) => <DecoCrystal key={`dc${i}`} {...c} />)}
 
@@ -2536,6 +2584,33 @@ function Marker({ pt, label, color }) {
 
 // ───── Spawn portal — arched cave entrance with red glow ────────────────────
 function SpawnPortal({ pt, time }) {
+  const size = TILE * 3.25;
+  const left = pt.c * TILE - TILE * 2.1;
+  const top = pt.r * TILE - TILE * 1.08;
+  if (USE_SPRITES.decor && ASSET_MAP.decor.spawn_portal) {
+    return (
+      <RemoteSprite
+        source={ASSET_MAP.decor.spawn_portal}
+        style={{
+          position: 'absolute',
+          left,
+          top,
+          width: size,
+          height: size,
+          shadowColor: '#ff4d6d',
+          shadowOpacity: 0.55,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 2 },
+        }}
+      >
+        <SpawnPortalFallback pt={pt} time={time} />
+      </RemoteSprite>
+    );
+  }
+  return <SpawnPortalFallback pt={pt} time={time} />;
+}
+
+function SpawnPortalFallback({ pt, time }) {
   const flicker = 0.75 + 0.25 * Math.sin(time * 5);
   const flicker2 = 0.7 + 0.3 * Math.sin(time * 7 + 1.2);
   const flicker3 = 0.7 + 0.3 * Math.sin(time * 9 + 0.5);
@@ -2783,6 +2858,33 @@ function SpawnPortal({ pt, time }) {
 
 // ───── Castle keep — fortress with towers, battlements, banner ─────────────
 function CastleKeep({ pt, time }) {
+  const size = TILE * 3.2;
+  const left = pt.c * TILE - TILE * 2.1;
+  const top = pt.r * TILE - TILE * 1.08;
+  if (USE_SPRITES.decor && ASSET_MAP.decor.castle_keep) {
+    return (
+      <RemoteSprite
+        source={ASSET_MAP.decor.castle_keep}
+        style={{
+          position: 'absolute',
+          left,
+          top,
+          width: size,
+          height: size,
+          shadowColor: '#7be5d1',
+          shadowOpacity: 0.5,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 3 },
+        }}
+      >
+        <CastleKeepFallback pt={pt} time={time} />
+      </RemoteSprite>
+    );
+  }
+  return <CastleKeepFallback pt={pt} time={time} />;
+}
+
+function CastleKeepFallback({ pt, time }) {
   // Three independent flag-wave phases so they don't sync up.
   const wave1 = Math.sin(time * 3) * 1.5;
   const wave2 = Math.sin(time * 2.6 + 0.8) * 1.2;
@@ -3762,22 +3864,35 @@ function GemSvg({ gemType, tier }) {
 // All use recipe.color (main robe/body) and recipe.accent (trim/wings).
 
 const SPECIAL_TIER_SCALE = { 2: 1.05, 3: 1.18, 4: 1.35, 5: 1.55, 6: 1.85 };
+const SPECIAL_SPRITE_TIER_SCALE = { 2: 1.75, 3: 1.95, 4: 2.2, 5: 2.45, 6: 2.75 };
 
 function SpecialSvg({ recipe, time = 0, id: towerId = 0 }) {
   const tier = parseInt(recipe.tier.slice(1), 10);
-  const scale = SPECIAL_TIER_SCALE[tier] || 1;
-  const px = TILE * scale;
-  // G1 sprite path — if USE_SPRITES.towers is on AND an asset exists for this
-  // recipe id, render the PNG instead of the SVG. Keeps SVG as guaranteed
-  // fallback so the game never blanks if a require() goes missing.
+  const px = TILE * (SPECIAL_SPRITE_TIER_SCALE[tier] || 2);
   if (USE_SPRITES.towers && ASSET_MAP.towers[recipe.id]) {
     return (
-      <Image
+      <RemoteSprite
         source={ASSET_MAP.towers[recipe.id]}
-        style={{ width: px, height: px, resizeMode: 'contain' }}
-      />
+        style={{
+          width: px,
+          height: px,
+          shadowColor: recipe.accent,
+          shadowOpacity: 0.5,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 3 },
+        }}
+      >
+        <SpecialFallbackSvg recipe={recipe} time={time} id={towerId} />
+      </RemoteSprite>
     );
   }
+  return <SpecialFallbackSvg recipe={recipe} time={time} id={towerId} />;
+}
+
+function SpecialFallbackSvg({ recipe, time = 0, id: towerId = 0 }) {
+  const tier = parseInt(recipe.tier.slice(1), 10);
+  const scale = SPECIAL_TIER_SCALE[tier] || 1;
+  const px = TILE * scale;
   const id = useRef(nextGid()).current;
   const main = recipe.color;
   const accent = recipe.accent;
@@ -4370,6 +4485,25 @@ function SpecialSvg({ recipe, time = 0, id: towerId = 0 }) {
   );
 }
 
+function GroundShadow({ width, height, opacity = 0.42 }) {
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: (TILE - width) / 2,
+        bottom: TILE * 0.05,
+        width,
+        height,
+        borderRadius: height,
+        backgroundColor: '#000',
+        opacity,
+        transform: [{ scaleX: 1.2 }],
+      }}
+    />
+  );
+}
+
 function TowerView({ t, time }) {
   if (t.kind === 'rock') {
     return <RockView t={t} />;
@@ -4382,6 +4516,7 @@ function TowerView({ t, time }) {
         position: 'absolute', left: t.c * TILE, top: t.r * TILE,
         width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
       }}>
+        <GroundShadow width={TILE * 1.25} height={TILE * 0.22} opacity={0.38} />
         <SpecialSvg recipe={recipe} time={time || 0} id={t.id} />
         {/* Full special tower name written below the tile */}
         <View style={{
@@ -4415,6 +4550,7 @@ function TowerView({ t, time }) {
       position: 'absolute', left: t.c * TILE, top: t.r * TILE,
       width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
     }}>
+      <GroundShadow width={TILE * 0.86} height={TILE * 0.16} opacity={0.32} />
       <GemSvg gemType={t.gemType} tier={t.tier} />
     </View>
   );
@@ -4427,6 +4563,7 @@ function CandidateView({ t, time }) {
       position: 'absolute', left: t.c * TILE, top: t.r * TILE,
       width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
     }}>
+      <GroundShadow width={TILE * 0.95} height={TILE * 0.16} opacity={0.34} />
       <View style={{
         position: 'absolute',
         width: TILE * 1.15, height: TILE * 1.15,
@@ -4468,6 +4605,20 @@ function EnemyView({ e, time }) {
       top: e.r * TILE + (TILE - size) / 2,
       width: size, height: size,
     }}>
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: size * 0.16,
+          top: size * 0.78,
+          width: size * 0.72,
+          height: Math.max(3, size * 0.13),
+          borderRadius: size,
+          backgroundColor: '#000',
+          opacity: def.flying ? 0.18 : 0.42,
+          transform: [{ scaleX: def.flying ? 0.7 : 1.2 }],
+        }}
+      />
       <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }] }}>
         <CreatureSvg
           type={e.type}
@@ -4501,6 +4652,49 @@ function EnemyView({ e, time }) {
 }
 
 function CreatureSvg({ type, size, burning, flap, tier, bossVariant, rosterId }) {
+  const spriteKey = rosterId || bossVariant;
+  if ((type === 'boss' || type === 'mega') && USE_SPRITES.bosses && spriteKey && ASSET_MAP.bosses[spriteKey]) {
+    const spriteSize = size * (type === 'mega' ? 1.25 : 1.15);
+    return (
+      <RemoteSprite
+        source={ASSET_MAP.bosses[spriteKey]}
+        style={{
+          width: spriteSize,
+          height: spriteSize,
+          marginLeft: (size - spriteSize) / 2,
+          marginTop: (size - spriteSize) / 2,
+          shadowColor: '#000',
+          shadowOpacity: 0.55,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
+        }}
+      >
+        <CreatureFallbackSvg
+          type={type}
+          size={size}
+          burning={burning}
+          flap={flap}
+          tier={tier}
+          bossVariant={bossVariant}
+          rosterId={rosterId}
+        />
+      </RemoteSprite>
+    );
+  }
+  return (
+    <CreatureFallbackSvg
+      type={type}
+      size={size}
+      burning={burning}
+      flap={flap}
+      tier={tier}
+      bossVariant={bossVariant}
+      rosterId={rosterId}
+    />
+  );
+}
+
+function CreatureFallbackSvg({ type, size, burning, flap, tier, bossVariant, rosterId }) {
   const t = tier || 0;
   if (type === 'grunt') {
     if (t === 4) return <MythicGruntSvg size={size} burning={burning} />;
@@ -4536,11 +4730,6 @@ function CreatureSvg({ type, size, burning, flap, tier, bossVariant, rosterId })
     return <FlyerSvg size={size} burning={burning} flap={flap} />;
   }
   if (type === 'boss') {
-    // G1 sprite path — endless cycle bosses (W60+) carry rosterId; if PNG
-    // exists and sprites are enabled, render the asset over the SVG fallback.
-    if (USE_SPRITES.bosses && rosterId && ASSET_MAP.bosses[rosterId]) {
-      return <Image source={ASSET_MAP.bosses[rosterId]} style={{ width: size, height: size, resizeMode: 'contain' }} />;
-    }
     if (bossVariant === 'ender') return <WorldEnderBossSvg size={size} burning={burning} />;
     if (bossVariant === 'destroyer') return <DestroyerBossSvg size={size} burning={burning} />;
     if (bossVariant === 'blood') return <BloodBossSvg size={size} burning={burning} />;

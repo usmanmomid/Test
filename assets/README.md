@@ -1,85 +1,85 @@
 # Crystal Maze Defence - Asset Pipeline
 
-This folder contains the mobile game's art. `App.js` is currently Snack-safe
-because `USE_SPRITES` is off by default. The optional sprite path references
-GitHub raw URLs in `ASSET_MAP`, not local `require()` calls.
+This folder contains the mobile game's art. `App.js` stays Snack-safe because
+the active sprite path references GitHub raw URLs in `ASSET_MAP`, not local
+`require()` calls. Each sprite renderer falls back to SVG if the remote image
+cannot load.
 
 If sprite switches are enabled inside Expo Snack, those raw URLs must be public.
 Private GitHub repos return 404 to the Expo app, even if the user can see the
 files while logged in.
 
 For the eventual App Store build, these remote sources should be replaced with
-bundled Expo assets and optimized runtime PNGs.
+bundled Expo assets. The optimized PNGs in `assets/runtime/` are the intended
+runtime files.
 
 ## Current Rules
 
 - Do not rename files without updating `ASSET_MAP` in `App.js`.
 - Keep transparent-background PNGs for board sprites.
-- Source art can be large, but runtime board sprites should later be compressed
-  and downscaled to 256x256 or 512x512 for mobile performance.
-- `USE_SPRITES` in `App.js` remains off by default until we validate the new art
-  on a real phone.
+- Source art can be large, but board sprites should use the downscaled files in
+  `assets/runtime/`.
+- `USE_SPRITES` is enabled for towers, bosses, and decor. If a remote file fails
+  to load, the renderer falls back to the SVG version instead of blanking.
 
 ## Folder Map
 
-### `towers/`
+### `runtime/towers/`
 
 Runtime tower art is currently mapped to:
 
 | Recipe slot | Runtime file |
 |---|---|
-| 1 | `Special_Tower_01_mesh_full_transparent.png` |
-| 2 | `Special_Tower_02_mesh_full_transparent.png` |
-| 3 | `Special_Tower_03_mesh_full_transparent.png` |
-| 4 | `Special_Tower_04_mesh_full_transparent.png` |
-| 5 | `Special_Tower_05_mesh_full_transparent.png` |
-| 6 | `Special_Tower_06_mesh_full_transparent.png` |
-| 7 | `Special_Tower_07_mesh_full_transparent.png` |
-| 8 | `Special_Tower_08_mesh_full_transparent.png` |
-| 9 | `Special_Tower_09_mesh_full_transparent.png` |
-| 10 | `Special_Tower_10_mesh_full_transparent.png` |
-| 11 | `Special_Tower_11_mesh_full_transparent.png` |
-| 12 | `Special_Tower_12_mesh_full_transparent.png` |
-| 13 | `Special_Tower_13_mesh_full_transparent.png` |
-| 14 | `Special_Tower_14_mesh_full_transparent.png` |
-| 15 | `Special_Tower_15_mesh_full_transparent.png` |
-| 16 | `Special_Tower_16_mesh_full_transparent.png` |
-| 17 | `Special_Tower_17_mesh_full_transparent.png` |
-| 18 | `Special_Tower_18_mesh_full_transparent.png` |
+| 1 | `assets/runtime/towers/special_01.png` |
+| 2 | `assets/runtime/towers/special_02.png` |
+| 3 | `assets/runtime/towers/special_03.png` |
+| 4 | `assets/runtime/towers/special_04.png` |
+| 5 | `assets/runtime/towers/special_05.png` |
+| 6 | `assets/runtime/towers/special_06.png` |
+| 7 | `assets/runtime/towers/special_07.png` |
+| 8 | `assets/runtime/towers/special_08.png` |
+| 9 | `assets/runtime/towers/special_09.png` |
+| 10 | `assets/runtime/towers/special_10.png` |
+| 11 | `assets/runtime/towers/special_11.png` |
+| 12 | `assets/runtime/towers/special_12.png` |
+| 13 | `assets/runtime/towers/special_13.png` |
+| 14 | `assets/runtime/towers/special_14.png` |
+| 15 | `assets/runtime/towers/special_15.png` |
+| 16 | `assets/runtime/towers/special_16.png` |
+| 17 | `assets/runtime/towers/special_17.png` |
+| 18 | `assets/runtime/towers/special_18.png` |
 
-The `Special Tower N.png` files and
-`GemsCrystals All families P1-P6 except Opal.png` are kept as uploaded source
-art/reference sheets.
+The `assets/towers/` files are kept as uploaded source art/reference sheets.
 
-### `bosses/`
+### `runtime/bosses/`
 
 | Roster slot | Current file |
 |---|---|
-| 1 | `1. Pirate King.png` |
-| 2 | `2. Void Monarch.png` |
-| 3 | `3. Hellforge Brute.png` |
-| 4 | `4. Frost Lich.png` |
-| 5 | `5. Storm Crawler.png` |
-| 6 | `6. Ogre King.png` |
-| 7 | `7. Roots.png` |
-| 8 | `8. Ashfang.png` |
-| 9 | `9. Kraken.png` |
-| 10 | `10. Scorpion King.png` |
-| 11 | `11. Maze Bull.png` |
-| 12 | `12. Medusa.png` |
+| 1 | `assets/runtime/bosses/boss_01_pirate_king.png` |
+| 2 | `assets/runtime/bosses/boss_02_void_monarch.png` |
+| 3 | `assets/runtime/bosses/boss_03_hellforge_brute.png` |
+| 4 | `assets/runtime/bosses/boss_04_frost_lich.png` |
+| 5 | `assets/runtime/bosses/boss_05_storm_crawler.png` |
+| 6 | `assets/runtime/bosses/boss_06_ogre_king.png` |
+| 7 | `assets/runtime/bosses/boss_07_roots.png` |
+| 8 | `assets/runtime/bosses/boss_08_ashfang.png` |
+| 9 | `assets/runtime/bosses/boss_09_kraken.png` |
+| 10 | `assets/runtime/bosses/boss_10_scorpion_king.png` |
+| 11 | `assets/runtime/bosses/boss_11_maze_bull.png` |
+| 12 | `assets/runtime/bosses/boss_12_medusa.png` |
 
 `BOSS_ROSTER` still uses internal ids from the prototype. Update both
 `BOSS_ROSTER` and `ASSET_MAP.bosses` together when the final boss names are
 locked.
 
-### `decor/`
+### `runtime/decor/`
 
 | Use | Current file |
 |---|---|
-| Spawn portal | `Hells Gate (Spawn Portal).png` |
-| Enemy goal / monument | `Central Crystal (Goal of enemies).png` |
-| Board reference/background | `Maze.png` |
-| Recipe Master NPC | `RecipeMaster.png` |
+| Spawn portal | `assets/runtime/decor/spawn_portal.png` |
+| Enemy goal / monument | `assets/runtime/decor/central_crystal.png` |
+| Board reference/background | `assets/runtime/decor/maze_background.png` |
+| Recipe Master NPC | `assets/runtime/decor/recipe_master.png` |
 
 ### `gems/`
 
