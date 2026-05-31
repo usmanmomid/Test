@@ -1,93 +1,88 @@
-# Crystal Maze Defence — Asset Pipeline
+# Crystal Maze Defence - Asset Pipeline
 
-This folder is where game art lives. Each file referenced from `App.js` via
-`require('./assets/...')` is bundled by Expo at build time and rendered with
-React Native's `<Image>` component.
+This folder contains the mobile game's art. `App.js` is currently Snack-safe:
+assets are referenced through GitHub raw URLs in `ASSET_MAP`, not local
+`require()` calls. That lets the user copy only `App.js` into Expo Snack and
+still load images after the branch has been pushed.
 
-Placeholders are 64×64 PNGs with a coloured ring and a 2-letter label, so the
-game still runs (and the sprite slot is visible) before real art arrives.
-Replace any placeholder with a real PNG **using the exact same filename** and
-the change appears in the next build — no code edits needed.
+For the eventual App Store build, these remote sources should be replaced with
+bundled Expo assets and optimized runtime PNGs.
 
-## Naming convention
+## Current Rules
 
-- Lower-case, underscores, no spaces.
-- 2-digit index prefix matches the canonical roster index.
-- Aim for transparent-background PNG, square aspect, 256×256+ for sprites that
-  show large in inspect modals; 128×128 is enough for in-board rendering.
+- Do not rename files without updating `ASSET_MAP` in `App.js`.
+- Keep transparent-background PNGs for board sprites.
+- Source art can be large, but runtime board sprites should later be compressed
+  and downscaled to 256x256 or 512x512 for mobile performance.
+- `USE_SPRITES` in `App.js` remains off by default until we validate the new art
+  on a real phone.
 
-## Folder map
+## Folder Map
 
-### `towers/` (18 specials — per canonical rename list)
+### `towers/`
 
-| File | Display | Tier |
-|---|---|---|
-| `01_moonsteel_prism.png`    | Moonsteel Prism      | P2 |
-| `02_verdant_arcstone.png`   | Verdant Arcstone     | P2 |
-| `03_ember_obelisk.png`      | Ember Obelisk        | P2 |
-| `04_roseglass.png`          | Roseglass            | P3 |
-| `05_jade_oracle.png`        | Jade Oracle          | P3 |
-| `06_stormsplit.png`         | Stormsplit           | P3 |
-| `07_goldhex.png`            | Goldhex              | P3 |
-| `08_silver_warden.png`      | Silver Warden        | P4 |
-| `09_seraph.png`             | Seraph               | P4 |
-| `10_obsidian_breaker.png`   | Obsidian Breaker     | P4 |
-| `11_skylar.png`             | Skylar               | P4 |
-| `12_monarch.png`            | Monarch              | P5 |
-| `13_thunderheart.png`       | Thunderheart         | P5 |
-| `14_coral_resonance.png`    | Coral Resonance      | P5 |
-| `15_eye_of_the_frozen_sun.png` | Eye of the Frozen Sun | P5 |
-| `16_sovereign_diamond.png`  | Sovereign Diamond    | P6 |
-| `17_core_of_the_world.png`  | Core of the World    | P6 |
-| `18_luna.png`               | Luna                 | P6 |
+Runtime tower art is currently mapped to:
 
-### `bosses/` (12 received — endless-cycle padded to 20)
-
-| File | Roster id |
+| Recipe slot | Runtime file |
 |---|---|
-| `01_wraith_captain.png`    | wraith_captain |
-| `02_eye_magus.png`         | eye_magus |
-| `03_lava_lord.png`         | lava_lord |
-| `04_ice_lich.png`          | ice_lich |
-| `05_crystal_dragon.png`    | crystal_dragon |
-| `06_lava_scorpion.png`     | lava_scorpion |
-| `07_plague_ogre.png`       | plague_ogre |
-| `08_forest_treant.png`     | forest_treant |
-| `09_lava_cerberus.png`     | lava_cerberus |
-| `10_eldritch_horror.png`   | eldritch_horror |
-| `11_demon_warlord.png`     | demon_warlord |
-| `12_crystal_serpent.png`   | crystal_serpent |
+| 1 | `Special_Tower_01_mesh_full_transparent.png` |
+| 2 | `Special_Tower_02_mesh_full_transparent.png` |
+| 3 | `Special_Tower_03_mesh_full_transparent.png` |
+| 4 | `Special_Tower_04_mesh_full_transparent.png` |
+| 5 | `Special_Tower_05_mesh_full_transparent.png` |
+| 6 | `Special_Tower_06_mesh_full_transparent.png` |
+| 7 | `Special_Tower_07_mesh_full_transparent.png` |
+| 8 | `Special_Tower_08_mesh_full_transparent.png` |
+| 9 | `Special_Tower_09_mesh_full_transparent.png` |
+| 10 | `Special_Tower_10_mesh_full_transparent.png` |
+| 11 | `Special_Tower_11_mesh_full_transparent.png` |
+| 12 | `Special_Tower_12_mesh_full_transparent.png` |
+| 13 | `Special_Tower_13_mesh_full_transparent.png` |
+| 14 | `Special_Tower_14_mesh_full_transparent.png` |
+| 15 | `Special_Tower_15_mesh_full_transparent.png` |
+| 16 | `Special_Tower_16_mesh_full_transparent.png` |
+| 17 | `Special_Tower_17_mesh_full_transparent.png` |
+| 18 | `Special_Tower_18_mesh_full_transparent.png` |
+
+The `Special Tower N.png` files and
+`GemsCrystals All families P1-P6 except Opal.png` are kept as uploaded source
+art/reference sheets.
+
+### `bosses/`
+
+| Roster slot | Current file |
+|---|---|
+| 1 | `1. Pirate King.png` |
+| 2 | `2. Void Monarch.png` |
+| 3 | `3. Hellforge Brute.png` |
+| 4 | `4. Frost Lich.png` |
+| 5 | `5. Storm Crawler.png` |
+| 6 | `6. Ogre King.png` |
+| 7 | `7. Roots.png` |
+| 8 | `8. Ashfang.png` |
+| 9 | `9. Kraken.png` |
+| 10 | `10. Scorpion King.png` |
+| 11 | `11. Maze Bull.png` |
+| 12 | `12. Medusa.png` |
+
+`BOSS_ROSTER` still uses internal ids from the prototype. Update both
+`BOSS_ROSTER` and `ASSET_MAP.bosses` together when the final boss names are
+locked.
 
 ### `decor/`
 
-| File | Use |
+| Use | Current file |
 |---|---|
-| `spawn_portal.png`       | The start-of-path portal (Hells Gate aesthetic) |
-| `castle_keep.png`        | The end-of-path castle / goal |
-| `crystal_monument.png`   | Lobby central piece |
-| `recipe_master.png`      | Recipe Master NPC portrait |
+| Spawn portal | `Hells Gate (Spawn Portal).png` |
+| Enemy goal / monument | `Central Crystal (Goal of enemies).png` |
+| Board reference/background | `Maze.png` |
+| Recipe Master NPC | `RecipeMaster.png` |
 
-### `gems/` (optional — current SVG works well)
+### `gems/`
 
-If you want photo-real gem sprites instead of the SVG renderer, drop files like
-`sapphire_p1.png` … `topaz_p6.png` (48 total). Code path is wired but disabled
-by default.
+Reserved for optional individual gem sprites. The current SVG gem renderer is
+still active.
 
 ### `biomes/`
 
-| File | Use |
-|---|---|
-| `default.png` | Single board background reused across biomes (per user instruction "räcker med samma temporärt") |
-
-When more biome backgrounds arrive: `enchanted_grove.png`, `lava.png`,
-`ice_spire.png`, `topaz_highlands.png`, `ruby_crag.png`, `aquamarine_bay.png`.
-
-## How drop-in works
-
-`App.js` has an `ASSET_MAP` constant near the top that calls `require()` for
-each expected path. The rendering helpers (`SpriteOrSvg`) try to render the
-asset; if the placeholder is still in place, you'll see the coloured ring.
-Replace the file, rebuild, the real art shows up.
-
-No code changes required when swapping a placeholder for a real PNG with the
-same filename.
+Reserved for painted biome backgrounds.
