@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, {
   Path, Circle, Ellipse, Rect, G, LinearGradient, RadialGradient,
   Stop, Defs, Polygon, Line, Pattern,
@@ -134,6 +135,11 @@ function isReserved(r, c) {
 const STARTING_GOLD = 0;
 const MAX_PLACEMENTS = 5;
 const STONE_REFUND = 0;     // rocks can't be sold under standard rules
+const TUTORIAL_STEPS = [
+  { title: 'BUILD', body: 'Place 5 rolled gems. Every unused roll becomes stone and changes the maze.' },
+  { title: 'CHOOSE', body: 'Pick one result: keep, merge, chain-merge, or forge a recipe.' },
+  { title: 'COMBAT', body: 'Enemies follow the path. Tap towers for targeting; gold skills sit above the board.' },
+];
 
 // Game modes — doc §60.6 V4 (Marathon dropped). 3 mode set, default Standard.
 // Endless is bounded by board saturation + milestones, not a wave count.
@@ -190,6 +196,24 @@ const emptyPerDiff = () => ({
   hard: { bestWave: 0 },
   nightmare: { bestWave: 0 },
 });
+const STORAGE_KEY = 'crystal-maze-defence:v1';
+const defaultStats = () => ({
+  bestScore: 0,
+  bestWave: 0,
+  gamesPlayed: 0,
+  wins: 0,
+  tutorialDone: false,
+  perDiff: emptyPerDiff(),
+});
+function normalizeStats(raw) {
+  const base = defaultStats();
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    ...base,
+    ...raw,
+    perDiff: { ...base.perDiff, ...(raw.perDiff || {}) },
+  };
+}
 
 // ─── Enemy HP system — doc V5 §A3/§59 CANONICAL (LIVE 2026-05-23) ────────────
 // HP(W) = BaseHP × ∏ Growth(i) × ChaosBand × Difficulty × Ramp × LocalMult.
@@ -958,6 +982,146 @@ function findRecipeMatch(anchor, allTowers, recipe) {
   return matched;
 }
 
+function findChainMergeMatch(anchor, allTowers) {
+  if (!anchor || anchor.kind !== 'gem' || anchor.tier + 2 > 6) return null;
+  const used = new Set([anchor.id]);
+  const same = allTowers.find((t) =>
+    !used.has(t.id) &&
+    t.kind === 'gem' &&
+    t.gemType === anchor.gemType &&
+    t.tier === anchor.tier
+  );
+  if (!same) return null;
+  used.add(same.id);
+  const next = allTowers.find((t) =>
+    !used.has(t.id) &&
+    t.kind === 'gem' &&
+    t.gemType === anchor.gemType &&
+    t.tier === anchor.tier + 1
+  );
+  if (!next) return null;
+  return [same, next];
+}
+
+const TARGET_MODES = [
+  { id: 'First', name: 'First' },
+  { id: 'Last', name: 'Last' },
+  { id: 'Close', name: 'Close' },
+  { id: 'Strong', name: 'Strong' },
+  { id: 'Weak', name: 'Weak' },
+  { id: 'Most', name: 'Most' },
+  { id: 'Least', name: 'Least' },
+  { id: 'ManualTarget', name: 'Manual' },
+];
+const TARGET_MODE_IDS = new Set(TARGET_MODES.map((m) => m.id));
+const DEFAULT_TARGET_MODE = 'First';
+
+function targetModeLabel(mode) {
+  return TARGET_MODES.find((m) => m.id === mode)?.name || TARGET_MODES[0].name;
+}
+
+function sortTargetsForTower(tower, inRange, stats) {
+  const mode = TARGET_MODE_IDS.has(tower.targetMode) ? tower.targetMode : DEFAULT_TARGET_MODE;
+  const pathFrac = (e) => e.subPath && e.subPath.length ? e.pathIdx / e.subPath.length : 0;
+  const clustered = (enemy) => {
+    const radius = Math.max(1.8, stats?.splash || 0);
+    let n = 0;
+    for (const { e } of inRange) {
+      if (e.hp > 0 && Math.hypot(e.r - enemy.r, e.c - enemy.c) <= radius) n += 1;
+    }
+    return n;
+  };
+  if (mode === 'ManualTarget') {
+    const locked = inRange.find((x) => x.e.id === tower.manualTargetId);
+    if (locked) return [locked, ...inRange.filter((x) => x !== locked)];
+  }
+  const sorted = [...inRange];
+  sorted.sort((a, b) => {
+    if (mode === 'Last') return pathFrac(a.e) - pathFrac(b.e);
+    if (mode === 'Close') return a.d - b.d;
+    if (mode === 'Strong') return b.e.hp - a.e.hp;
+    if (mode === 'Weak') return a.e.hp - b.e.hp;
+    if (mode === 'Most') return clustered(b.e) - clustered(a.e) || b.e.hp - a.e.hp;
+    if (mode === 'Least') return clustered(a.e) - clustered(b.e) || a.e.hp - b.e.hp;
+    return pathFrac(b.e) - pathFrac(a.e); // First: closest to castle/exit.
+  });
+  return sorted;
+}
+
+function recipeCodeLabel(recipe) {
+  return recipe.ingredients.map(ingredientLabel).join(' + ');
+}
+
+function findBoardActions(towers, gold = 0) {
+  const board = towers.filter((t) => t.kind === 'gem' || t.kind === 'special');
+  const actions = [];
+  for (const gemType of GEM_IDS) {
+    for (let purity = 1; purity <= 6; purity++) {
+      const group = board.filter((t) => t.kind === 'gem' && t.gemType === gemType && t.tier === purity);
+      if (group.length >= 2 && purity + 1 <= 6) {
+        actions.push({
+          signature: `M:+1:${gemType}:${purity}`,
+          kind: 'merge',
+          plus: 1,
+          ids: group.slice(0, 2).map((t) => t.id),
+          anchorId: group[0].id,
+          result: { kind: 'gem', gemType, tier: purity + 1 },
+          label: `${gemLabel(gemType, purity)} + ${gemLabel(gemType, purity)} = ${gemLabel(gemType, purity + 1)}`,
+          affordable: true,
+          cost: 0,
+        });
+      }
+      if (group.length >= 4 && purity + 2 <= 6) {
+        actions.push({
+          signature: `M:+2:${gemType}:${purity}`,
+          kind: 'merge',
+          plus: 2,
+          ids: group.slice(0, 4).map((t) => t.id),
+          anchorId: group[0].id,
+          result: { kind: 'gem', gemType, tier: purity + 2 },
+          label: `${gemLabel(gemType, purity)} + ${gemLabel(gemType, purity)} + ${gemLabel(gemType, purity)} + ${gemLabel(gemType, purity)} = ${gemLabel(gemType, purity + 2)}`,
+          affordable: true,
+          cost: 0,
+        });
+      }
+      if (group.length >= 2 && purity + 2 <= 6) {
+        const next = board.find((t) => t.kind === 'gem' && t.gemType === gemType && t.tier === purity + 1);
+        if (next) {
+          actions.push({
+            signature: `M:chain:${gemType}:${purity}`,
+            kind: 'chain',
+            ids: [next.id, group[0].id, group[1].id],
+            anchorId: next.id,
+            result: { kind: 'gem', gemType, tier: purity + 2 },
+            label: `${gemLabel(gemType, purity)} + ${gemLabel(gemType, purity)} + ${gemLabel(gemType, purity + 1)} = ${gemLabel(gemType, purity + 2)}`,
+            affordable: true,
+            cost: 0,
+          });
+        }
+      }
+    }
+  }
+  for (const recipe of SPECIAL_RECIPES) {
+    for (const anchor of board) {
+      const others = findRecipeMatch(anchor, board, recipe);
+      if (!others) continue;
+      const cost = recipeGoldCost(recipe);
+      actions.push({
+        signature: `R:${recipe.id}`,
+        kind: 'recipe',
+        ids: [anchor.id, ...others.map((t) => t.id)],
+        anchorId: anchor.id,
+        result: { kind: 'special', specialId: recipe.id },
+        label: `${recipeCodeLabel(recipe)} = ${recipe.name}`,
+        affordable: gold >= cost,
+        cost,
+      });
+      break;
+    }
+  }
+  return actions.slice(0, 8);
+}
+
 function ingredientLabel(ing) {
   if (ing.specialId) return SPECIAL_BY_ID[ing.specialId]?.name || ing.specialId;
   return `${GEMS[ing.gemType].name} ${tier(ing.tier).short}`;
@@ -981,64 +1145,92 @@ const ENEMIES = {
   mega:     { speed: 1.0, gold: 30, color: '#ff2244', size: 1.1, armor: 9, flying: false },
 };
 
+const WAVE_ABILITY_LABELS = {
+  vitality: 'Vitality',
+  hidden: 'Hidden',
+  evasion: 'Evasion',
+  magicResist: 'Magic Resist',
+  physicalResist: 'Physical Resist',
+  highArmor: 'High Armor',
+  reactiveArmor: 'Reactive Armor',
+  disarmAura: 'Disarm Aura',
+  blink: 'Blink',
+  rush: 'Rush',
+  recharge: 'Recharge',
+  krakenShell: 'Kraken Shell',
+  shield: 'Refraction',
+  flying: 'Flying',
+};
+
+const sp = (type, count, gap, mods = [], opts = {}) => ({ type, count, gap, mods, ...opts });
+const spawnType = (entry) => Array.isArray(entry) ? entry[0] : entry.type;
+const spawnCount = (entry) => Array.isArray(entry) ? entry[1] : entry.count;
+const spawnGap = (entry) => Array.isArray(entry) ? entry[2] : entry.gap;
+const spawnMods = (entry) => Array.isArray(entry) ? [] : (entry.mods || []);
+const isBossSpawn = (entry) => {
+  const type = spawnType(entry);
+  return type === 'boss' || type === 'mega';
+};
+
+const WAVE_ROSTER = [
+  { name: 'Glimmer Mites', lesson: 'Basic movement lesson', spawns: [sp('grunt', 20, 0.55)] },
+  { name: 'Shard Sprinters', lesson: 'Speed pressure', spawns: [sp('runner', 22, 0.42, ['rush'])] },
+  { name: 'Stoneback Yaks', lesson: 'Armor lesson', spawns: [sp('tank', 24, 0.62, ['highArmor'], { armor: 3 })] },
+  { name: 'Clockwork Runners', lesson: 'Fast path punishment', spawns: [sp('runner', 24, 0.34, ['rush'], { armor: 1 })] },
+  { name: 'Skyglass Wisps', lesson: 'First flying route check', spawns: [sp('flyer', 22, 0.48, ['flying'])], trial: 'AERIAL' },
+  { name: 'Moss Stumps', lesson: 'Early DPS check', spawns: [sp('tank', 24, 0.68, ['vitality'], { armor: 2 })] },
+  { name: 'Emerald Lizards', lesson: 'Sustain and poison value', spawns: [sp('grunt', 24, 0.52, ['recharge'], { armor: 1 })] },
+  { name: 'Veil Spiders', lesson: 'Reveal/support lesson', spawns: [sp('swarm', 26, 0.36, ['hidden'])] },
+  { name: 'Duskmask Foxes', lesson: 'Anti-evasion preparation', spawns: [sp('runner', 26, 0.43, ['evasion'])] },
+  { name: 'Iron Prism Hound', lesson: 'First boss', spawns: [sp('boss', 1, 0.5, [], { bossVariant: 'demon', bossName: 'IRON PRISM HOUND' })] },
+  { name: 'Cloud Sheep', lesson: 'Armor escalation', spawns: [sp('tank', 28, 0.62, ['highArmor'], { armor: 4 })] },
+  { name: 'Laughing Alpacas', lesson: 'Tower-disarm pressure', spawns: [sp('grunt', 28, 0.5, ['disarmAura'], { armor: 1 })] },
+  { name: 'Rose Boars', lesson: 'Midgame HP baseline', spawns: [sp('tank', 30, 0.54, ['vitality'], { armor: 2 })] },
+  { name: 'Bulwark Dogs', lesson: 'Shield-breaking lesson', spawns: [sp('tank', 30, 0.54, ['shield', 'highArmor'], { armor: 4 })] },
+  { name: 'Bamboo Gliders', lesson: 'Flying mixed HP', spawns: [sp('flyer', 30, 0.46, ['flying', 'vitality'], { armor: 1 })], trial: 'AERIAL' },
+  { name: 'Young Rift Demons', lesson: 'Damage-type lesson', spawns: [sp('runner', 32, 0.42, ['magicResist'], { armor: 2 })] },
+  { name: 'Belted Storm Chickens', lesson: 'Observed midgame gold point', spawns: [sp('runner', 32, 0.43, ['evasion'], { armor: 1 })] },
+  { name: 'Night Boars', lesson: 'Reveal plus control', spawns: [sp('grunt', 32, 0.48, ['hidden', 'disarmAura'], { armor: 2 })] },
+  { name: 'Rabbit-Donkey Rush', lesson: 'Burst speed turns', spawns: [sp('runner', 34, 0.32, ['rush'], { armor: 2 })] },
+  { name: 'Forgeback Behemoth', lesson: 'Second boss', spawns: [sp('boss', 1, 0.5, [], { bossVariant: 'void', bossName: 'FORGEBACK BEHEMOTH' })] },
+  { name: 'Crabs and Rippers', lesson: 'Sustained HP wave', spawns: [sp('tank', 34, 0.58, ['vitality'], { armor: 4 })] },
+  { name: 'Lockjaw Beetles', lesson: 'High armor counter', spawns: [sp('tank', 34, 0.58, ['highArmor'], { armor: 20 })] },
+  { name: 'Crystal Jaw Twins', lesson: 'Magic damage check', spawns: [sp('tank', 36, 0.5, ['physicalResist', 'shield'], { armor: 2 })] },
+  { name: 'Reactive Donkeys', lesson: 'Punishes weak rapid hits', spawns: [sp('runner', 36, 0.45, ['reactiveArmor'], { armor: 5 })] },
+  { name: 'Corsair Drifters', lesson: 'Anti-air armor test', spawns: [sp('flyer', 36, 0.44, ['flying', 'highArmor'], { armor: 18 })], trial: 'AERIAL' },
+  { name: 'Skateflame Birds', lesson: 'Physical damage check', spawns: [sp('runner', 38, 0.38, ['magicResist'], { armor: 2 })] },
+  { name: 'Goldfish Phantoms', lesson: 'Flying special stack', spawns: [sp('flyer', 38, 0.42, ['flying', 'hidden', 'evasion'], { armor: 1 })] },
+  { name: 'Dragonfly Machinists', lesson: 'Anti-air reactive armor', spawns: [sp('flyer', 38, 0.43, ['flying', 'reactiveArmor'], { armor: 8 })] },
+  { name: 'Violet Fox Fleet', lesson: 'Late mixed defense', spawns: [sp('flyer', 40, 0.38, ['flying', 'evasion', 'shield'], { armor: 2 })] },
+  { name: 'Astra Carpet Tyrant', lesson: 'Third boss; flying', spawns: [sp('boss', 1, 0.5, ['flying'], { bossVariant: 'blood', bossName: 'ASTRA CARPET TYRANT' })] },
+  { name: 'Bookwyrm Guards', lesson: 'Rotating immunity', spawns: [sp('tank', 40, 0.5, ['physicalResist', 'shield'], { armor: 4 })] },
+  { name: 'Recharge Sharks', lesson: 'Regeneration/recharge', spawns: [sp('tank', 40, 0.5, ['recharge'], { armor: 4 })] },
+  { name: 'Ribbon Zombies', lesson: 'Blink and magic check', spawns: [sp('runner', 42, 0.4, ['physicalResist', 'blink'], { armor: 2 })] },
+  { name: 'Bloodwing Younglings', lesson: 'Flying evasion pressure', spawns: [sp('flyer', 42, 0.38, ['flying', 'evasion', 'disarmAura'], { armor: 2 })] },
+  { name: 'Twin Moon Foxes', lesson: 'Damage-type air check', spawns: [sp('flyer', 42, 0.38, ['flying', 'magicResist', 'physicalResist'], { armor: 3 })], trial: 'AERIAL' },
+  { name: 'Jade Jumo', lesson: 'Late immunity control', spawns: [sp('tank', 44, 0.48, ['magicResist'], { armor: 3 })] },
+  { name: 'Blink Bears', lesson: 'Path-targeting stress', spawns: [sp('tank', 44, 0.45, ['blink'], { armor: 4 })] },
+  { name: 'Nova Sprites', lesson: 'Reveal and sustain', spawns: [sp('grunt', 44, 0.42, ['hidden', 'vitality'], { armor: 3 })] },
+  { name: 'Kraken Newts', lesson: 'Status cleanse counter', spawns: [sp('flyer', 46, 0.36, ['flying', 'krakenShell'], { armor: 5 })] },
+  { name: 'Stormglass Ghost', lesson: 'Fourth boss; cleanse', spawns: [sp('boss', 1, 0.5, ['flying', 'krakenShell'], { bossVariant: 'destroyer', bossName: 'STORMGLASS GHOST' })] },
+  { name: 'Azure Dragons', lesson: 'Shield late wave', spawns: [sp('tank', 46, 0.42, ['shield'], { armor: 6 })] },
+  { name: 'Kupu Fliers', lesson: 'Air rush immunity', spawns: [sp('flyer', 46, 0.34, ['flying', 'magicResist', 'rush'], { armor: 3 })] },
+  { name: 'Furry Reef Fish', lesson: 'Stacked late mechanics', spawns: [sp('swarm', 48, 0.28, ['hidden', 'evasion', 'recharge'], { armor: 4 })] },
+  { name: 'Shroom Golems', lesson: 'Late blink immunity', spawns: [sp('tank', 48, 0.42, ['magicResist', 'blink'], { armor: 6 })] },
+  { name: 'Chirpy Icebirds', lesson: 'Anti-air disarm', spawns: [sp('flyer', 48, 0.34, ['flying', 'disarmAura'], { armor: 3 })], trial: 'AERIAL' },
+  { name: 'Boulder Boofs', lesson: 'Magic-only pressure', spawns: [sp('tank', 50, 0.4, ['physicalResist'], { armor: 8 })] },
+  { name: 'Crummy Riftlings', lesson: 'Final mixed rush', spawns: [sp('runner', 50, 0.3, ['magicResist', 'evasion', 'rush'], { armor: 5 })] },
+  { name: 'Wabbit Phantoms', lesson: 'Final air control', spawns: [sp('flyer', 50, 0.32, ['flying', 'magicResist', 'disarmAura', 'evasion'], { armor: 4 })] },
+  { name: 'Drodo Shellbacks', lesson: 'Pre-final cleanse', spawns: [sp('tank', 52, 0.38, ['krakenShell', 'recharge', 'highArmor'], { armor: 8 })] },
+  { name: 'Worldheart Hatchling', lesson: 'Final boss', spawns: [sp('mega', 1, 0.5, ['flying', 'krakenShell', 'shield'], { bossVariant: 'ender-mega', bossName: 'WORLDHEART HATCHLING' })] },
+];
+
 // ─── Wave generator (50 waves) ───────────────────────────────────────────────
-// Generates spawn lists + per-wave HP multipliers. Bosses on 10/20/30/40/50,
-// trial waves on 5/15/25/35/45 (speed / aerial / swarm / armored / endurance).
-// Curve anchors (THATKID baseline, ×1.0 difficulty):
-//   regular  1.18^(w-1):  W1 ≈ 1, W10 ≈ 5.2, W20 ≈ 32, W30 ≈ 199, W40 ≈ 1235, W50 ≈ 7657
-//   bosses   1.17^(w-1):  W10 ≈ 4.8, W20 ≈ 23, W30 ≈ 110, W40 ≈ 533, W50 ≈ 2570
-// Boss/mega get the softer curve so the 6-boss W50 fight isn't impossible.
+// W1-W50 uses the named FINAL_VERIFIED roster. V4/V5 still own HP, difficulty,
+// boss-only waves, and resistance rules; the roster supplies count, pacing, and
+// ability flags.
 function buildWaves() {
-  const waves = [];
-  for (let w = 1; w <= NUM_WAVES; w++) {
-    // HP is computed at spawn via computeEnemyHP(type, wave, diff) — the wave
-    // table only defines COMPOSITION now (P5: single HP source of truth).
-    let spawns;
-    let trial = null;
-    // Boss waves are BOSS-ONLY (P4 / Lock C / doc §51.2) — no minion adds.
-    if (w === 10) spawns = [['boss', 1, 0.5]];
-    else if (w === 20) spawns = [['boss', 2, 3.0]];
-    else if (w === 30) spawns = [['boss', 3, 2.5]];
-    else if (w === 40) spawns = [['mega', 1, 0.0], ['boss', 3, 2.0]];
-    else if (w === 50) spawns = [['mega', 2, 3.5], ['boss', 6, 1.5]];
-
-    // === TRIAL WAVES (W5/15/25/35/45) — themed challenge between bosses ===
-    else if (w === 5) {
-      trial = 'SPEED';
-      spawns = [['runner', 24, 0.22], ['grunt', 12, 0.4]];
-    }
-    else if (w === 15) {
-      trial = 'AERIAL';
-      spawns = [['flyer', 18, 0.4], ['runner', 8, 0.5]];
-    }
-    else if (w === 25) {
-      trial = 'SWARM';
-      spawns = [['swarm', 42, 0.15], ['grunt', 12, 0.4]];
-    }
-    else if (w === 35) {
-      trial = 'ARMORED';
-      spawns = [['tank', 8, 1.1], ['grunt', 18, 0.5], ['runner', 8, 0.5]];
-    }
-    else if (w === 45) {
-      trial = 'ENDURANCE';
-      spawns = [['tank', 6, 1.0], ['flyer', 10, 0.5], ['swarm', 22, 0.18], ['grunt', 20, 0.4]];
-    }
-
-    // === REGULAR WAVES ===
-    else {
-      const count = Math.floor(8 + w * 0.9);
-      const types = [];
-      if (w >= 1) types.push(['grunt', count, 0.55]);
-      if (w >= 4) types.push(['runner', Math.floor(count * 0.4), 0.4]);
-      if (w >= 6 && w % 3 === 0) types.push(['swarm', Math.floor(count * 1.2), 0.18]);
-      if (w >= 8 && w % 4 === 0) types.push(['tank', Math.max(1, Math.floor(w / 6)), 1.1]);
-      // BOOSTED flyer frequency: every 4 from W12 (was every 5 from W12)
-      if (w >= 12 && w % 4 === 0) types.push(['flyer', Math.max(3, Math.floor(count * 0.4)), 0.45]);
-      spawns = types;
-    }
-    waves.push({ spawns, trial });
-  }
-  return waves;
+  return WAVE_ROSTER.slice(0, NUM_WAVES).map((w) => ({ ...w, spawns: w.spawns.map((x) => ({ ...x, mods: [...(x.mods || [])] })) }));
 }
 const WAVES = buildWaves();
 
@@ -1050,16 +1242,16 @@ function getWave(w) {
   if (w % 10 === 0) {
     const bossCount = Math.min(8, 2 + Math.floor((w - 50) / 30));
     const megaCount = Math.min(4, 1 + Math.floor((w - 50) / 50));
-    return { spawns: [['mega', megaCount, 3.0], ['boss', bossCount, 1.5]], trial: null };
+    return { name: 'Endless Rift Lords', spawns: [sp('mega', megaCount, 3.0), sp('boss', bossCount, 1.5)], trial: null };
   }
   if (w % 10 === 5) {
     const trials = ['SPEED', 'AERIAL', 'SWARM', 'ARMORED', 'ENDURANCE'];
     const trial = trials[Math.floor((w - 5) / 10) % trials.length];
-    if (trial === 'SPEED')   return { spawns: [['runner', 28, 0.2], ['grunt', 14, 0.4]], trial };
-    if (trial === 'AERIAL')  return { spawns: [['flyer', 22, 0.4], ['runner', 10, 0.5]], trial };
-    if (trial === 'SWARM')   return { spawns: [['swarm', 30, 0.15], ['grunt', 14, 0.4]], trial };
-    if (trial === 'ARMORED') return { spawns: [['tank', 10, 1.1], ['grunt', 18, 0.5]], trial };
-    return { spawns: [['tank', 8, 1.0], ['flyer', 12, 0.5], ['swarm', 20, 0.18], ['grunt', 20, 0.4]], trial };
+    if (trial === 'SPEED')   return { name: 'Endless Rush Trial', spawns: [sp('runner', 28, 0.2, ['rush']), sp('grunt', 14, 0.4)], trial };
+    if (trial === 'AERIAL')  return { name: 'Endless Aerial Trial', spawns: [sp('flyer', 22, 0.4, ['flying']), sp('runner', 10, 0.5)], trial };
+    if (trial === 'SWARM')   return { name: 'Endless Swarm Trial', spawns: [sp('swarm', 30, 0.15), sp('grunt', 14, 0.4)], trial };
+    if (trial === 'ARMORED') return { name: 'Endless Armor Trial', spawns: [sp('tank', 10, 1.1, ['highArmor']), sp('grunt', 18, 0.5)], trial };
+    return { name: 'Endless Endurance Trial', spawns: [sp('tank', 8, 1.0, ['recharge']), sp('flyer', 12, 0.5, ['flying']), sp('swarm', 20, 0.18), sp('grunt', 20, 0.4)], trial };
   }
   // 70/20/10 endless composition: basic / specialist / elite (champion).
   const count = Math.min(30, 22 + Math.floor((w - 50) * 0.3));
@@ -1067,13 +1259,51 @@ function getWave(w) {
   const specialist = Math.round(count * 0.20);
   const elite = Math.max(1, count - basic - specialist);
   return {
+    name: 'Endless Crystal Horde',
     spawns: [
-      ['grunt', basic, 0.45],
-      ['runner', specialist, 0.4],
-      ['champion', elite, 0.7],
+      sp('grunt', basic, 0.45),
+      sp(w % 4 === 0 ? 'flyer' : w % 3 === 0 ? 'tank' : w % 2 === 0 ? 'runner' : 'swarm', specialist, 0.35, w % 4 === 0 ? ['flying'] : []),
+      sp('champion', elite, 0.7, ['vitality']),
     ],
     trial: null,
   };
+}
+
+function applySpawnAbilities(enemy, entry, s) {
+  const mods = spawnMods(entry);
+  enemy.mods = mods;
+  enemy.waveName = entry.name || null;
+  if (entry.armor != null) enemy.armor = Math.max(enemy.armor || 0, entry.armor);
+  if (entry.bossVariant) enemy.bossVariant = entry.bossVariant;
+  if (entry.bossName) enemy.bossName = entry.bossName;
+  if (mods.includes('flying')) enemy.flying = true;
+  if (mods.includes('vitality')) {
+    enemy.hp = Math.floor(enemy.hp * 1.4);
+    enemy.maxHp = enemy.hp;
+  }
+  if (mods.includes('highArmor')) enemy.armor = Math.max(enemy.armor || 0, entry.armor ?? 12);
+  if (mods.includes('magicResist')) enemy.magicResist = RESISTANCE_CAP;
+  if (mods.includes('physicalResist')) enemy.physicalResist = RESISTANCE_CAP;
+  if (mods.includes('poisonResist')) enemy.poisonResist = RESISTANCE_CAP;
+  if (mods.includes('hidden')) enemy.hidden = true;
+  if (mods.includes('evasion')) enemy.evasion = 0.35;
+  if (mods.includes('reactiveArmor')) { enemy.reactiveArmor = true; enemy._reactiveHits = 0; }
+  if (mods.includes('disarmAura')) enemy.disarmAura = true;
+  if (mods.includes('blink')) { enemy.blink = true; enemy._blinkNext = s.time + 3.5; }
+  if (mods.includes('rush')) enemy.rush = true;
+  if (mods.includes('recharge')) enemy.recharge = true;
+  if (mods.includes('krakenShell')) { enemy.krakenShell = true; enemy._shellNext = s.time + 4.5; }
+  if (mods.includes('shield')) enemy.shieldHp = Math.max(enemy.shieldHp || 0, Math.floor(enemy.maxHp * 0.22));
+}
+
+function waveAbilityText(waveSpec) {
+  const labels = new Set();
+  for (const entry of waveSpec.spawns || []) {
+    for (const m of spawnMods(entry)) {
+      if (WAVE_ABILITY_LABELS[m]) labels.add(WAVE_ABILITY_LABELS[m]);
+    }
+  }
+  return [...labels].slice(0, 3).join(' · ');
 }
 
 // ─── BFS (4-directional, no diagonals) ──────────────────────────────────────
@@ -1129,11 +1359,25 @@ export default function App() {
   const [lastResult, setLastResult] = useState({ won: false, score: 0, waveReached: 0, difficulty: DEFAULT_DIFFICULTY, mode: DEFAULT_MODE });
   const [difficulty, setDifficulty] = useState(DEFAULT_DIFFICULTY);
   const [mode, setMode] = useState(DEFAULT_MODE);
-  const [stats, setStats] = useState({
-    bestScore: 0, bestWave: 0, gamesPlayed: 0, wins: 0,
-    // per-difficulty bests
-    perDiff: emptyPerDiff(),
-  });
+  const [stats, setStats] = useState(defaultStats);
+  const statsHydrated = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((raw) => {
+        if (!alive || !raw) return;
+        setStats(normalizeStats(JSON.parse(raw)));
+      })
+      .catch(() => {})
+      .finally(() => { statsHydrated.current = true; });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!statsHydrated.current) return;
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeStats(stats))).catch(() => {});
+  }, [stats]);
 
   const recordResult = (won, score, waveReached) => {
     setLastResult({ won, score, waveReached, difficulty, mode });
@@ -1145,10 +1389,15 @@ export default function App() {
         bestWave: Math.max(prev.bestWave, waveReached),
         gamesPlayed: prev.gamesPlayed + 1,
         wins: prev.wins + (won ? 1 : 0),
+        tutorialDone: true,
         perDiff: { ...prevDiff, [difficulty]: { bestWave: Math.max(prevForDiff.bestWave, waveReached) } },
       };
     });
     setScreen(won ? 'win' : 'lose');
+  };
+
+  const markTutorialDone = () => {
+    setStats((prev) => ({ ...normalizeStats(prev), tutorialDone: true }));
   };
 
   const startSolo = (diffId) => {
@@ -1169,7 +1418,15 @@ export default function App() {
       onLobby={() => setScreen('lobby')}
     />
   );
-  return <Game onEnd={recordResult} difficulty={difficulty} mode={mode} />;
+  return (
+    <Game
+      onEnd={recordResult}
+      difficulty={difficulty}
+      mode={mode}
+      showTutorial={!stats.tutorialDone && stats.gamesPlayed === 0}
+      onTutorialDone={markTutorialDone}
+    />
+  );
 }
 
 // ─── Lobby ───────────────────────────────────────────────────────────────────
@@ -1510,7 +1767,7 @@ function EndScreen({ won, score, waveReached, difficulty, mode, stats, onPlayAga
 }
 
 // ─── Game ────────────────────────────────────────────────────────────────────
-function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
+function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, onTutorialDone }) {
   const diff = DIFFICULTIES[difficulty] || DIFFICULTIES[DEFAULT_DIFFICULTY];
   const modeCfg = MODES[mode] || MODES[DEFAULT_MODE];
   const stateRef = useRef(null);
@@ -1557,6 +1814,10 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
       difficulty: diff,
       pity: null,                  // rollWithPity lazily seeds this
       inspect: null,               // candidate id being inspected
+      selectedTower: null,          // committed tower id for targeting controls
+      manualTargetTowerId: null,    // tower waiting for the next enemy tap
+      boardActionReadyAt: 0,        // 0.75s board-only action anti-spam
+      tutorialStep: showTutorial ? 0 : -1,
       flash: null,
       pan: { x: 0, y: 0 },
       scale: INITIAL_SCALE,
@@ -1679,6 +1940,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     const anchor = s.candidates.find((c) => c.id === candidateId);
     if (!anchor) return;
     delete anchor.isCandidate;
+    anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
@@ -1731,12 +1993,38 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     // Upgrade anchor
     delete anchor.isCandidate;
     anchor.tier += plusLevel;
+    anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
     // All other candidates not consumed and not anchor → rocks
     const keep = new Set([anchor.id]);
     // candidates used in merge also disappear (they were "consumed"), turning to rocks
     // But mentally they're "merged into the anchor". Convert to rocks too.
     candidatesToRocks(keep);
+    finishChooseAction();
+  };
+
+  const resolveChainMerge = (candidateId) => {
+    const anchor = s.candidates.find((c) => c.id === candidateId);
+    if (!anchor) return;
+    const pool = [...s.candidates, ...s.towers];
+    const consumed = findChainMergeMatch(anchor, pool);
+    if (!consumed) {
+      flash(`Need ${gemLabel(anchor.gemType, anchor.tier)} + ${gemLabel(anchor.gemType, anchor.tier + 1)}`);
+      return;
+    }
+    for (const t of consumed) {
+      if (s.towers.includes(t)) {
+        freeCell(t);
+        s.towers.push({ id: t.id + 3e8, r: t.r, c: t.c, kind: 'rock' });
+        s.towers = s.towers.filter((x) => x.id !== t.id);
+        s.grid[t.r][t.c] = true;
+      }
+    }
+    delete anchor.isCandidate;
+    anchor.tier += 2;
+    anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
+    s.towers.push(anchor);
+    candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
   };
 
@@ -1768,6 +2056,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     anchor.kind = 'special';
     anchor.specialId = recipe.id;
     anchor.cooldown = 0;
+    anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
@@ -1790,7 +2079,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     if (s.pendingWaveSkip) {
       s.pendingWaveSkip = false;
       const skipped = getWave(s.wave);
-      const totalSpawns = skipped.spawns.reduce((n, [, c]) => n + c, 0);
+      const totalSpawns = skipped.spawns.reduce((n, entry) => n + spawnCount(entry), 0);
       const reward = totalSpawns * killGold(s.wave) * (s.rewardMult || 1);
       s.gold += Math.round(reward);
       s.flash = { text: `Wave ${s.wave} skipped · +${Math.round(reward)}g`, until: s.time + 2.0 };
@@ -1816,13 +2105,16 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     // Phase E: Timelapse cuts spawn gaps in half for this wave (consumed).
     const timelapseMult = s.timelapseNext ? 0.5 : 1;
     s.timelapseNext = false;
-    for (const [type, count, gap] of w.spawns) {
-      const isBig = type === 'boss' || type === 'mega';
+    for (const entry of w.spawns) {
+      const type = spawnType(entry);
+      const count = spawnCount(entry);
+      const gap = spawnGap(entry);
+      const isBig = isBossSpawn(entry);
       const n = isBig ? count : Math.max(1, Math.round(count * diff.countMul));
       const g = gap * diff.spawnDelayMul * timelapseMult;
       for (let i = 0; i < n; i++) {
         t += g;
-        queue.push({ type, atTime: t });
+        queue.push({ ...entry, type, atTime: t });
       }
     }
     s.spawnQueue = queue;
@@ -1830,7 +2122,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     // Wave-start banner: stored separately from `flash` so it can render big.
     const totalEnemies = queue.length;
     const isBossWave = s.wave % 10 === 0;
-    const bossNames = { 10: 'DEMON LORD', 20: 'VOID KING', 30: 'BLOOD TYRANT', 40: 'DESTROYER', 50: 'WORLD ENDER' };
+    const bossNames = { 10: 'IRON PRISM HOUND', 20: 'FORGEBACK BEHEMOTH', 30: 'ASTRA CARPET TYRANT', 40: 'STORMGLASS GHOST', 50: 'WORLDHEART HATCHLING' };
     // Endless (W60+): use the cycled roster entry's display name.
     const endlessBoss = endlessBossEntry(s.wave);
     if (endlessBoss) bossNames[s.wave] = endlessBoss.name.toUpperCase();
@@ -1844,6 +2136,8 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
       total: totalEnemies,
       boss: isBossWave,
       bossName: bossNames[s.wave] || null,
+      waveName: w.name || null,
+      lesson: w.lesson || waveAbilityText(w) || null,
       trial,
       elite,
       champion,
@@ -1856,15 +2150,125 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     force();
   };
 
+  const executeBoardAction = (action) => {
+    if (!action) return;
+    if (s.time < (s.boardActionReadyAt || 0)) {
+      flash('Board action cooling down');
+      return;
+    }
+    if (action.cost && s.gold < action.cost) {
+      flash(`Need ${action.cost}g`);
+      return;
+    }
+    const ids = new Set(action.ids || []);
+    const consumed = [...ids].map((id) => s.towers.find((t) => t.id === id));
+    if (consumed.some((t) => !t)) {
+      flash('Board action expired');
+      return;
+    }
+    const anchor = s.towers.find((t) => t.id === action.anchorId) || consumed[0];
+    if (!anchor) return;
+    const result = {
+      id: anchor.id,
+      r: anchor.r,
+      c: anchor.c,
+      cooldown: 0,
+      targetMode: anchor.targetMode || DEFAULT_TARGET_MODE,
+    };
+    if (action.result.kind === 'gem') {
+      result.kind = 'gem';
+      result.gemType = action.result.gemType;
+      result.tier = action.result.tier;
+    } else {
+      result.kind = 'special';
+      result.specialId = action.result.specialId;
+    }
+    if (action.cost) s.gold -= action.cost;
+    s.towers = s.towers.filter((t) => !ids.has(t.id));
+    for (const t of consumed) {
+      if (t.id === anchor.id) continue;
+      s.towers.push({ id: t.id, r: t.r, c: t.c, kind: 'rock' });
+      s.grid[t.r][t.c] = true;
+    }
+    s.grid[anchor.r][anchor.c] = true;
+    s.towers.push(result);
+    s.selectedTower = null;
+    s.boardActionReadyAt = s.time + 0.75;
+    s.path = bfsCheckpoints(s.grid, SPAWN) || s.path;
+    for (const e of s.enemies) {
+      const def = ENEMIES[e.type];
+      if (e.hp <= 0 || e.flying || def.flying) continue;
+      e.subPath = bfsCheckpoints(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) }) || e.subPath;
+      e.pathIdx = 0;
+    }
+    flash(action.kind === 'recipe' ? `${SPECIAL_BY_ID[action.result.specialId]?.name || 'Recipe'} forged` : 'Board merge');
+    force();
+  };
+
+  const setTowerMode = (towerId, mode) => {
+    if (!TARGET_MODE_IDS.has(mode)) return;
+    const tower = s.towers.find((t) => t.id === towerId && (t.kind === 'gem' || t.kind === 'special'));
+    if (!tower) return;
+    tower.targetMode = mode;
+    if (mode === 'ManualTarget') {
+      s.manualTargetTowerId = tower.id;
+      s.selectedTower = null;
+      flash('Tap an enemy to lock target');
+    } else {
+      tower.manualTargetId = null;
+      if (s.manualTargetTowerId === tower.id) s.manualTargetTowerId = null;
+      flash(`${targetModeLabel(mode)} targeting`);
+    }
+    force();
+  };
+
+  const findEnemyAtBoardPoint = (x, y) => {
+    let best = null;
+    let bestD = Infinity;
+    for (const e of s.enemies) {
+      if (e.hp <= 0) continue;
+      const px = e.c * TILE + TILE / 2;
+      const py = e.r * TILE + TILE / 2;
+      const d = Math.hypot(px - x, py - y);
+      if (d < bestD && d <= TILE * 0.95) {
+        best = e;
+        bestD = d;
+      }
+    }
+    return best;
+  };
+
   // ── Tap handlers ───────────────────────────────────────────────────────
   const onBoardPress = (e) => {
     const { locationX, locationY } = e.nativeEvent;
     const c = Math.floor(locationX / TILE);
     const r = Math.floor(locationY / TILE);
     if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    if (s.manualTargetTowerId) {
+      const enemy = findEnemyAtBoardPoint(locationX, locationY);
+      const tower = s.towers.find((t) => t.id === s.manualTargetTowerId);
+      if (enemy && tower) {
+        tower.targetMode = 'ManualTarget';
+        tower.manualTargetId = enemy.id;
+        s.manualTargetTowerId = null;
+        flash(`Manual target #${enemy.id}`);
+      } else {
+        flash('Tap an enemy');
+      }
+      force();
+      return;
+    }
     const candidate = s.candidates.find((t) => t.r === r && t.c === c);
     if (candidate) {
       s.inspect = candidate.id;
+      s.selectedTower = null;
+      force();
+      return;
+    }
+    const tower = s.towers.find((t) => t.r === r && t.c === c && (t.kind === 'gem' || t.kind === 'special'));
+    if (tower) {
+      s.selectedTower = tower.id;
+      s.inspect = null;
       force();
       return;
     }
@@ -1881,9 +2285,23 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
     s.tiltAngle = s.tiltAngle === 0 ? 30 : s.tiltAngle === 30 ? 50 : 0;
     force();
   };
+  const nextTutorial = () => {
+    const done = s.tutorialStep >= TUTORIAL_STEPS.length - 1;
+    s.tutorialStep = done ? -1 : s.tutorialStep + 1;
+    if (done) onTutorialDone?.();
+    force();
+  };
+  const skipTutorial = () => {
+    s.tutorialStep = -1;
+    onTutorialDone?.();
+    force();
+  };
 
   // ── Derived ─────────────────────────────────────────────────────────────
   const inspectCandidate = s.inspect ? s.candidates.find((c) => c.id === s.inspect) : null;
+  const selectedTower = s.selectedTower ? s.towers.find((t) => t.id === s.selectedTower && (t.kind === 'gem' || t.kind === 'special')) : null;
+  const boardActions = findBoardActions(s.towers, s.gold);
+  const tutorial = s.tutorialStep >= 0 ? TUTORIAL_STEPS[Math.min(s.tutorialStep, TUTORIAL_STEPS.length - 1)] : null;
   const flashing = s.flash && s.flash.until > s.time ? s.flash.text : null;
 
   const boardLeft = (VIEWPORT_W - BOARD_W) / 2 + s.pan.x;
@@ -1914,6 +2332,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
   } else if (s.phase === 'attacking') {
     bottomMessage = `Wave ${s.wave}/${s.totalWaves === 9999 ? '∞' : s.totalWaves} in progress · pinch · drag`;
   }
+  if (s.manualTargetTowerId) bottomMessage = 'Manual targeting · tap an enemy';
 
   return (
     <SafeAreaView style={styles.gameRoot}>
@@ -2025,12 +2444,18 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
         </TouchableOpacity>
 
         <WaveBanner banner={s.waveBanner} time={s.time} />
+        <BoardActionTray
+          actions={boardActions}
+          cooldown={Math.max(0, (s.boardActionReadyAt || 0) - s.time)}
+          onAction={executeBoardAction}
+        />
 
         {flashing && (
           <View pointerEvents="none" style={styles.flashWrap}>
             <Text style={styles.flashText}>{flashing}</Text>
           </View>
         )}
+        <TutorialCard tutorial={tutorial} onNext={nextTutorial} onSkip={skipTutorial} />
       </View>
 
       <View style={styles.bottomBar}>
@@ -2072,7 +2497,37 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE }) {
                 gold={s.gold}
                 onKeep={() => resolveKeep(inspectCandidate.id)}
                 onMerge={(plus) => resolveMerge(inspectCandidate.id, plus)}
+                onChainMerge={() => resolveChainMerge(inspectCandidate.id)}
                 onCombine={(rid) => resolveCombine(inspectCandidate.id, rid)}
+              />
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={!!selectedTower}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { s.selectedTower = null; force(); }}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => { s.selectedTower = null; force(); }}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={[styles.cornerStud, { top: 8, left: 8 }]} />
+            <View style={[styles.cornerStud, { top: 8, right: 8 }]} />
+            <View style={[styles.cornerStud, { bottom: 8, left: 8 }]} />
+            <View style={[styles.cornerStud, { bottom: 8, right: 8 }]} />
+            <TouchableOpacity
+              style={styles.modalCloseX}
+              onPress={() => { s.selectedTower = null; force(); }}
+              hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            >
+              <Text style={styles.modalCloseXText}>✕</Text>
+            </TouchableOpacity>
+            {selectedTower && (
+              <TowerInspect
+                tower={selectedTower}
+                onMode={(modeId) => setTowerMode(selectedTower.id, modeId)}
               />
             )}
           </Pressable>
@@ -4597,7 +5052,8 @@ function EnemyView({ e, time }) {
   const bobY = Math.sin(time * b.yHz + phase) * b.yAmp;
   const bobX = b.xAmp ? Math.sin(time * b.xHz + phase + 1) * b.xAmp : 0;
   // Wing flap drives a different cycle for flyer
-  const flap = def.flying ? Math.sin(time * 11 + phase) : 0;
+  const flying = e.flying || def.flying;
+  const flap = flying ? Math.sin(time * 11 + phase) : 0;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
@@ -4615,8 +5071,8 @@ function EnemyView({ e, time }) {
           height: Math.max(3, size * 0.13),
           borderRadius: size,
           backgroundColor: '#000',
-          opacity: def.flying ? 0.18 : 0.42,
-          transform: [{ scaleX: def.flying ? 0.7 : 1.2 }],
+          opacity: flying ? 0.18 : 0.42,
+          transform: [{ scaleX: flying ? 0.7 : 1.2 }],
         }}
       />
       <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }] }}>
@@ -7067,6 +7523,17 @@ function WaveBanner({ banner, time }) {
         }}>
           WAVE {banner.wave}
         </Text>
+        {banner.waveName && (
+          <Text style={{
+            color: '#fff', fontSize: 18, fontWeight: '900',
+            letterSpacing: 3, marginTop: 4,
+            textShadowColor: '#000',
+            textShadowOffset: { width: 0, height: 1 },
+            textShadowRadius: 3,
+          }}>
+            {banner.waveName.toUpperCase()}
+          </Text>
+        )}
         {banner.bossName && (
           <Text style={{
             color: '#ffd166', fontSize: 22, fontWeight: '900',
@@ -7083,13 +7550,83 @@ function WaveBanner({ banner, time }) {
         }}>
           {banner.total} ENEMIES
         </Text>
+        {banner.lesson && (
+          <Text numberOfLines={1} style={{
+            color: '#e8e0c8', fontSize: 10, letterSpacing: 1.5, marginTop: 4, fontWeight: '700',
+            maxWidth: 300,
+          }}>
+            {banner.lesson.toUpperCase()}
+          </Text>
+        )}
       </View>
     </View>
   );
 }
 
+// ─── Tower targeting / candidate action picker ───────────────────────────────
+function TowerInspect({ tower, onMode }) {
+  const isGem = tower.kind === 'gem';
+  const name = isGem
+    ? `${GEMS[tower.gemType].name} ${tier(tower.tier).short}`
+    : (SPECIAL_BY_ID[tower.specialId]?.name || tower.specialId);
+  const color = isGem ? GEMS[tower.gemType].color : (SPECIAL_BY_ID[tower.specialId]?.accent || '#ffd166');
+  const stats = isGem ? gemStats(tower.gemType, tower.tier) : SPECIAL_BY_ID[tower.specialId]?.stats;
+  const mode = TARGET_MODE_IDS.has(tower.targetMode) ? tower.targetMode : DEFAULT_TARGET_MODE;
+  return (
+    <>
+      <View style={styles.modalHeaderRow}>
+        <View style={{
+          width: 32, height: 32, backgroundColor: color,
+          transform: [{ rotate: '45deg' }], borderRadius: 4, marginRight: 14,
+          shadowColor: color, shadowOpacity: 0.9, shadowRadius: 6,
+        }} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.modalTitle}>{name}</Text>
+          <Text style={styles.modalSub}>Targeting · {targetModeLabel(mode)}</Text>
+        </View>
+      </View>
+      {stats && (
+        <View style={styles.modalRow}>
+          <ModalStat label="DAMAGE" value={stats.damage} />
+          <ModalStat label="RANGE" value={stats.range.toFixed(1)} />
+          <ModalStat label="RATE" value={`${stats.cooldown.toFixed(2)}s`} />
+        </View>
+      )}
+      <Text style={styles.combineHint}>
+        Pick how this tower chooses enemies. Manual waits for your next enemy tap.
+      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        {TARGET_MODES.map((m) => {
+          const selected = mode === m.id;
+          return (
+            <TouchableOpacity
+              key={m.id}
+              onPress={() => onMode(m.id)}
+              activeOpacity={0.8}
+              style={{
+                width: '30.5%',
+                minWidth: 82,
+                borderRadius: 6,
+                borderWidth: 1.5,
+                borderColor: selected ? color : '#2a335f',
+                backgroundColor: selected ? '#1d2240' : '#101630',
+                paddingVertical: 8,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: selected ? color : '#cfd5e6', fontSize: 11, fontWeight: '900' }}>
+                {m.name.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </>
+  );
+}
+
 // ─── Candidate inspect / action picker ───────────────────────────────────────
-function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onCombine }) {
+function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onChainMerge, onCombine }) {
   const g = GEMS[candidate.gemType];
   const t = tier(candidate.tier);
   const stats = gemStats(candidate.gemType, candidate.tier);
@@ -7098,6 +7635,13 @@ function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onC
   ).length;
   const canMerge1 = matches >= 1 && candidate.tier < 6;
   const canMerge2 = matches >= 3 && candidate.tier + 2 <= 6;
+  const chainMerge = findChainMergeMatch(candidate, allTowers);
+  const canChainMerge = !!chainMerge;
+  const chainMergeDesc = candidate.tier + 2 <= 6
+    ? (canChainMerge
+      ? `${gemLabel(candidate.gemType, candidate.tier)} + ${gemLabel(candidate.gemType, candidate.tier)} + ${gemLabel(candidate.gemType, candidate.tier + 1)} → ${gemLabel(candidate.gemType, candidate.tier + 2)}`
+      : `Need ${gemLabel(candidate.gemType, candidate.tier)} + ${gemLabel(candidate.gemType, candidate.tier + 1)}`)
+    : 'Already too pure for chain merge';
   const craftable = SPECIAL_RECIPES.filter((r) => findRecipeMatch(candidate, allTowers, r) !== null);
   return (
     <>
@@ -7149,6 +7693,13 @@ function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onC
           color="#ffd166"
           enabled={canMerge2}
           onPress={() => onMerge(2)}
+        />
+        <ActionRow
+          label="CHAIN MERGE"
+          desc={chainMergeDesc}
+          color="#b08bff"
+          enabled={canChainMerge}
+          onPress={onChainMerge}
         />
       </View>
 
@@ -7308,9 +7859,11 @@ function step(dt, s, onEnd) {
   while (s.spawnQueue.length && s.spawnQueue[0].atTime <= s.time) {
     const sp = s.spawnQueue.shift();
     const def = ENEMIES[sp.type];
+    const mods = spawnMods(sp);
+    const flying = def.flying || mods.includes('flying');
     const diff = s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY];
     const hp = computeEnemyHP(sp.type, s.wave, diff);   // P5 single HP source
-    const subPath = def.flying
+    const subPath = flying
       ? [SPAWN, GOAL] // flyers go direct
       : bfsCheckpoints(s.grid, SPAWN) || [SPAWN, GOAL];
     // Tier 0 = base (W1-10), 1 = elite (W11-20), 2 = champion (W21-30),
@@ -7329,7 +7882,9 @@ function step(dt, s, onEnd) {
       // Endless cycle (W60+): pick from BOSS_ROSTER and reuse the matching
       // core SVG renderer until per-roster art lands.
       const endlessEntry = endlessBossEntry(s.wave);
-      if (endlessEntry) {
+      if (sp.bossVariant) {
+        bossVariant = sp.bossVariant;
+      } else if (endlessEntry) {
         bossVariant = endlessEntry.skin;
         rosterId = endlessEntry.id;
       } else {
@@ -7340,13 +7895,14 @@ function step(dt, s, onEnd) {
           : 'demon';
       }
     } else if (sp.type === 'mega') {
-      bossVariant = s.wave === 50 ? 'ender-mega' : 'colossus';
+      bossVariant = sp.bossVariant || (s.wave === 50 ? 'ender-mega' : 'colossus');
     }
-    s.enemies.push({
+    const enemy = {
       id: s.nextEnemyId++,
       r: SPAWN.r, c: SPAWN.c,
       hp, maxHp: hp,
       type: sp.type,
+      flying,
       armor: def.armor,
       subPath, pathIdx: 0,
       effects: [],
@@ -7357,7 +7913,9 @@ function step(dt, s, onEnd) {
       spawnWave: s.wave,
       spawnedAt: s.time,                  // for killstreak anti-farm (doc §54.3)
       _lastDmgT: s.time,                  // RegenWaves idle tracker
-    });
+    };
+    applySpawnAbilities(enemy, sp, s);
+    s.enemies.push(enemy);
     // Apply milestone evolution at spawn (doc §57.2) for W100+.
     const ms = milestoneMults(s.wave);
     if (ms.speed !== 1 || ms.armor !== 1) {
@@ -7389,6 +7947,24 @@ function step(dt, s, onEnd) {
       if (ef.type === 'slow') speedMul = Math.min(speedMul, ef.factor);
       if (ef.type === 'poison') e.hp -= ef.dps * dt * damageMultByType(e, 'poison');
     }
+    if (e.rush) {
+      const burst = Math.sin(s.time * 1.7 + e.id * 0.43) > 0.55;
+      if (burst) speedMul *= 1.65;
+    }
+    if (e.recharge && (s.time - (e._lastDmgT || 0)) >= 2.0) {
+      e.hp = Math.min(e.maxHp || e.hp, e.hp + (e.maxHp || e.hp) * 0.018 * dt);
+    }
+    if (e.krakenShell && s.time >= (e._shellNext || 0)) {
+      e._shellNext = s.time + 4.5;
+      e.effects = e.effects.filter((ef) => ef.type !== 'slow' && ef.type !== 'poison');
+    }
+    if (e.blink && s.time >= (e._blinkNext || 0) && e.subPath && e.pathIdx < e.subPath.length - 3) {
+      e.pathIdx = Math.min(e.subPath.length - 1, e.pathIdx + 2);
+      const snap = e.subPath[e.pathIdx];
+      e.r = snap.r;
+      e.c = snap.c;
+      e._blinkNext = s.time + 4.5;
+    }
     // Per-tick mutation effects (doc §56).
     if (muts.length) {
       if (muts.includes('ArmorBloom') && (e._bloomNextT || 0) <= s.time && (e._bloomStacks || 0) < MUT_ARMOR_BLOOM_MAX) {
@@ -7419,7 +7995,7 @@ function step(dt, s, onEnd) {
     }
     if (e.hp <= 0) continue;
     if (!e.subPath || e.pathIdx >= e.subPath.length) {
-      const fresh = def.flying
+      const fresh = (e.flying || def.flying)
         ? [{ r: Math.floor(e.r), c: Math.floor(e.c) }, GOAL]
         : bfsCheckpoints(s.grid, { r: Math.floor(e.r), c: Math.floor(e.c) });
       if (fresh) { e.subPath = fresh; e.pathIdx = 0; } else continue;
@@ -7457,6 +8033,10 @@ function step(dt, s, onEnd) {
   for (const t of s.towers) {
     if (t.kind !== 'gem' && t.kind !== 'special') continue;
     if (t._stunUntil && t._stunUntil > s.time) continue;   // JudgmentSlam stun
+    const disarmed = s.enemies.some((e) =>
+      e.hp > 0 && e.disarmAura && Math.hypot(e.r - t.r, e.c - t.c) <= 2.2
+    );
+    if (disarmed) continue;
     t.cooldown = Math.max(0, t.cooldown - dt);
     if (t.cooldown > 0) continue;
     const stats = t.kind === 'gem'
@@ -7472,19 +8052,20 @@ function step(dt, s, onEnd) {
       // FogOfWarLanes: non-Opal towers skip fogged enemies (doc §A.1b),
       // unless any Opal P6 is on the board (doc §A8.Opal: global reveal).
       if (e._inFog && !isOpalTower && !opalP6Active) continue;
+      if (e.hidden && !isOpalTower && !opalP6Active) continue;
       const d = Math.hypot(e.r - t.r, e.c - t.c);
       if (d <= stats.range) inRange.push({ e, d });
     }
     if (inRange.length === 0) continue;
-    inRange.sort((a, b) => a.d - b.d);
+    const sortedTargets = sortTargetsForTower(t, inRange, stats);
     // Aquamarine P6 (doc §A8.Aquamarine): ×2 attack speed when any mutation active.
     const cdMult = (p6Family(t) === 'aquamarine' && s.activeMutations.length > 0) ? 0.5 : 1;
     t.cooldown = stats.cooldown * cdMult;
-    fireAt(t, inRange, stats, color, s);
+    fireAt(t, sortedTargets, stats, color, s);
     // TowerEcho (Phase E): a second shot follows immediately. Re-evaluates
     // in-range (the first volley may have killed the target).
     if (effectActive(s, 'TowerEcho')) {
-      const inRange2 = inRange.filter((x) => x.e.hp > 0);
+      const inRange2 = sortedTargets.filter((x) => x.e.hp > 0);
       if (inRange2.length) fireAt(t, inRange2, stats, color, s);
     }
   }
@@ -7601,6 +8182,19 @@ function fireAt(tower, inRange, stats, color, s) {
   const dmgBoost = effectActive(s, 'DamageBoost') ? 2 : 1;
   const critForced = effectActive(s, 'CritBoost');
   const handleHit = (enemy, dmg) => {
+    const dmgType = towerDamageType(tower);
+    if (enemy.evasion && dmgType === 'physical' && p6 !== 'diamond' && !critForced && Math.random() < enemy.evasion) {
+      s.fx.push({
+        id: s.nextFxId++,
+        type: 'impact',
+        x: enemy.c * TILE + TILE / 2,
+        y: enemy.r * TILE + TILE / 2,
+        color: '#cfd5e6',
+        start: s.time,
+        until: s.time + 0.18,
+      });
+      return;
+    }
     s.fx.push({
       id: s.nextFxId++,
       type: 'impact',
@@ -7611,7 +8205,7 @@ function fireAt(tower, inRange, stats, color, s) {
       until: s.time + 0.28,
     });
     // Resist (doc §53.4) → optional armor bypass (Diamond P6 / CritBoost crit) → armor.
-    const typed = dmg * synMult * dmgBoost * damageMultByType(enemy, towerDamageType(tower));
+    const typed = dmg * synMult * dmgBoost * damageMultByType(enemy, dmgType);
     let reduced;
     if (p6 === 'diamond' || critForced) {
       reduced = typed;                                   // crit / Diamond P6: bypass armor
@@ -7619,7 +8213,16 @@ function fireAt(tower, inRange, stats, color, s) {
       const effectiveArmor = Math.max(0, enemy.armor - effArmorBreak);
       reduced = typed * (100 / (100 + effectiveArmor * 6));
     }
+    if (enemy.shieldHp > 0) {
+      const shieldTake = Math.min(enemy.shieldHp, reduced);
+      enemy.shieldHp -= shieldTake;
+      reduced -= shieldTake;
+    }
     enemy.hp -= reduced;
+    if (enemy.reactiveArmor) {
+      enemy._reactiveHits = (enemy._reactiveHits || 0) + 1;
+      if (enemy._reactiveHits % 5 === 0) enemy.armor = Math.min(80, (enemy.armor || 0) + 2);
+    }
     enemy._lastDmgT = s.time;                            // RegenWaves idle tracker
     // SplitEvolution mutation (doc §A.1b): 6% per hit, max 1 split per enemy.
     if (s.activeMutations.includes('SplitEvolution') && !enemy._splitDone && enemy.hp > 0 && Math.random() < MUT_SPLIT_CHANCE) {
@@ -7713,6 +8316,82 @@ function makeProjectile(tower, enemy, color, s) {
     toX: enemy.c * TILE + TILE / 2, toY: enemy.r * TILE + TILE / 2,
     color, until: s.time + 0.08,
   };
+}
+
+function BoardActionTray({ actions, cooldown, onAction }) {
+  if (!actions || actions.length === 0) return null;
+  const visible = actions.slice(0, 3);
+  return (
+    <View pointerEvents="box-none" style={{
+      position: 'absolute',
+      top: 12,
+      left: 12,
+      right: 12,
+      alignItems: 'center',
+      zIndex: 20,
+      gap: 6,
+    }}>
+      {visible.map((action) => {
+        const enabled = action.affordable && cooldown <= 0;
+        return (
+          <TouchableOpacity
+            key={action.signature}
+            disabled={!enabled}
+            onPress={() => onAction(action)}
+            activeOpacity={0.8}
+            style={{
+              maxWidth: Math.min(360, VIEWPORT_W - 36),
+              borderRadius: 6,
+              borderWidth: 1.5,
+              borderColor: enabled ? '#ffd166' : '#4a3c1a',
+              backgroundColor: enabled ? '#282318ee' : '#16130dee',
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              opacity: enabled ? 1 : 0.72,
+            }}
+          >
+            <Text numberOfLines={1} style={{ color: enabled ? '#ffd166' : '#9a8750', fontSize: 11, fontWeight: '900', textAlign: 'center' }}>
+              {action.label}
+            </Text>
+            {(action.cost > 0 || cooldown > 0) && (
+              <Text style={{ color: '#cfd5e6', fontSize: 9, textAlign: 'center', marginTop: 1 }}>
+                {cooldown > 0 ? `${cooldown.toFixed(1)}s` : `${action.cost}g`}
+              </Text>
+            )}
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+function TutorialCard({ tutorial, onNext, onSkip }) {
+  if (!tutorial) return null;
+  return (
+    <View style={{
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 12,
+      zIndex: 25,
+      borderRadius: 8,
+      borderWidth: 1.5,
+      borderColor: '#ffd166',
+      backgroundColor: '#101630ee',
+      padding: 10,
+    }}>
+      <Text style={{ color: '#ffd166', fontSize: 12, fontWeight: '900' }}>{tutorial.title}</Text>
+      <Text style={{ color: '#dfe5ff', fontSize: 12, lineHeight: 17, marginTop: 3 }}>{tutorial.body}</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <TouchableOpacity onPress={onSkip} style={{ paddingVertical: 6, paddingHorizontal: 10 }}>
+          <Text style={{ color: '#9aa3c7', fontSize: 11, fontWeight: '800' }}>SKIP</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onNext} style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#ffd166' }}>
+          <Text style={{ color: '#17120a', fontSize: 11, fontWeight: '900' }}>NEXT</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
