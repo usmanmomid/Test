@@ -850,9 +850,9 @@ const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 // ─── Asset pipeline (G1 foundation) ─────────────────────────────────────────
 // Snack-safe: these are optional remote Image sources, not local require()s.
 // That means App.js can be copied into Expo Snack without uploading the assets
-// folder. Drop higher-quality PNGs into GitHub and update ASSET_MAP paths; the
-// image updates after GitHub raw cache refreshes. For App Store offline builds,
-// this can later move back to bundled require() assets.
+// folder while USE_SPRITES is off. If sprite switches are enabled in Snack, the
+// GitHub raw asset URLs must be public; private repos return 404 to Expo. For
+// App Store offline builds, this can later move back to bundled require() assets.
 const RAW_ASSET_BASE =
   'https://raw.githubusercontent.com/usmanmomid/Test/claude/mobile-game-development-PjMjg/';
 const remoteAsset = (path) => ({ uri: encodeURI(RAW_ASSET_BASE + path) });

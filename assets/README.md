@@ -1,9 +1,12 @@
 # Crystal Maze Defence - Asset Pipeline
 
-This folder contains the mobile game's art. `App.js` is currently Snack-safe:
-assets are referenced through GitHub raw URLs in `ASSET_MAP`, not local
-`require()` calls. That lets the user copy only `App.js` into Expo Snack and
-still load images after the branch has been pushed.
+This folder contains the mobile game's art. `App.js` is currently Snack-safe
+because `USE_SPRITES` is off by default. The optional sprite path references
+GitHub raw URLs in `ASSET_MAP`, not local `require()` calls.
+
+If sprite switches are enabled inside Expo Snack, those raw URLs must be public.
+Private GitHub repos return 404 to the Expo app, even if the user can see the
+files while logged in.
 
 For the eventual App Store build, these remote sources should be replaced with
 bundled Expo assets and optimized runtime PNGs.
