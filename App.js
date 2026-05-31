@@ -1306,6 +1306,38 @@ function waveAbilityText(waveSpec) {
   return [...labels].slice(0, 3).join(' · ');
 }
 
+const ENEMY_BADGE_META = {
+  flying: { label: 'AIR', color: '#a8e0ff' },
+  hidden: { label: 'HID', color: '#cfd5e6' },
+  evasion: { label: 'EVA', color: '#ffd166' },
+  shield: { label: 'SHD', color: '#7be5d1' },
+  disarmAura: { label: 'DIS', color: '#ff8fab' },
+  reactiveArmor: { label: 'ARM', color: '#b08bff' },
+  recharge: { label: 'REG', color: '#5cf28a' },
+  krakenShell: { label: 'CLR', color: '#4cc9ff' },
+  blink: { label: 'BLK', color: '#ff9f43' },
+  rush: { label: 'RSH', color: '#ff4d6d' },
+  magicResist: { label: 'MR', color: '#b08bff' },
+  physicalResist: { label: 'PR', color: '#cfd5e6' },
+};
+
+function enemyBadges(e, def) {
+  const raw = [];
+  if (e.flying || def.flying) raw.push('flying');
+  if (e.hidden) raw.push('hidden');
+  if (e.evasion) raw.push('evasion');
+  if (e.shieldHp > 0) raw.push('shield');
+  if (e.disarmAura) raw.push('disarmAura');
+  if (e.reactiveArmor) raw.push('reactiveArmor');
+  if (e.recharge) raw.push('recharge');
+  if (e.krakenShell) raw.push('krakenShell');
+  if (e.blink) raw.push('blink');
+  if (e.rush) raw.push('rush');
+  if (e.magicResist) raw.push('magicResist');
+  if (e.physicalResist) raw.push('physicalResist');
+  return raw.map((key) => ENEMY_BADGE_META[key]).filter(Boolean).slice(0, 4);
+}
+
 // ─── BFS (4-directional, no diagonals) ──────────────────────────────────────
 function bfs(grid, start, goal) {
   const visited = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
@@ -2302,6 +2334,15 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
   const selectedTower = s.selectedTower ? s.towers.find((t) => t.id === s.selectedTower && (t.kind === 'gem' || t.kind === 'special')) : null;
   const boardActions = findBoardActions(s.towers, s.gold);
   const tutorial = s.tutorialStep >= 0 ? TUTORIAL_STEPS[Math.min(s.tutorialStep, TUTORIAL_STEPS.length - 1)] : null;
+  const activeStatuses = [
+    ...UTILITIES
+      .filter((u) => effectActive(s, u.id))
+      .map((u) => ({ id: u.id, label: u.name, color: u.color, time: Math.ceil((s.effectEnds[u.id] || s.time) - s.time) })),
+    ...(s.healOverTimeWaves > 0 ? [{ id: 'MendTicks', label: `Mend ${s.healOverTimeWaves}`, color: '#ff8fab' }] : []),
+    ...(s.timelapseNext ? [{ id: 'TimelapseNext', label: 'Timelapse ready', color: '#b08bff' }] : []),
+    ...(s.pendingWaveSkip ? [{ id: 'WaveSkipNext', label: 'Wave skip ready', color: '#b08bff' }] : []),
+    ...(s.activeMutations || []).map((m) => ({ id: `mut-${m}`, label: m.replace(/([A-Z])/g, ' $1').trim(), color: '#ff9f43' })),
+  ].slice(0, 8);
   const flashing = s.flash && s.flash.until > s.time ? s.flash.text : null;
 
   const boardLeft = (VIEWPORT_W - BOARD_W) / 2 + s.pan.x;
@@ -2310,7 +2351,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
     ...s.towers.map((t) => ({
       key: `tw${t.id}`,
       depth: t.r * 100 + t.c,
-      node: <TowerView t={t} time={s.time} />,
+      node: <TowerView t={t} time={s.time} selected={s.selectedTower === t.id || s.manualTargetTowerId === t.id} />,
     })),
     ...s.candidates.map((t) => ({
       key: `c${t.id}`,
@@ -2384,6 +2425,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
           );
         })}
       </ScrollView>
+      <ActiveStatusStrip items={activeStatuses} />
 
       <View
         style={{ width: VIEWPORT_W, height: VIEWPORT_H, backgroundColor: '#06081a', overflow: 'hidden' }}
@@ -4959,7 +5001,7 @@ function GroundShadow({ width, height, opacity = 0.42 }) {
   );
 }
 
-function TowerView({ t, time }) {
+function TowerView({ t, time, selected = false }) {
   if (t.kind === 'rock') {
     return <RockView t={t} />;
   }
@@ -4972,6 +5014,7 @@ function TowerView({ t, time }) {
         width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
       }}>
         <GroundShadow width={TILE * 1.25} height={TILE * 0.22} opacity={0.38} />
+        {selected && <SelectionRing color={recipe.accent || '#ffd166'} />}
         <SpecialSvg recipe={recipe} time={time || 0} id={t.id} />
         {/* Full special tower name written below the tile */}
         <View style={{
@@ -5006,8 +5049,27 @@ function TowerView({ t, time }) {
       width: TILE, height: TILE, alignItems: 'center', justifyContent: 'center',
     }}>
       <GroundShadow width={TILE * 0.86} height={TILE * 0.16} opacity={0.32} />
+      {selected && <SelectionRing color={GEMS[t.gemType].color} />}
       <GemSvg gemType={t.gemType} tier={t.tier} />
     </View>
+  );
+}
+
+function SelectionRing({ color }) {
+  return (
+    <View style={{
+      position: 'absolute',
+      width: TILE * 1.35,
+      height: TILE * 1.35,
+      borderRadius: TILE,
+      borderWidth: 2,
+      borderColor: color,
+      opacity: 0.95,
+      shadowColor: color,
+      shadowOpacity: 0.8,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 0 },
+    }} />
   );
 }
 
@@ -5047,6 +5109,7 @@ function EnemyView({ e, time }) {
   const size = TILE * def.size;
   const slowed = e.effects.some((ef) => ef.type === 'slow');
   const burning = e.effects.some((ef) => ef.type === 'poison');
+  const badges = enemyBadges(e, def);
   const b = BOB_PARAMS[e.type] || BOB_PARAMS.grunt;
   const phase = (e.id * 0.91) % (Math.PI * 2);
   const bobY = Math.sin(time * b.yHz + phase) * b.yAmp;
@@ -5094,15 +5157,91 @@ function EnemyView({ e, time }) {
           opacity: 0.9,
         }} />
       )}
+      {burning && (
+        <View style={{
+          position: 'absolute', left: -5, top: -5,
+          width: size + 10, height: size + 10, borderRadius: size,
+          borderWidth: 2, borderColor: '#5cf28a',
+          opacity: 0.45 + 0.25 * Math.sin(time * 8 + phase),
+        }} />
+      )}
+      {(e.shieldHp > 0 || e._bossShieldType) && (
+        <View style={{
+          position: 'absolute', left: -7, top: -7,
+          width: size + 14, height: size + 14, borderRadius: size,
+          borderWidth: 2,
+          borderColor: e._bossShieldType ? '#ff4d6d' : '#7be5d1',
+          opacity: 0.72,
+        }} />
+      )}
+      {badges.length > 0 && (
+        <View style={{
+          position: 'absolute',
+          left: -Math.max(10, size * 0.18),
+          top: -20,
+          flexDirection: 'row',
+          gap: 2,
+        }}>
+          {badges.map((b, i) => (
+            <View key={`${b.label}${i}`} style={{
+              minWidth: 18,
+              height: 12,
+              borderRadius: 3,
+              paddingHorizontal: 2,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#070a14ee',
+              borderWidth: 1,
+              borderColor: b.color,
+            }}>
+              <Text style={{ color: b.color, fontSize: 6.5, fontWeight: '900' }}>{b.label}</Text>
+            </View>
+          ))}
+        </View>
+      )}
       <View style={{
-        position: 'absolute', top: -6, left: 0, width: size, height: 3,
+        position: 'absolute', top: -6, left: 0, width: size, height: e.type === 'boss' || e.type === 'mega' ? 5 : 3,
         backgroundColor: '#000a', borderRadius: 2,
       }}>
         <View style={{
-          width: Math.max(0, size * (e.hp / e.maxHp)), height: 3,
-          backgroundColor: '#5cf28a', borderRadius: 2,
+          width: Math.max(0, size * (e.hp / e.maxHp)), height: e.type === 'boss' || e.type === 'mega' ? 5 : 3,
+          backgroundColor: e.hp / e.maxHp < 0.3 ? '#ff4d6d' : '#5cf28a', borderRadius: 2,
         }} />
+        {e.shieldHp > 0 && (
+          <View style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: Math.max(2, size * Math.min(1, e.shieldHp / Math.max(1, e.maxHp * 0.22))),
+            height: e.type === 'boss' || e.type === 'mega' ? 5 : 3,
+            backgroundColor: '#7be5d1',
+            borderRadius: 2,
+            opacity: 0.9,
+          }} />
+        )}
       </View>
+      {(e.type === 'boss' || e.type === 'mega') && (
+        <View style={{
+          position: 'absolute',
+          left: -size * 0.7,
+          right: -size * 0.7,
+          top: -36,
+          alignItems: 'center',
+        }}>
+          <View style={{
+            backgroundColor: '#10070bee',
+            borderWidth: 1,
+            borderColor: '#ff4d6d',
+            borderRadius: 5,
+            paddingHorizontal: 5,
+            paddingVertical: 1,
+          }}>
+            <Text numberOfLines={1} style={{ color: '#ffd166', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }}>
+              {(e.bossName || e.rosterId || e.bossVariant || 'BOSS').toString().replace(/_/g, ' ').toUpperCase()}
+            </Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -7365,11 +7504,43 @@ function ProjectileView({ p }) {
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
-      left: midX - len / 2, top: midY - 1,
-      width: len, height: 2,
-      backgroundColor: p.color, opacity: 0.9,
+      left: midX - len / 2,
+      top: midY - 3,
+      width: len,
+      height: 6,
       transform: [{ rotate: `${angle}rad` }],
-    }} />
+    }}>
+      <View style={{
+        position: 'absolute',
+        left: 0,
+        top: 1,
+        width: len,
+        height: 4,
+        borderRadius: 4,
+        backgroundColor: p.color,
+        opacity: 0.18,
+      }} />
+      <View style={{
+        position: 'absolute',
+        left: 0,
+        top: 2,
+        width: len,
+        height: 2,
+        borderRadius: 2,
+        backgroundColor: p.color,
+        opacity: 0.95,
+      }} />
+      <View style={{
+        position: 'absolute',
+        right: -2,
+        top: 0,
+        width: 6,
+        height: 6,
+        borderRadius: 6,
+        backgroundColor: '#fff',
+        opacity: 0.8,
+      }} />
+    </View>
   );
 }
 
@@ -7419,6 +7590,60 @@ function FxLayer({ fx, time }) {
                   opacity: (1 - t),
                 }} />
               )}
+            </View>
+          );
+        }
+        if (f.type === 'shield') {
+          const size = 12 + 28 * t;
+          const opacity = (1 - t) * 0.9;
+          return (
+            <View key={`fx${f.id}`} pointerEvents="none" style={{ position: 'absolute', left: f.x, top: f.y }}>
+              <View style={{
+                position: 'absolute',
+                left: -size / 2,
+                top: -size / 2,
+                width: size,
+                height: size,
+                borderRadius: size,
+                borderWidth: 2,
+                borderColor: '#7be5d1',
+                opacity,
+              }} />
+              <View style={{
+                position: 'absolute',
+                left: -size * 0.28,
+                top: -size * 0.28,
+                width: size * 0.56,
+                height: size * 0.56,
+                borderRadius: size,
+                backgroundColor: '#7be5d1',
+                opacity: opacity * 0.2,
+              }} />
+            </View>
+          );
+        }
+        if (f.type === 'text') {
+          const y = f.y - 18 * t;
+          const opacity = (1 - t) * (1 - t);
+          return (
+            <View key={`fx${f.id}`} pointerEvents="none" style={{
+              position: 'absolute',
+              left: f.x - 28,
+              top: y - 9,
+              width: 56,
+              alignItems: 'center',
+              opacity,
+            }}>
+              <Text style={{
+                color: f.color || '#fff',
+                fontSize: f.big ? 12 : 10,
+                fontWeight: '900',
+                textShadowColor: '#000',
+                textShadowOffset: { width: 0, height: 1 },
+                textShadowRadius: 2,
+              }}>
+                {f.text}
+              </Text>
             </View>
           );
         }
@@ -8193,6 +8418,16 @@ function fireAt(tower, inRange, stats, color, s) {
         start: s.time,
         until: s.time + 0.18,
       });
+      s.fx.push({
+        id: s.nextFxId++,
+        type: 'text',
+        x: enemy.c * TILE + TILE / 2,
+        y: enemy.r * TILE + TILE / 2 - 6,
+        text: 'MISS',
+        color: '#ffd166',
+        start: s.time,
+        until: s.time + 0.55,
+      });
       return;
     }
     s.fx.push({
@@ -8217,8 +8452,43 @@ function fireAt(tower, inRange, stats, color, s) {
       const shieldTake = Math.min(enemy.shieldHp, reduced);
       enemy.shieldHp -= shieldTake;
       reduced -= shieldTake;
+      if (shieldTake > 0) {
+        s.fx.push({
+          id: s.nextFxId++,
+          type: 'shield',
+          x: enemy.c * TILE + TILE / 2,
+          y: enemy.r * TILE + TILE / 2,
+          start: s.time,
+          until: s.time + 0.35,
+        });
+        if (enemy.shieldHp <= 0) {
+          s.fx.push({
+            id: s.nextFxId++,
+            type: 'text',
+            x: enemy.c * TILE + TILE / 2,
+            y: enemy.r * TILE + TILE / 2 - 8,
+            text: 'BREAK',
+            color: '#7be5d1',
+            start: s.time,
+            until: s.time + 0.65,
+          });
+        }
+      }
     }
     enemy.hp -= reduced;
+    if ((enemy.type === 'boss' || enemy.type === 'mega' || reduced >= (enemy.maxHp || 1) * 0.08) && reduced > 1) {
+      s.fx.push({
+        id: s.nextFxId++,
+        type: 'text',
+        x: enemy.c * TILE + TILE / 2,
+        y: enemy.r * TILE + TILE / 2 - 10,
+        text: `${Math.round(reduced)}`,
+        color: critForced || p6 === 'diamond' ? '#ffd166' : '#fff',
+        big: critForced || p6 === 'diamond',
+        start: s.time,
+        until: s.time + 0.5,
+      });
+    }
     if (enemy.reactiveArmor) {
       enemy._reactiveHits = (enemy._reactiveHits || 0) + 1;
       if (enemy._reactiveHits % 5 === 0) enemy.armor = Math.min(80, (enemy.armor || 0) + 2);
@@ -8318,21 +8588,64 @@ function makeProjectile(tower, enemy, color, s) {
   };
 }
 
+function ActiveStatusStrip({ items }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ maxHeight: 28, backgroundColor: '#090d1dee', borderBottomWidth: 1, borderBottomColor: '#202949' }}
+      contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 4, gap: 6 }}
+    >
+      {items.map((item) => (
+        <View key={item.id} style={{
+          borderRadius: 5,
+          borderWidth: 1,
+          borderColor: item.color,
+          backgroundColor: '#101630',
+          paddingHorizontal: 7,
+          height: 20,
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'row',
+          gap: 4,
+        }}>
+          <View style={{ width: 5, height: 5, borderRadius: 5, backgroundColor: item.color }} />
+          <Text numberOfLines={1} style={{ color: item.color, fontSize: 9, fontWeight: '900' }}>
+            {item.label.toUpperCase()}{item.time ? ` ${item.time}s` : ''}
+          </Text>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
 function BoardActionTray({ actions, cooldown, onAction }) {
   if (!actions || actions.length === 0) return null;
   const visible = actions.slice(0, 3);
   return (
     <View pointerEvents="box-none" style={{
       position: 'absolute',
-      top: 12,
+      top: 10,
       left: 12,
       right: 12,
       alignItems: 'center',
       zIndex: 20,
       gap: 6,
     }}>
+      <View style={{
+        borderRadius: 4,
+        backgroundColor: '#070a14dd',
+        borderWidth: 1,
+        borderColor: '#3a2818',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+      }}>
+        <Text style={{ color: '#ffd166', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }}>BOARD ACTION</Text>
+      </View>
       {visible.map((action) => {
         const enabled = action.affordable && cooldown <= 0;
+        const kindColor = action.kind === 'recipe' ? '#b08bff' : action.kind === 'chain' ? '#7be5d1' : '#ffd166';
         return (
           <TouchableOpacity
             key={action.signature}
@@ -8343,14 +8656,18 @@ function BoardActionTray({ actions, cooldown, onAction }) {
               maxWidth: Math.min(360, VIEWPORT_W - 36),
               borderRadius: 6,
               borderWidth: 1.5,
-              borderColor: enabled ? '#ffd166' : '#4a3c1a',
+              borderColor: enabled ? kindColor : '#4a3c1a',
               backgroundColor: enabled ? '#282318ee' : '#16130dee',
               paddingVertical: 6,
               paddingHorizontal: 10,
               opacity: enabled ? 1 : 0.72,
+              shadowColor: kindColor,
+              shadowOpacity: enabled ? 0.35 : 0,
+              shadowRadius: 6,
+              shadowOffset: { width: 0, height: 0 },
             }}
           >
-            <Text numberOfLines={1} style={{ color: enabled ? '#ffd166' : '#9a8750', fontSize: 11, fontWeight: '900', textAlign: 'center' }}>
+            <Text numberOfLines={1} style={{ color: enabled ? kindColor : '#9a8750', fontSize: 11, fontWeight: '900', textAlign: 'center' }}>
               {action.label}
             </Text>
             {(action.cost > 0 || cooldown > 0) && (
