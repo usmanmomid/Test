@@ -935,9 +935,9 @@ const ASSET_MAP = {
 // Placeholder mode keeps SVG on so you don't see ring-icons until real PNGs
 // land. Per-category overrides below.
 const USE_SPRITES = {
-  towers: true,
-  bosses: true,
-  decor:  true,
+  towers: false,   // FALSE while repo is private — raw URLs return 404 on Snack/Expo Go
+  bosses: false,   // and the failed requests freeze Connecting. Flip back to true
+  decor:  false,   // once the repo is public OR sprites are bundled via require().
 };
 
 function RemoteSprite({ source, style, children, onLoad, resizeMode = 'contain' }) {
