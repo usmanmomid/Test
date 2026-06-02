@@ -1585,6 +1585,11 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
       <LobbyBackground width={VIEWPORT_W} height={VIEWPORT_H + 200} />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 16 }}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.titleBannerWrap}>
         {/* Hanging chains on each side */}
         <View style={[styles.titleChain, { left: '22%' }]} />
@@ -1704,6 +1709,8 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
           <Text style={styles.modeBtnLock}>🔒</Text>
         </View>
       </View>
+
+      </ScrollView>
 
       <View style={styles.lobbyFooter}>
         <TouchableOpacity style={styles.footerBtn} activeOpacity={0.7}>
@@ -2380,6 +2387,12 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
   };
 
   // ── Derived ─────────────────────────────────────────────────────────────
+  // Auto-open the inspect modal on the first candidate as soon as the player
+  // finishes 5 placements and we enter the 'choosing' phase. Saves a tap and
+  // makes Keep/Merge/Combine actions immediately reachable.
+  if (s.phase === 'choosing' && !s.inspect && s.candidates.length > 0) {
+    s.inspect = s.candidates[0].id;
+  }
   const inspectCandidate = s.inspect ? s.candidates.find((c) => c.id === s.inspect) : null;
   const selectedTower = s.selectedTower ? s.towers.find((t) => t.id === s.selectedTower && (t.kind === 'gem' || t.kind === 'special')) : null;
   const boardActions = findBoardActions(s.towers, s.gold);
@@ -2591,6 +2604,8 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
             {inspectCandidate && (
               <CandidateInspect
                 candidate={inspectCandidate}
+                candidates={s.candidates}
+                onSelectCandidate={(id) => { s.inspect = id; force(); }}
                 allTowers={[...s.candidates, ...s.towers]}
                 gold={s.gold}
                 onKeep={() => resolveKeep(inspectCandidate.id)}
@@ -3871,7 +3886,9 @@ function RockView({ t }) {
     { hi: '#b8c0d0', main: '#7a8090', dark: '#3a4050', deep: '#1a2030' },
     { hi: '#5a5a72', main: '#3a3a4e', dark: '#1a1a28', deep: '#000' },
   ];
-  const pal = palettes[palette];
+  // Bullet-proof — if seed math overflows / t.id is NaN, fall back to palette 0
+  // instead of crashing the SVG renderer (was "Cannot read property 'hi' of undefined").
+  const pal = palettes[palette] || palettes[0];
   // Embedded-crystal accent colors (cycled by detail bit)
   const accentColors = ['#4cc9ff', '#ff4d6d', '#5cf28a', '#ffd166'];
   const accent = accentColors[(seed >> 16) % 4];
@@ -7907,7 +7924,7 @@ function TowerInspect({ tower, onMode }) {
 }
 
 // ─── Candidate inspect / action picker ───────────────────────────────────────
-function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onChainMerge, onCombine }) {
+function CandidateInspect({ candidate, candidates = [], onSelectCandidate, allTowers, gold = 0, onKeep, onMerge, onChainMerge, onCombine }) {
   const g = GEMS[candidate.gemType];
   const t = tier(candidate.tier);
   const stats = gemStats(candidate.gemType, candidate.tier);
@@ -7924,8 +7941,43 @@ function CandidateInspect({ candidate, allTowers, gold = 0, onKeep, onMerge, onC
       : `Need ${gemLabel(candidate.gemType, candidate.tier)} + ${gemLabel(candidate.gemType, candidate.tier + 1)}`)
     : 'Already too pure for chain merge';
   const craftable = SPECIAL_RECIPES.filter((r) => findRecipeMatch(candidate, allTowers, r) !== null);
+  // Multi-candidate strip — show all 5 placements with their family colour so
+  // the player can switch which one's actions are visible without closing the
+  // modal. Selected candidate gets a brighter border.
+  const candidateChips = candidates.length > 1 ? (
+    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+      {candidates.map((c) => {
+        const cg = GEMS[c.gemType];
+        const ct = tier(c.tier);
+        const isActive = c.id === candidate.id;
+        return (
+          <TouchableOpacity
+            key={c.id}
+            onPress={() => onSelectCandidate && onSelectCandidate(c.id)}
+            activeOpacity={0.75}
+            style={{
+              flex: 1, minWidth: 80,
+              paddingHorizontal: 8, paddingVertical: 6,
+              borderRadius: 6,
+              borderWidth: isActive ? 2 : 1,
+              borderColor: isActive ? '#ffd166' : cg.color + '88',
+              backgroundColor: cg.color + (isActive ? '40' : '22'),
+            }}
+          >
+            <Text style={{ color: cg.color, fontWeight: '800', fontSize: 11, textAlign: 'center' }}>
+              {cg.name.toUpperCase()}
+            </Text>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
+              {ct.name} {ct.short}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  ) : null;
   return (
     <>
+      {candidateChips}
       <View style={styles.modalHeaderRow}>
         <View style={{
           width: 32, height: 32, backgroundColor: g.color,
@@ -8777,7 +8829,7 @@ const styles = StyleSheet.create({
   lobbyRoot: {
     flex: 1, backgroundColor: '#0b1020',
     paddingHorizontal: 18, paddingTop: 24, paddingBottom: 12,
-    justifyContent: 'space-between',
+    // justifyContent removed — ScrollView handles vertical layout now
   },
   lobbyHeader: { alignItems: 'center', marginTop: 12 },
   // Wood-sign banner for the lobby title — dark wood gradient via stacked colors,
