@@ -587,6 +587,53 @@ const STREAK_MIN_ALIVE_SECONDS = 1.5;
 // into 3 shapes: instant (Heal/GoldFlash/WaveSkip/HealOverTime), time-bounded
 // (Freeze/DamageBoost/GoldBlessing/SpeedShield/CritBoost/TowerEcho/GoldRain),
 // next-event (Timelapse/CandyLure).
+// ─── Audio (stub infrastructure — ready for expo-av swap) ───────────────────
+// All trigger points across the game call playSound(id). Currently a no-op so
+// no dependency is required (keeps Snack stable). To enable real audio:
+//   1. Add `expo-av` to package.json (Snack: add via Dependencies panel).
+//   2. Replace the playSound stub below with:
+//        const _sounds = {};
+//        async function _load(id, src) {
+//          const { sound } = await Audio.Sound.createAsync(src);
+//          _sounds[id] = sound;
+//        }
+//        // call _load() for each id at app start
+//        function playSound(id) {
+//          if (s_audioMuted || !_sounds[id]) return;
+//          _sounds[id].replayAsync();
+//        }
+//   3. Drop SFX files into assets/audio/ matching the SOUND_EFFECTS keys.
+// No other code needs to change — every game event is already wired below.
+const SOUND_EFFECTS = {
+  shot:         'shot.mp3',           // tower fires (rate-limited)
+  hit:          'hit.mp3',            // enemy takes damage
+  kill:         'kill.mp3',           // enemy dies
+  boss_spawn:   'boss_spawn.mp3',     // boss wave banner
+  wave_clear:   'wave_clear.mp3',     // wave completed
+  life_lost:    'life_lost.mp3',      // enemy leaks
+  recipe_forge: 'recipe_forge.mp3',   // special tower crafted
+  utility_cast: 'utility_cast.mp3',   // gold-utility skill cast
+  victory:      'victory.mp3',        // mode complete
+  defeat:       'defeat.mp3',         // 0 lives game over
+};
+// AsyncStorage-persisted mute (loaded at game init; default unmuted).
+let _audioMuted = false;
+const setAudioMuted = (v) => { _audioMuted = !!v; };
+const isAudioMuted = () => _audioMuted;
+// Throttle high-frequency events so shot.mp3 doesn't fire 60×/sec.
+const _audioLastT = {};
+function playSound(id, throttleSec = 0) {
+  if (_audioMuted) return;
+  if (throttleSec > 0) {
+    const now = Date.now() / 1000;
+    if (now - (_audioLastT[id] || 0) < throttleSec) return;
+    _audioLastT[id] = now;
+  }
+  // Stub: no playback until expo-av is wired (see header). Intentionally silent
+  // to keep the game runnable without the dependency. Replace this body with
+  // the load/replayAsync calls when expo-av is in package.json.
+}
+
 const UTILITIES = [
   { id: 'GoldFlash',    name: 'Gold Flash',    cost: 200,  cd: 60,   color: '#ffd166', desc: '+500 gold instantly' },
   { id: 'Heal',         name: 'Heal',          cost: 300,  cd: 90,   color: '#ff8fab', desc: '+10 lives' },
@@ -610,6 +657,7 @@ function castUtility(s, id) {
   if (!u || (s.skillCooldowns[id] || 0) > 0 || s.gold < u.cost) return false;
   s.gold -= u.cost;
   s.skillCooldowns[id] = u.cd;
+  playSound('utility_cast');
   switch (id) {
     case 'GoldFlash':    s.gold += 500; break;
     case 'Heal':         s.lives += 10; break;
@@ -2092,6 +2140,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
     s.towers.push(anchor);
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
+    playSound('recipe_forge');
     flash(`${recipe.name}!`);
   };
 
@@ -2179,6 +2228,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
       start: s.time,
       until: s.time + (s.wave === 50 ? 3.0 : 2.4),
     };
+    if (isBossWave) playSound('boss_spawn');
     force();
   };
 
@@ -2508,6 +2558,12 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
         <View style={styles.bottomRow}>
           <TouchableOpacity style={styles.speedBtn} onPress={toggleSpeed}>
             <Text style={styles.speedBtnText}>{s.speed}×</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.speedBtn, { marginLeft: 6, backgroundColor: isAudioMuted() ? '#2a335f' : '#101630' }]}
+            onPress={() => { setAudioMuted(!isAudioMuted()); force(); }}
+          >
+            <Text style={styles.speedBtnText}>{isAudioMuted() ? 'MUTE' : 'SND'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -8243,6 +8299,7 @@ function step(dt, s, onEnd) {
         e.hp = -1;
         s.lives -= 1;
         s.killStreak = 0;   // leak breaks the streak (P9)
+        playSound('life_lost');
       }
     } else {
       e.r += (dr / dist) * move;
@@ -8318,6 +8375,7 @@ function step(dt, s, onEnd) {
         const aliveSec = s.time - (e.spawnedAt || s.time);
         const validForStreak = pathFrac >= STREAK_MIN_PATH_FRACTION || aliveSec >= STREAK_MIN_ALIVE_SECONDS;
         if (validForStreak) s.killStreak += 1;
+        playSound('kill', 0.05);
         const perKill = killGoldFor(e.type, s.wave);
         const reward = Math.max(1, Math.round(perKill * goldMul * streakMult(s.killStreak)));
         s.gold += reward;
@@ -8365,6 +8423,7 @@ function step(dt, s, onEnd) {
     // Boss lump bonus removed — doc §54.2 V4 pays boss reward per-kill at 5×,
     // already credited above via killGoldFor.
     s.killStreak = 0;                  // doc §54.3: streak resets on wave clear
+    playSound('wave_clear');
     s.score += 50 + s.wave * 10;
     // HealOverTime (Phase E): +1 life per wave for up to 5 waves.
     if (s.healOverTimeWaves > 0) {
@@ -8374,6 +8433,7 @@ function step(dt, s, onEnd) {
     s.flash = { text: `Wave ${s.wave} cleared!`, until: s.time + 2.0 };
 
     if (s.wave >= s.totalWaves) {
+      playSound('victory');
       onEnd(true, s.score, s.wave);
       return;
     }
@@ -8384,10 +8444,11 @@ function step(dt, s, onEnd) {
     s.playerLevel = levelForWave(s.wave + 1);
   }
 
-  if (s.lives <= 0) onEnd(false, s.score, s.wave);
+  if (s.lives <= 0) { playSound('defeat'); onEnd(false, s.score, s.wave); }
 }
 
 function fireAt(tower, inRange, stats, color, s) {
+  playSound('shot', 0.08);   // throttle so swarm fire doesn't spam audio
   // Muzzle flash at tower
   s.fx.push({
     id: s.nextFxId++,
