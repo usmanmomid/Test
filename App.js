@@ -4379,7 +4379,7 @@ function RockView({ t }) {
   const pal = palettes[palette] || palettes[0];
   // Embedded-crystal accent colors (cycled by detail bit)
   const accentColors = ['#4cc9ff', '#ff4d6d', '#5cf28a', '#ffd166'];
-  const accent = accentColors[(seed >> 16) % 4];
+  const accent = accentColors[(seed >> 16) % 4] || accentColors[0];
   // Moss / lichen colors
   const moss = '#3a6a3a';
 
@@ -4597,7 +4597,12 @@ function RockView({ t }) {
 const GEM_TIER_SCALE = { 1: 0.78, 2: 0.86, 3: 0.96, 4: 1.06, 5: 1.18, 6: 1.32 };
 
 function darken(hex, amt) {
-  // Naive hex→darker (mix with black by amt 0..1).
+  // Naive hex→darker (mix with black by amt 0..1). Bullet-proof: if a caller
+  // passes undefined / a non-hex / a too-short string, fall back to a safe
+  // gray instead of throwing.
+  if (typeof hex !== 'string' || !hex.startsWith('#') || hex.length < 7) {
+    return 'rgb(40,40,50)';
+  }
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
