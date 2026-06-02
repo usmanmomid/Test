@@ -214,6 +214,29 @@ const QUEST_TEMPLATES = [
 ];
 const QUEST_REWARD_GOLD = 500;
 const QUEST_RESET_MS = 24 * 60 * 60 * 1000;
+const WEEKLY_QUEST_RESET_MS = 7 * 24 * 60 * 60 * 1000;
+const WEEKLY_QUEST_REWARD_GOLD = 2500;
+
+// Weekly quests — bigger targets, bigger rewards. Refreshed every 7 days.
+const WEEKLY_QUEST_TEMPLATES = [
+  { id: 'wclear50',   label: 'Clear 50 waves this week',  target: 50,  event: 'wave_clear' },
+  { id: 'wforge15',   label: 'Forge 15 special towers',   target: 15,  event: 'recipe_forge' },
+  { id: 'wforgeP5',   label: 'Forge a P5 tower',          target: 1,   event: 'recipe_forge_p5' },
+  { id: 'wforgeP6',   label: 'Forge a P6 Mythic tower',   target: 1,   event: 'recipe_forge_p6' },
+  { id: 'wboss10',    label: 'Defeat 10 bosses',          target: 10,  event: 'boss_kill' },
+  { id: 'wwin5',      label: 'Win 5 matches',             target: 5,   event: 'match_win' },
+  { id: 'wwave100',   label: 'Reach wave 100 (Standard+)', target: 100, event: 'wave_reached' },
+];
+function pickWeeklyQuests(seed) {
+  const rng = mulberry32((seed >>> 0) || 1);
+  const pool = WEEKLY_QUEST_TEMPLATES.slice();
+  const picked = [];
+  while (picked.length < 3 && pool.length) {
+    const i = Math.floor(rng() * pool.length);
+    picked.push({ ...pool.splice(i, 1)[0], progress: 0, done: false });
+  }
+  return picked;
+}
 function pickDailyQuests(seed) {
   const rng = mulberry32((seed >>> 0) || 1);
   const pool = QUEST_TEMPLATES.slice();
@@ -232,9 +255,18 @@ const defaultStats = () => ({
   wins: 0,
   tutorialDone: false,
   perDiff: emptyPerDiff(),
-  quests: [],            // 3 active daily quests
-  questsResetAt: 0,      // ms timestamp when last refreshed
-  questsBanked: 0,       // completed-but-uncollected gold bonus
+  quests: [],
+  questsResetAt: 0,
+  weeklyQuests: [],
+  weeklyQuestsResetAt: 0,
+  questsBanked: 0,
+  xp: 0,
+  level: 1,
+  loginStreak: 0,
+  longestStreak: 0,
+  lastLoginDay: 0,
+  achievements: {},          // { id: unlockedAtMs, ... }
+  mvpWins: {},               // { gemType: count, ... }
 });
 function normalizeStats(raw) {
   const base = defaultStats();
@@ -246,28 +278,160 @@ function normalizeStats(raw) {
     quests = pickDailyQuests(now);
     resetAt = now;
   }
+  let wQuests = Array.isArray(raw.weeklyQuests) ? raw.weeklyQuests : [];
+  let wResetAt = raw.weeklyQuestsResetAt || 0;
+  if (now - wResetAt > WEEKLY_QUEST_RESET_MS || wQuests.length !== 3) {
+    wQuests = pickWeeklyQuests(now);
+    wResetAt = now;
+  }
+  const xp = raw.xp || 0;
   return {
     ...base,
     ...raw,
     perDiff: { ...base.perDiff, ...(raw.perDiff || {}) },
     quests,
     questsResetAt: resetAt,
+    weeklyQuests: wQuests,
+    weeklyQuestsResetAt: wResetAt,
     questsBanked: raw.questsBanked || 0,
+    xp,
+    level: levelFromXP(xp),
+    loginStreak: raw.loginStreak || 0,
+    longestStreak: raw.longestStreak || 0,
+    lastLoginDay: raw.lastLoginDay || 0,
+    achievements: raw.achievements || {},
+    mvpWins: raw.mvpWins || {},
   };
 }
-function bumpQuests(stats, event, delta = 1) {
-  if (!stats?.quests) return stats;
-  let changed = false;
-  let banked = stats.questsBanked || 0;
-  const quests = stats.quests.map((q) => {
+// ─── Haptic feedback — graceful fallback (no crash without expo-haptics) ────
+let _Haptics = null;
+try { _Haptics = require('expo-haptics'); } catch (e) { /* dep missing — no-op */ }
+function haptic(kind = 'light') {
+  if (!_Haptics) return;
+  try {
+    const S = _Haptics.ImpactFeedbackStyle || {};
+    const N = _Haptics.NotificationFeedbackType || {};
+    if      (kind === 'light')   _Haptics.impactAsync?.(S.Light);
+    else if (kind === 'medium')  _Haptics.impactAsync?.(S.Medium);
+    else if (kind === 'heavy')   _Haptics.impactAsync?.(S.Heavy);
+    else if (kind === 'success') _Haptics.notificationAsync?.(N.Success);
+    else if (kind === 'warning') _Haptics.notificationAsync?.(N.Warning);
+    else if (kind === 'error')   _Haptics.notificationAsync?.(N.Error);
+  } catch (e) { /* device lacks haptics — silent */ }
+}
+let _hapticsMuted = false;
+const setHapticsMuted = (v) => { _hapticsMuted = !!v; };
+const isHapticsMuted = () => _hapticsMuted;
+function buzz(kind) { if (!_hapticsMuted) haptic(kind); }
+
+// ─── Account XP / level — doc §89 ProgressionService (mobile port) ──────────
+// XP earned per match = waveReached * 10 + bossKills * 50 + recipesP4 * 30
+//                     + recipesP6 * 80 + won?500:0. Level table 1-50.
+function levelFromXP(xp) {
+  // Each level requires ~250 * level XP cumulative. Quadratic curve.
+  let n = 0;
+  while ((n + 1) * (n + 2) * 125 <= xp) n++;
+  return Math.min(50, n + 1);
+}
+function xpForNextLevel(level) { return level * (level + 1) * 125; }
+function xpEarnedFromGame(session, waveReached, won) {
+  return (waveReached || 0) * 10
+       + (session?.bossKills || 0) * 50
+       + (session?.recipeP4 || 0) * 30
+       + (session?.recipeP6 || 0) * 80
+       + (won ? 500 : 0);
+}
+
+// ─── Daily login streak — proven retention mechanic ─────────────────────────
+// Tracks consecutive in-game days. Resets if a day is skipped. Rewards:
+//   Day 1: +250g · 2: +500 · 3: +750 · 4: +1000 · 5: +1500 · 6+: +2000 (max).
+const STREAK_REWARDS = [0, 250, 500, 750, 1000, 1500, 2000];
+function streakReward(streak) {
+  return STREAK_REWARDS[Math.min(streak, STREAK_REWARDS.length - 1)];
+}
+function dayKey(ms) {
+  const d = new Date(ms);
+  return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+function bumpLoginStreak(stats, now = Date.now()) {
+  const today = dayKey(now);
+  const last = stats.lastLoginDay || 0;
+  if (last === today) return stats;          // already counted today
+  const yesterday = dayKey(now - 24*60*60*1000);
+  const streak = last === yesterday ? (stats.loginStreak || 0) + 1 : 1;
+  const reward = streakReward(streak);
+  return {
+    ...stats,
+    lastLoginDay: today,
+    loginStreak: streak,
+    longestStreak: Math.max(stats.longestStreak || 0, streak),
+    questsBanked: (stats.questsBanked || 0) + reward,
+  };
+}
+
+// ─── Achievements — discrete one-time unlocks ───────────────────────────────
+const ACHIEVEMENTS = [
+  { id: 'first_blood',  label: 'First Kill',           desc: 'Defeat any enemy',                  goldReward: 100 },
+  { id: 'first_boss',   label: 'Giant Slayer',         desc: 'Defeat your first boss',            goldReward: 500 },
+  { id: 'first_p4',     label: 'Advanced Forger',      desc: 'Craft any P4 special tower',        goldReward: 500 },
+  { id: 'first_p5',     label: 'Apex Forger',          desc: 'Craft any P5 special tower',        goldReward: 1000 },
+  { id: 'first_p6',     label: 'Mythic Forger',        desc: 'Craft any P6 Mythic tower',         goldReward: 3000 },
+  { id: 'first_w25',    label: 'Quartermaster',        desc: 'Reach wave 25',                     goldReward: 500 },
+  { id: 'first_w50',    label: 'Half-Century',         desc: 'Reach wave 50',                     goldReward: 1500 },
+  { id: 'first_w100',   label: 'Centurion',            desc: 'Reach wave 100',                    goldReward: 3000 },
+  { id: 'streak_50',    label: 'On a Roll',            desc: 'Reach a 50-kill streak',            goldReward: 500 },
+  { id: 'streak_100',   label: 'Unstoppable',          desc: 'Reach a 100-kill streak',           goldReward: 1500 },
+  { id: 'win_normal',   label: 'Standard Survivor',    desc: 'Win on Normal difficulty',          goldReward: 1000 },
+  { id: 'win_hard',     label: 'Hardened',             desc: 'Win on Hard difficulty',            goldReward: 2000 },
+  { id: 'win_nightmare',label: 'Nightmare Conqueror',  desc: 'Win on Nightmare difficulty',       goldReward: 5000 },
+  { id: 'login_7',      label: 'Devoted',              desc: '7-day login streak',                goldReward: 2000 },
+];
+// Pick the gem family that did the most damage this run — MVP. Returns the
+// session object extended with .mvpGem (or undefined if no damage dealt).
+function _withMVP(session) {
+  if (!session || !session.gemDamage) return session;
+  let best = null, bestDmg = 0;
+  for (const [fam, dmg] of Object.entries(session.gemDamage)) {
+    if (dmg > bestDmg) { best = fam; bestDmg = dmg; }
+  }
+  return { ...session, mvpGem: best };
+}
+
+function unlockAchievement(stats, id) {
+  const unlocked = stats.achievements || {};
+  if (unlocked[id]) return stats;
+  const def = ACHIEVEMENTS.find((a) => a.id === id);
+  if (!def) return stats;
+  return {
+    ...stats,
+    achievements: { ...unlocked, [id]: Date.now() },
+    questsBanked: (stats.questsBanked || 0) + (def.goldReward || 0),
+  };
+}
+
+function _bumpQuestList(list, event, delta, reward) {
+  let changed = false, banked = 0;
+  const next = list.map((q) => {
     if (q.done || q.event !== event) return q;
     const progress = Math.min(q.target, q.progress + delta);
     const done = progress >= q.target;
-    if (done) { banked += QUEST_REWARD_GOLD; changed = true; }
+    if (done) { banked += reward; changed = true; }
     if (progress !== q.progress) changed = true;
     return { ...q, progress, done };
   });
-  return changed ? { ...stats, quests, questsBanked: banked } : stats;
+  return { list: changed ? next : list, banked, changed };
+}
+function bumpQuests(stats, event, delta = 1) {
+  if (!stats?.quests && !stats?.weeklyQuests) return stats;
+  const d = _bumpQuestList(stats.quests || [], event, delta, QUEST_REWARD_GOLD);
+  const w = _bumpQuestList(stats.weeklyQuests || [], event, delta, WEEKLY_QUEST_REWARD_GOLD);
+  if (!d.changed && !w.changed) return stats;
+  return {
+    ...stats,
+    quests: d.list,
+    weeklyQuests: w.list,
+    questsBanked: (stats.questsBanked || 0) + d.banked + w.banked,
+  };
 }
 
 // ─── Enemy HP system — doc V5 §A3/§59 CANONICAL (LIVE 2026-05-23) ────────────
@@ -713,6 +877,7 @@ function castUtility(s, id) {
   s.gold -= u.cost;
   s.skillCooldowns[id] = u.cd;
   playSound('utility_cast');
+  buzz('medium');
   if (s.sessionStats) s.sessionStats.utilityCasts++;
   switch (id) {
     case 'GoldFlash':    s.gold += 500; break;
@@ -1502,8 +1667,12 @@ export default function App() {
     let alive = true;
     AsyncStorage.getItem(STORAGE_KEY)
       .then((raw) => {
-        if (!alive || !raw) return;
-        setStats(normalizeStats(JSON.parse(raw)));
+        if (!alive) return;
+        // Always run login-streak bump at mount — fresh user OR returning user.
+        const loaded = raw ? normalizeStats(JSON.parse(raw)) : normalizeStats(defaultStats());
+        let bumped = bumpLoginStreak(loaded);
+        if (bumped.loginStreak >= 7) bumped = unlockAchievement(bumped, 'login_7');
+        setStats(bumped);
       })
       .catch(() => {})
       .finally(() => { statsHydrated.current = true; });
@@ -1532,11 +1701,37 @@ export default function App() {
       // Apply quest progress (deltas come from this game session).
       next = bumpQuests(next, 'wave_clear', waveReached);
       next = bumpQuests(next, 'wave_reached', waveReached);
+      if (won) next = bumpQuests(next, 'match_win', 1);
       if (session.recipeForges) next = bumpQuests(next, 'recipe_forge', session.recipeForges);
       if (session.recipeP4) next = bumpQuests(next, 'recipe_forge_p4', session.recipeP4);
+      if (session.recipeP5) next = bumpQuests(next, 'recipe_forge_p5', session.recipeP5);
+      if (session.recipeP6) next = bumpQuests(next, 'recipe_forge_p6', session.recipeP6);
       if (session.utilityCasts) next = bumpQuests(next, 'utility_cast', session.utilityCasts);
       if (session.bossKills) next = bumpQuests(next, 'boss_kill', session.bossKills);
       if (session.maxStreak) next = bumpQuests(next, 'streak_high', session.maxStreak);
+      // XP + level (doc §89 ProgressionService).
+      const earnedXP = xpEarnedFromGame(session, waveReached, won);
+      next.xp = (next.xp || 0) + earnedXP;
+      next.level = levelFromXP(next.xp);
+      // Achievement triggers.
+      if ((session.bossKills || 0) > 0) next = unlockAchievement(next, 'first_blood');
+      if ((session.bossKills || 0) > 0) next = unlockAchievement(next, 'first_boss');
+      if ((session.recipeP4 || 0) > 0) next = unlockAchievement(next, 'first_p4');
+      if ((session.recipeP5 || 0) > 0) next = unlockAchievement(next, 'first_p5');
+      if ((session.recipeP6 || 0) > 0) next = unlockAchievement(next, 'first_p6');
+      if (waveReached >= 25)  next = unlockAchievement(next, 'first_w25');
+      if (waveReached >= 50)  next = unlockAchievement(next, 'first_w50');
+      if (waveReached >= 100) next = unlockAchievement(next, 'first_w100');
+      if ((session.maxStreak || 0) >= 50)  next = unlockAchievement(next, 'streak_50');
+      if ((session.maxStreak || 0) >= 100) next = unlockAchievement(next, 'streak_100');
+      if (won && difficulty === 'normal')    next = unlockAchievement(next, 'win_normal');
+      if (won && difficulty === 'hard')      next = unlockAchievement(next, 'win_hard');
+      if (won && difficulty === 'nightmare') next = unlockAchievement(next, 'win_nightmare');
+      // MVP tower — most damaging gem family this run.
+      if (session.mvpGem) {
+        const m = next.mvpWins || {};
+        next.mvpWins = { ...m, [session.mvpGem]: (m[session.mvpGem] || 0) + 1 };
+      }
       return next;
     });
     setScreen(won ? 'win' : 'lose');
@@ -1653,6 +1848,7 @@ function LobbyBackground({ width, height }) {
 function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
   const [recipeBookOpen, setRecipeBookOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
@@ -1705,6 +1901,47 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
           <Text style={styles.statsHint}>No games yet. Pick a difficulty to start.</Text>
         )}
       </View>
+
+      {/* Account-level / login-streak strip — clickable opens ProfileModal */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => setProfileOpen(true)}
+        style={{
+          marginBottom: 10, padding: 10, borderRadius: 10,
+          borderWidth: 1.5, borderColor: '#b08bffaa', backgroundColor: '#1a1a2eaa',
+        }}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={{ color: '#b08bff', fontSize: 13, fontWeight: '800' }}>
+            LV {stats.level || 1}
+          </Text>
+          {(stats.loginStreak || 0) >= 1 && (
+            <Text style={{ color: '#ffd166', fontSize: 11, fontWeight: '800' }}>
+              {stats.loginStreak}-DAY STREAK
+            </Text>
+          )}
+          <Text style={{ color: '#9aa3c7', fontSize: 11, fontWeight: '700' }}>
+            {Object.values(stats.achievements || {}).length}/{ACHIEVEMENTS.length} ACHIEVEMENTS
+          </Text>
+        </View>
+        {(() => {
+          const lv = stats.level || 1;
+          const xp = stats.xp || 0;
+          const prev = lv > 1 ? xpForNextLevel(lv - 1) : 0;
+          const next = xpForNextLevel(lv);
+          const pct = next > prev ? Math.min(100, Math.round(((xp - prev) / (next - prev)) * 100)) : 0;
+          return (
+            <View style={{ marginTop: 6 }}>
+              <View style={{ height: 5, backgroundColor: '#0a0e1f', borderRadius: 2, overflow: 'hidden' }}>
+                <View style={{ width: `${pct}%`, height: '100%', backgroundColor: '#b08bff' }} />
+              </View>
+              <Text style={{ color: '#7a83a8', fontSize: 10, marginTop: 3 }}>
+                {xp - prev}/{next - prev} XP to LV {lv + 1}
+              </Text>
+            </View>
+          );
+        })()}
+      </TouchableOpacity>
 
       {Array.isArray(stats.quests) && stats.quests.length > 0 && (
         <View style={{
@@ -1832,7 +2069,87 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
 
       <RecipeBookModal visible={recipeBookOpen} onClose={() => setRecipeBookOpen(false)} />
       <SettingsModal visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ProfileModal visible={profileOpen} onClose={() => setProfileOpen(false)} stats={stats} />
     </SafeAreaView>
+  );
+}
+
+// Profile / progression panel — XP, login streak, achievements, MVP wins.
+function ProfileModal({ visible, onClose, stats }) {
+  const ach = stats.achievements || {};
+  const mvp = stats.mvpWins || {};
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={[styles.modalCard, { minWidth: 320, maxHeight: '85%' }]} onPress={() => {}}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Profile</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
+              <Text style={styles.modalCloseXText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={{ maxHeight: 460 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', marginTop: 4, marginBottom: 10 }}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#b08bff', fontSize: 22, fontWeight: '900' }}>LV {stats.level || 1}</Text>
+                <Text style={{ color: '#7a83a8', fontSize: 10 }}>{stats.xp || 0} XP</Text>
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#ffd166', fontSize: 22, fontWeight: '900' }}>{stats.loginStreak || 0}</Text>
+                <Text style={{ color: '#7a83a8', fontSize: 10 }}>DAY STREAK</Text>
+              </View>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ color: '#5cf28a', fontSize: 22, fontWeight: '900' }}>{stats.longestStreak || 0}</Text>
+                <Text style={{ color: '#7a83a8', fontSize: 10 }}>LONGEST</Text>
+              </View>
+            </View>
+
+            <Text style={{ color: '#ffd166', fontSize: 12, fontWeight: '800', letterSpacing: 1, marginTop: 8 }}>
+              · ACHIEVEMENTS · {Object.keys(ach).length} / {ACHIEVEMENTS.length}
+            </Text>
+            {ACHIEVEMENTS.map((a) => {
+              const unlocked = !!ach[a.id];
+              return (
+                <View key={a.id} style={{
+                  flexDirection: 'row', alignItems: 'center', paddingVertical: 6,
+                  borderBottomWidth: 1, borderColor: '#2a335f',
+                }}>
+                  <Text style={{
+                    color: unlocked ? '#5cf28a' : '#454a5e',
+                    fontSize: 18, fontWeight: '900', width: 24, textAlign: 'center',
+                  }}>{unlocked ? '✓' : '○'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: unlocked ? '#fff' : '#7a83a8', fontWeight: '700', fontSize: 12 }}>
+                      {a.label}
+                    </Text>
+                    <Text style={{ color: '#7a83a8', fontSize: 10 }}>{a.desc}</Text>
+                  </View>
+                  <Text style={{ color: unlocked ? '#ffd166' : '#454a5e', fontSize: 11, fontWeight: '800' }}>
+                    +{a.goldReward}g
+                  </Text>
+                </View>
+              );
+            })}
+
+            {Object.keys(mvp).length > 0 && (
+              <>
+                <Text style={{ color: '#ffd166', fontSize: 12, fontWeight: '800', letterSpacing: 1, marginTop: 14 }}>
+                  · MVP TOWERS BY FAMILY ·
+                </Text>
+                {Object.entries(mvp).sort((a, b) => b[1] - a[1]).map(([fam, count]) => (
+                  <View key={fam} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                    <Text style={{ color: GEMS[fam]?.color || '#fff', fontWeight: '800' }}>
+                      {GEMS[fam]?.name || fam}
+                    </Text>
+                    <Text style={{ color: '#fff' }}>{count} run{count === 1 ? '' : 's'}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </ScrollView>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -2023,7 +2340,11 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
       nextFxId: 1,
       gold: STARTING_GOLD + (bonusGold || 0),     // quest reward bank consumed at game start
       killStreak: 0,
-      sessionStats: { recipeForges: 0, recipeP4: 0, utilityCasts: 0, bossKills: 0, maxStreak: 0 },
+      sessionStats: {
+        recipeForges: 0, recipeP4: 0, recipeP5: 0, recipeP6: 0,
+        utilityCasts: 0, bossKills: 0, maxStreak: 0,
+        gemDamage: { sapphire: 0, diamond: 0, opal: 0, emerald: 0, amethyst: 0, aquamarine: 0, ruby: 0, topaz: 0 },
+      },
       lives: diff.lives,
       // Endless layer (Phase D): mode/totalWaves/rewardMult from props.
       // matchSeed feeds mutationsForWave so a given match has consistent picks.
@@ -2293,9 +2614,12 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
     playSound('recipe_forge');
+    buzz('success');
     s.sessionStats.recipeForges++;
     const tierNum = parseInt(recipe.tier.slice(1), 10);
     if (tierNum >= 4) s.sessionStats.recipeP4++;
+    if (tierNum >= 5) s.sessionStats.recipeP5++;
+    if (tierNum >= 6) s.sessionStats.recipeP6++;
     flash(`${recipe.name}!`);
   };
 
@@ -2385,6 +2709,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     };
     if (isBossWave) {
       playSound('boss_spawn');
+      buzz('heavy');
       s.shakeUntil = s.time + 0.6;       // screen-shake on boss banner
     }
     force();
@@ -8508,6 +8833,7 @@ function step(dt, s, onEnd) {
         s.lives -= 1;
         s.killStreak = 0;   // leak breaks the streak (P9)
         playSound('life_lost');
+        buzz('warning');
       }
     } else {
       e.r += (dr / dist) * move;
@@ -8646,7 +8972,8 @@ function step(dt, s, onEnd) {
 
     if (s.wave >= s.totalWaves) {
       playSound('victory');
-      onEnd(true, s.score, s.wave, s.sessionStats);
+      buzz('success');
+      onEnd(true, s.score, s.wave, _withMVP(s.sessionStats));
       return;
     }
     // Return to build phase for the NEXT wave
@@ -8656,7 +8983,7 @@ function step(dt, s, onEnd) {
     s.playerLevel = levelForWave(s.wave + 1);
   }
 
-  if (s.lives <= 0) { playSound('defeat'); onEnd(false, s.score, s.wave, s.sessionStats); }
+  if (s.lives <= 0) { playSound('defeat'); buzz('error'); onEnd(false, s.score, s.wave, _withMVP(s.sessionStats)); }
 }
 
 function fireAt(tower, inRange, stats, color, s) {
@@ -8749,6 +9076,10 @@ function fireAt(tower, inRange, stats, color, s) {
       }
     }
     enemy.hp -= reduced;
+    // MVP per-family damage roll-up (doc §19) — gem towers tracked by family.
+    if (tower.kind === 'gem' && s.sessionStats && s.sessionStats.gemDamage) {
+      s.sessionStats.gemDamage[tower.gemType] = (s.sessionStats.gemDamage[tower.gemType] || 0) + reduced;
+    }
     if ((enemy.type === 'boss' || enemy.type === 'mega' || reduced >= (enemy.maxHp || 1) * 0.08) && reduced > 1) {
       s.fx.push({
         id: s.nextFxId++,
