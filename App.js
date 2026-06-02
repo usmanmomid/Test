@@ -1581,6 +1581,7 @@ function LobbyBackground({ width, height }) {
 
 function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
   const [recipeBookOpen, setRecipeBookOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   return (
     <SafeAreaView style={styles.lobbyRoot}>
       <StatusBar barStyle="light-content" />
@@ -1713,7 +1714,7 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
       </ScrollView>
 
       <View style={styles.lobbyFooter}>
-        <TouchableOpacity style={styles.footerBtn} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.footerBtn} activeOpacity={0.7} onPress={() => setSettingsOpen(true)}>
           <Text style={styles.footerIcon}>⚙</Text>
           <Text style={styles.footerLabel}>SETTINGS</Text>
         </TouchableOpacity>
@@ -1727,7 +1728,47 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
       </View>
 
       <RecipeBookModal visible={recipeBookOpen} onClose={() => setRecipeBookOpen(false)} />
+      <SettingsModal visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </SafeAreaView>
+  );
+}
+
+// Settings panel — sound on/off, version, future home for volume/vibration.
+function SettingsModal({ visible, onClose }) {
+  const [, force] = useState(0);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={[styles.modalCard, { minWidth: 280 }]} onPress={() => {}}>
+          <View style={styles.modalHeaderRow}>
+            <Text style={styles.modalTitle}>Settings</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}>
+              <Text style={styles.modalCloseXText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ marginTop: 10, gap: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                           paddingVertical: 8, borderBottomWidth: 1, borderColor: '#2a335f' }}>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }}>SOUND</Text>
+              <TouchableOpacity
+                onPress={() => { setAudioMuted(!isAudioMuted()); force(x => x + 1); }}
+                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6,
+                         borderWidth: 1.5, borderColor: isAudioMuted() ? '#ff4d6d' : '#5cf28a',
+                         backgroundColor: isAudioMuted() ? '#2a1820' : '#102818' }}
+              >
+                <Text style={{ color: isAudioMuted() ? '#ff4d6d' : '#5cf28a', fontWeight: '800' }}>
+                  {isAudioMuted() ? 'MUTED' : 'ON'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: '#7a83a8', fontSize: 11, marginTop: 4 }}>
+              Crystal Maze Defence · v0.5{'\n'}
+              Mobile build · React Native + Expo
+            </Text>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -2235,7 +2276,10 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
       start: s.time,
       until: s.time + (s.wave === 50 ? 3.0 : 2.4),
     };
-    if (isBossWave) playSound('boss_spawn');
+    if (isBossWave) {
+      playSound('boss_spawn');
+      s.shakeUntil = s.time + 0.6;       // screen-shake on boss banner
+    }
     force();
   };
 
@@ -2491,7 +2535,12 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
       <ActiveStatusStrip items={activeStatuses} />
 
       <View
-        style={{ width: VIEWPORT_W, height: VIEWPORT_H, backgroundColor: '#06081a', overflow: 'hidden' }}
+        style={{
+          width: VIEWPORT_W, height: VIEWPORT_H, backgroundColor: '#06081a', overflow: 'hidden',
+          transform: (s.shakeUntil || 0) > s.time
+            ? [{ translateX: (Math.random() - 0.5) * 6 }, { translateY: (Math.random() - 0.5) * 6 }]
+            : [],
+        }}
         {...panResponder.panHandlers}
       >
         <View
