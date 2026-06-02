@@ -8438,7 +8438,7 @@ function CandidateInspect({ candidate, candidates = [], onSelectCandidate, allTo
   // the player can switch which one's actions are visible without closing the
   // modal. Selected candidate gets a brighter border.
   const candidateChips = candidates.length > 1 ? (
-    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 10 }}>
       {candidates.map((c) => {
         const cg = GEMS[c.gemType];
         const ct = tier(c.tier);
@@ -8449,19 +8449,20 @@ function CandidateInspect({ candidate, candidates = [], onSelectCandidate, allTo
             onPress={() => onSelectCandidate && onSelectCandidate(c.id)}
             activeOpacity={0.75}
             style={{
-              flex: 1, minWidth: 80,
-              paddingHorizontal: 8, paddingVertical: 6,
+              flex: 1, minWidth: 0,
+              paddingHorizontal: 4, paddingVertical: 6,
               borderRadius: 6,
               borderWidth: isActive ? 2 : 1,
               borderColor: isActive ? '#ffd166' : cg.color + '88',
               backgroundColor: cg.color + (isActive ? '40' : '22'),
+              alignItems: 'center',
             }}
           >
-            <Text style={{ color: cg.color, fontWeight: '800', fontSize: 11, textAlign: 'center' }}>
-              {cg.name.toUpperCase()}
+            <Text style={{ color: cg.color, fontWeight: '900', fontSize: 14 }}>
+              {cg.letter}
             </Text>
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12, textAlign: 'center' }}>
-              {ct.name} {ct.short}
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 11 }}>
+              {ct.short}
             </Text>
           </TouchableOpacity>
         );
