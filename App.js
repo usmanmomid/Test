@@ -813,17 +813,22 @@ const STREAK_MIN_ALIVE_SECONDS = 1.5;
 // running silently. Add `expo-av` in Snack's Dependencies panel to hear sound.
 let _Audio = null;
 try { _Audio = require('expo-av').Audio; } catch (e) { /* dep missing */ }
+// Each require() is wrapped — Snack copy-paste mode hits a Metro bundler that
+// errors on missing assets/audio/ folder. Returning null lets the loop in
+// _loadAudio skip the entry silently. Local builds and gitUrl-imports have
+// the WAV files and play normal audio.
+const _r = (path) => { try { return require(path); } catch (e) { return null; } };
 const SOUND_EFFECTS = {
-  shot:         require('./assets/audio/shot.wav'),
-  hit:          require('./assets/audio/hit.wav'),
-  kill:         require('./assets/audio/kill.wav'),
-  boss_spawn:   require('./assets/audio/boss_spawn.wav'),
-  wave_clear:   require('./assets/audio/wave_clear.wav'),
-  life_lost:    require('./assets/audio/life_lost.wav'),
-  recipe_forge: require('./assets/audio/recipe_forge.wav'),
-  utility_cast: require('./assets/audio/utility_cast.wav'),
-  victory:      require('./assets/audio/victory.wav'),
-  defeat:       require('./assets/audio/defeat.wav'),
+  shot:         _r('./assets/audio/shot.wav'),
+  hit:          _r('./assets/audio/hit.wav'),
+  kill:         _r('./assets/audio/kill.wav'),
+  boss_spawn:   _r('./assets/audio/boss_spawn.wav'),
+  wave_clear:   _r('./assets/audio/wave_clear.wav'),
+  life_lost:    _r('./assets/audio/life_lost.wav'),
+  recipe_forge: _r('./assets/audio/recipe_forge.wav'),
+  utility_cast: _r('./assets/audio/utility_cast.wav'),
+  victory:      _r('./assets/audio/victory.wav'),
+  defeat:       _r('./assets/audio/defeat.wav'),
 };
 const _sounds = {};      // Audio.Sound instances, keyed by SFX id
 let _audioLoaded = false;
@@ -831,6 +836,7 @@ async function _loadAudio() {
   if (!_Audio || _audioLoaded) return;
   _audioLoaded = true;
   for (const [id, src] of Object.entries(SOUND_EFFECTS)) {
+    if (!src) continue;       // require() returned null (Snack paste mode)
     try {
       const { sound } = await _Audio.Sound.createAsync(src, { volume: 0.6 });
       _sounds[id] = sound;
@@ -1154,52 +1160,52 @@ const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 // see the real art.
 const ASSET_MAP = {
   towers: {
-    MoonsteelPrism:        require('./assets/runtime/towers/special_01.png'),
-    VerdantArcstone:       require('./assets/runtime/towers/special_02.png'),
-    EmberstarObelisk:      require('./assets/runtime/towers/special_03.png'),
-    RoseglassFocus:        require('./assets/runtime/towers/special_04.png'),
-    JadeVeilLens:          require('./assets/runtime/towers/special_05.png'),
-    StormsplitReactor:     require('./assets/runtime/towers/special_06.png'),
-    GildedHexcore:         require('./assets/runtime/towers/special_07.png'),
-    MoonsteelWarden:       require('./assets/runtime/towers/special_08.png'),
-    VerdantCascade:        require('./assets/runtime/towers/special_09.png'),
-    ObsidianBreaker:       require('./assets/runtime/towers/special_10.png'),
-    SkyquartzSentinel:     require('./assets/runtime/towers/special_11.png'),
-    RoyalRoseglass:        require('./assets/runtime/towers/special_12.png'),
-    CrimsonThunderheart:   require('./assets/runtime/towers/special_13.png'),
-    CoralResonance:        require('./assets/runtime/towers/special_14.png'),
-    FrostsunEye:           require('./assets/runtime/towers/special_15.png'),
-    SovereignDiamondLens:  require('./assets/runtime/towers/special_16.png'),
-    PrismaticWorldcore:    require('./assets/runtime/towers/special_17.png'),
-    AbyssbreakerMonolith:  require('./assets/runtime/towers/special_18.png'),
+    MoonsteelPrism:        _r('./assets/runtime/towers/special_01.png'),
+    VerdantArcstone:       _r('./assets/runtime/towers/special_02.png'),
+    EmberstarObelisk:      _r('./assets/runtime/towers/special_03.png'),
+    RoseglassFocus:        _r('./assets/runtime/towers/special_04.png'),
+    JadeVeilLens:          _r('./assets/runtime/towers/special_05.png'),
+    StormsplitReactor:     _r('./assets/runtime/towers/special_06.png'),
+    GildedHexcore:         _r('./assets/runtime/towers/special_07.png'),
+    MoonsteelWarden:       _r('./assets/runtime/towers/special_08.png'),
+    VerdantCascade:        _r('./assets/runtime/towers/special_09.png'),
+    ObsidianBreaker:       _r('./assets/runtime/towers/special_10.png'),
+    SkyquartzSentinel:     _r('./assets/runtime/towers/special_11.png'),
+    RoyalRoseglass:        _r('./assets/runtime/towers/special_12.png'),
+    CrimsonThunderheart:   _r('./assets/runtime/towers/special_13.png'),
+    CoralResonance:        _r('./assets/runtime/towers/special_14.png'),
+    FrostsunEye:           _r('./assets/runtime/towers/special_15.png'),
+    SovereignDiamondLens:  _r('./assets/runtime/towers/special_16.png'),
+    PrismaticWorldcore:    _r('./assets/runtime/towers/special_17.png'),
+    AbyssbreakerMonolith:  _r('./assets/runtime/towers/special_18.png'),
   },
   bosses: {
-    demon:            require('./assets/runtime/bosses/boss_01_pirate_king.png'),
-    void:             require('./assets/runtime/bosses/boss_02_void_monarch.png'),
-    destroyer:        require('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
-    ender:            require('./assets/runtime/bosses/boss_04_frost_lich.png'),
-    blood:            require('./assets/runtime/bosses/boss_12_medusa.png'),
-    colossus:         require('./assets/runtime/bosses/boss_11_maze_bull.png'),
-    'ender-mega':     require('./assets/runtime/bosses/boss_11_maze_bull.png'),
-    wraith_captain:   require('./assets/runtime/bosses/boss_01_pirate_king.png'),
-    eye_magus:        require('./assets/runtime/bosses/boss_02_void_monarch.png'),
-    lava_lord:        require('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
-    ice_lich:         require('./assets/runtime/bosses/boss_04_frost_lich.png'),
-    crystal_dragon:   require('./assets/runtime/bosses/boss_05_storm_crawler.png'),
-    lava_scorpion:    require('./assets/runtime/bosses/boss_06_ogre_king.png'),
-    plague_ogre:      require('./assets/runtime/bosses/boss_07_roots.png'),
-    forest_treant:    require('./assets/runtime/bosses/boss_08_ashfang.png'),
-    lava_cerberus:    require('./assets/runtime/bosses/boss_09_kraken.png'),
-    eldritch_horror:  require('./assets/runtime/bosses/boss_10_scorpion_king.png'),
-    demon_warlord:    require('./assets/runtime/bosses/boss_11_maze_bull.png'),
-    crystal_serpent:  require('./assets/runtime/bosses/boss_12_medusa.png'),
+    demon:            _r('./assets/runtime/bosses/boss_01_pirate_king.png'),
+    void:             _r('./assets/runtime/bosses/boss_02_void_monarch.png'),
+    destroyer:        _r('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ender:            _r('./assets/runtime/bosses/boss_04_frost_lich.png'),
+    blood:            _r('./assets/runtime/bosses/boss_12_medusa.png'),
+    colossus:         _r('./assets/runtime/bosses/boss_11_maze_bull.png'),
+    'ender-mega':     _r('./assets/runtime/bosses/boss_11_maze_bull.png'),
+    wraith_captain:   _r('./assets/runtime/bosses/boss_01_pirate_king.png'),
+    eye_magus:        _r('./assets/runtime/bosses/boss_02_void_monarch.png'),
+    lava_lord:        _r('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ice_lich:         _r('./assets/runtime/bosses/boss_04_frost_lich.png'),
+    crystal_dragon:   _r('./assets/runtime/bosses/boss_05_storm_crawler.png'),
+    lava_scorpion:    _r('./assets/runtime/bosses/boss_06_ogre_king.png'),
+    plague_ogre:      _r('./assets/runtime/bosses/boss_07_roots.png'),
+    forest_treant:    _r('./assets/runtime/bosses/boss_08_ashfang.png'),
+    lava_cerberus:    _r('./assets/runtime/bosses/boss_09_kraken.png'),
+    eldritch_horror:  _r('./assets/runtime/bosses/boss_10_scorpion_king.png'),
+    demon_warlord:    _r('./assets/runtime/bosses/boss_11_maze_bull.png'),
+    crystal_serpent:  _r('./assets/runtime/bosses/boss_12_medusa.png'),
   },
   decor: {
-    spawn_portal:     require('./assets/runtime/decor/spawn_portal.png'),
-    castle_keep:      require('./assets/runtime/decor/central_crystal.png'),
-    crystal_monument: require('./assets/runtime/decor/central_crystal.png'),
-    recipe_master:    require('./assets/runtime/decor/recipe_master.png'),
-    maze_background:  require('./assets/runtime/decor/maze_background.png'),
+    spawn_portal:     _r('./assets/runtime/decor/spawn_portal.png'),
+    castle_keep:      _r('./assets/runtime/decor/central_crystal.png'),
+    crystal_monument: _r('./assets/runtime/decor/central_crystal.png'),
+    recipe_master:    _r('./assets/runtime/decor/recipe_master.png'),
+    maze_background:  _r('./assets/runtime/decor/maze_background.png'),
   },
 };
 // Sprites ON across the board. PNG-or-SVG fallback per-category is still in
