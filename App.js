@@ -587,40 +587,41 @@ const STREAK_MIN_ALIVE_SECONDS = 1.5;
 // into 3 shapes: instant (Heal/GoldFlash/WaveSkip/HealOverTime), time-bounded
 // (Freeze/DamageBoost/GoldBlessing/SpeedShield/CritBoost/TowerEcho/GoldRain),
 // next-event (Timelapse/CandyLure).
-// ─── Audio (stub infrastructure — ready for expo-av swap) ───────────────────
-// All trigger points across the game call playSound(id). Currently a no-op so
-// no dependency is required (keeps Snack stable). To enable real audio:
-//   1. Add `expo-av` to package.json (Snack: add via Dependencies panel).
-//   2. Replace the playSound stub below with:
-//        const _sounds = {};
-//        async function _load(id, src) {
-//          const { sound } = await Audio.Sound.createAsync(src);
-//          _sounds[id] = sound;
-//        }
-//        // call _load() for each id at app start
-//        function playSound(id) {
-//          if (s_audioMuted || !_sounds[id]) return;
-//          _sounds[id].replayAsync();
-//        }
-//   3. Drop SFX files into assets/audio/ matching the SOUND_EFFECTS keys.
-// No other code needs to change — every game event is already wired below.
+// ─── Audio — expo-av real playback with graceful fallback ───────────────────
+// SFX are short synthetic WAVs (~3-50KB each) generated server-side; commit
+// them via assets/audio/. If expo-av fails to load (Snack without the dep
+// added), every Audio.Sound call no-ops via try/catch so the game keeps
+// running silently. Add `expo-av` in Snack's Dependencies panel to hear sound.
+let _Audio = null;
+try { _Audio = require('expo-av').Audio; } catch (e) { /* dep missing */ }
 const SOUND_EFFECTS = {
-  shot:         'shot.mp3',           // tower fires (rate-limited)
-  hit:          'hit.mp3',            // enemy takes damage
-  kill:         'kill.mp3',           // enemy dies
-  boss_spawn:   'boss_spawn.mp3',     // boss wave banner
-  wave_clear:   'wave_clear.mp3',     // wave completed
-  life_lost:    'life_lost.mp3',      // enemy leaks
-  recipe_forge: 'recipe_forge.mp3',   // special tower crafted
-  utility_cast: 'utility_cast.mp3',   // gold-utility skill cast
-  victory:      'victory.mp3',        // mode complete
-  defeat:       'defeat.mp3',         // 0 lives game over
+  shot:         require('./assets/audio/shot.wav'),
+  hit:          require('./assets/audio/hit.wav'),
+  kill:         require('./assets/audio/kill.wav'),
+  boss_spawn:   require('./assets/audio/boss_spawn.wav'),
+  wave_clear:   require('./assets/audio/wave_clear.wav'),
+  life_lost:    require('./assets/audio/life_lost.wav'),
+  recipe_forge: require('./assets/audio/recipe_forge.wav'),
+  utility_cast: require('./assets/audio/utility_cast.wav'),
+  victory:      require('./assets/audio/victory.wav'),
+  defeat:       require('./assets/audio/defeat.wav'),
 };
-// AsyncStorage-persisted mute (loaded at game init; default unmuted).
+const _sounds = {};      // Audio.Sound instances, keyed by SFX id
+let _audioLoaded = false;
+async function _loadAudio() {
+  if (!_Audio || _audioLoaded) return;
+  _audioLoaded = true;
+  for (const [id, src] of Object.entries(SOUND_EFFECTS)) {
+    try {
+      const { sound } = await _Audio.Sound.createAsync(src, { volume: 0.6 });
+      _sounds[id] = sound;
+    } catch (e) { /* one bad file shouldn't break the rest */ }
+  }
+}
+_loadAudio();
 let _audioMuted = false;
 const setAudioMuted = (v) => { _audioMuted = !!v; };
 const isAudioMuted = () => _audioMuted;
-// Throttle high-frequency events so shot.mp3 doesn't fire 60×/sec.
 const _audioLastT = {};
 function playSound(id, throttleSec = 0) {
   if (_audioMuted) return;
@@ -629,9 +630,8 @@ function playSound(id, throttleSec = 0) {
     if (now - (_audioLastT[id] || 0) < throttleSec) return;
     _audioLastT[id] = now;
   }
-  // Stub: no playback until expo-av is wired (see header). Intentionally silent
-  // to keep the game runnable without the dependency. Replace this body with
-  // the load/replayAsync calls when expo-av is in package.json.
+  const s = _sounds[id];
+  if (s) s.replayAsync().catch(() => {});
 }
 
 const UTILITIES = [
