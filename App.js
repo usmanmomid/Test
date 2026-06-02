@@ -197,6 +197,34 @@ const emptyPerDiff = () => ({
   nightmare: { bestWave: 0 },
 });
 const STORAGE_KEY = 'crystal-maze-defence:v1';
+
+// ─── Quest templates — Phase 7 / doc §46 (progression hook) ─────────────────
+// Three daily quests, randomly picked from the template pool, persisted with
+// stats. Each completion grants +500 bonus gold on next game start. Progress
+// ticks at the relevant game event; counters reset every 24h.
+const QUEST_TEMPLATES = [
+  { id: 'clear5',     label: 'Clear 5 waves',          target: 5,  event: 'wave_clear' },
+  { id: 'clear15',    label: 'Clear 15 waves',         target: 15, event: 'wave_clear' },
+  { id: 'forge3',     label: 'Forge 3 special towers', target: 3,  event: 'recipe_forge' },
+  { id: 'forgeP4',    label: 'Forge a P4+ tower',      target: 1,  event: 'recipe_forge_p4' },
+  { id: 'utility5',   label: 'Cast 5 gold utilities',  target: 5,  event: 'utility_cast' },
+  { id: 'boss3',      label: 'Kill 3 bosses',          target: 3,  event: 'boss_kill' },
+  { id: 'survive50',  label: 'Reach wave 50',          target: 50, event: 'wave_reached' },
+  { id: 'streak50',   label: 'Killstreak 50',          target: 50, event: 'streak_high' },
+];
+const QUEST_REWARD_GOLD = 500;
+const QUEST_RESET_MS = 24 * 60 * 60 * 1000;
+function pickDailyQuests(seed) {
+  const rng = mulberry32((seed >>> 0) || 1);
+  const pool = QUEST_TEMPLATES.slice();
+  const picked = [];
+  while (picked.length < 3 && pool.length) {
+    const i = Math.floor(rng() * pool.length);
+    picked.push({ ...pool.splice(i, 1)[0], progress: 0, done: false });
+  }
+  return picked;
+}
+
 const defaultStats = () => ({
   bestScore: 0,
   bestWave: 0,
@@ -204,15 +232,42 @@ const defaultStats = () => ({
   wins: 0,
   tutorialDone: false,
   perDiff: emptyPerDiff(),
+  quests: [],            // 3 active daily quests
+  questsResetAt: 0,      // ms timestamp when last refreshed
+  questsBanked: 0,       // completed-but-uncollected gold bonus
 });
 function normalizeStats(raw) {
   const base = defaultStats();
   if (!raw || typeof raw !== 'object') return base;
+  const now = Date.now();
+  let quests = Array.isArray(raw.quests) ? raw.quests : [];
+  let resetAt = raw.questsResetAt || 0;
+  if (now - resetAt > QUEST_RESET_MS || quests.length !== 3) {
+    quests = pickDailyQuests(now);
+    resetAt = now;
+  }
   return {
     ...base,
     ...raw,
     perDiff: { ...base.perDiff, ...(raw.perDiff || {}) },
+    quests,
+    questsResetAt: resetAt,
+    questsBanked: raw.questsBanked || 0,
   };
+}
+function bumpQuests(stats, event, delta = 1) {
+  if (!stats?.quests) return stats;
+  let changed = false;
+  let banked = stats.questsBanked || 0;
+  const quests = stats.quests.map((q) => {
+    if (q.done || q.event !== event) return q;
+    const progress = Math.min(q.target, q.progress + delta);
+    const done = progress >= q.target;
+    if (done) { banked += QUEST_REWARD_GOLD; changed = true; }
+    if (progress !== q.progress) changed = true;
+    return { ...q, progress, done };
+  });
+  return changed ? { ...stats, quests, questsBanked: banked } : stats;
 }
 
 // ─── Enemy HP system — doc V5 §A3/§59 CANONICAL (LIVE 2026-05-23) ────────────
@@ -658,6 +713,7 @@ function castUtility(s, id) {
   s.gold -= u.cost;
   s.skillCooldowns[id] = u.cd;
   playSound('utility_cast');
+  if (s.sessionStats) s.sessionStats.utilityCasts++;
   switch (id) {
     case 'GoldFlash':    s.gold += 500; break;
     case 'Heal':         s.lives += 10; break;
@@ -1459,12 +1515,13 @@ export default function App() {
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeStats(stats))).catch(() => {});
   }, [stats]);
 
-  const recordResult = (won, score, waveReached) => {
+  const recordResult = (won, score, waveReached, session = {}) => {
     setLastResult({ won, score, waveReached, difficulty, mode });
     setStats((prev) => {
       const prevDiff = prev.perDiff || emptyPerDiff();
       const prevForDiff = prevDiff[difficulty] || { bestWave: 0 };
-      return {
+      let next = {
+        ...prev,
         bestScore: Math.max(prev.bestScore, score),
         bestWave: Math.max(prev.bestWave, waveReached),
         gamesPlayed: prev.gamesPlayed + 1,
@@ -1472,6 +1529,15 @@ export default function App() {
         tutorialDone: true,
         perDiff: { ...prevDiff, [difficulty]: { bestWave: Math.max(prevForDiff.bestWave, waveReached) } },
       };
+      // Apply quest progress (deltas come from this game session).
+      next = bumpQuests(next, 'wave_clear', waveReached);
+      next = bumpQuests(next, 'wave_reached', waveReached);
+      if (session.recipeForges) next = bumpQuests(next, 'recipe_forge', session.recipeForges);
+      if (session.recipeP4) next = bumpQuests(next, 'recipe_forge_p4', session.recipeP4);
+      if (session.utilityCasts) next = bumpQuests(next, 'utility_cast', session.utilityCasts);
+      if (session.bossKills) next = bumpQuests(next, 'boss_kill', session.bossKills);
+      if (session.maxStreak) next = bumpQuests(next, 'streak_high', session.maxStreak);
+      return next;
     });
     setScreen(won ? 'win' : 'lose');
   };
@@ -1482,6 +1548,10 @@ export default function App() {
 
   const startSolo = (diffId) => {
     setDifficulty(diffId);
+    // Consume any banked quest rewards — they apply as bonusGold this run only.
+    if ((stats.questsBanked || 0) > 0) {
+      setStats((prev) => ({ ...prev, questsBanked: 0 }));
+    }
     setScreen('game');
   };
 
@@ -1503,6 +1573,7 @@ export default function App() {
       onEnd={recordResult}
       difficulty={difficulty}
       mode={mode}
+      bonusGold={stats.questsBanked || 0}
       showTutorial={!stats.tutorialDone && stats.gamesPlayed === 0}
       onTutorialDone={markTutorialDone}
     />
@@ -1634,6 +1705,38 @@ function LobbyScreen({ stats, mode, onModeChange, onStartSolo }) {
           <Text style={styles.statsHint}>No games yet. Pick a difficulty to start.</Text>
         )}
       </View>
+
+      {Array.isArray(stats.quests) && stats.quests.length > 0 && (
+        <View style={{
+          marginBottom: 10, padding: 12, borderRadius: 10,
+          borderWidth: 1.5, borderColor: '#ffd166aa', backgroundColor: '#1a1a2eaa',
+        }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: '#ffd166', fontSize: 12, fontWeight: '800', letterSpacing: 1 }}>· DAILY QUESTS ·</Text>
+            {(stats.questsBanked || 0) > 0 && (
+              <Text style={{ color: '#5cf28a', fontSize: 11, fontWeight: '800' }}>
+                +{stats.questsBanked}g pending
+              </Text>
+            )}
+          </View>
+          {stats.quests.map((q) => {
+            const pct = Math.min(100, Math.round((q.progress / q.target) * 100));
+            return (
+              <View key={q.id} style={{ marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: q.done ? '#5cf28a' : '#cfd5e6', fontSize: 12, fontWeight: '700' }}>
+                    {q.done ? '✓ ' : ''}{q.label}
+                  </Text>
+                  <Text style={{ color: '#7a83a8', fontSize: 11 }}>{q.progress}/{q.target}</Text>
+                </View>
+                <View style={{ height: 4, backgroundColor: '#0a0e1f', borderRadius: 2, marginTop: 3, overflow: 'hidden' }}>
+                  <View style={{ width: `${pct}%`, height: '100%', backgroundColor: q.done ? '#5cf28a' : '#ffd166' }} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
 
       <View style={{ marginBottom: 10 }}>
         <Text style={styles.soloHeader}>MODE</Text>
@@ -1895,7 +1998,7 @@ function EndScreen({ won, score, waveReached, difficulty, mode, stats, onPlayAga
 }
 
 // ─── Game ────────────────────────────────────────────────────────────────────
-function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, onTutorialDone }) {
+function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutorial = false, onTutorialDone }) {
   const diff = DIFFICULTIES[difficulty] || DIFFICULTIES[DEFAULT_DIFFICULTY];
   const modeCfg = MODES[mode] || MODES[DEFAULT_MODE];
   const stateRef = useRef(null);
@@ -1918,8 +2021,9 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
       nextProjectileId: 1,
       nextTowerId: 1,
       nextFxId: 1,
-      gold: STARTING_GOLD,
+      gold: STARTING_GOLD + (bonusGold || 0),     // quest reward bank consumed at game start
       killStreak: 0,
+      sessionStats: { recipeForges: 0, recipeP4: 0, utilityCasts: 0, bossKills: 0, maxStreak: 0 },
       lives: diff.lives,
       // Endless layer (Phase D): mode/totalWaves/rewardMult from props.
       // matchSeed feeds mutationsForWave so a given match has consistent picks.
@@ -2189,6 +2293,9 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, showTutorial = false, on
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
     playSound('recipe_forge');
+    s.sessionStats.recipeForges++;
+    const tierNum = parseInt(recipe.tier.slice(1), 10);
+    if (tierNum >= 4) s.sessionStats.recipeP4++;
     flash(`${recipe.name}!`);
   };
 
@@ -8476,6 +8583,10 @@ function step(dt, s, onEnd) {
         const aliveSec = s.time - (e.spawnedAt || s.time);
         const validForStreak = pathFrac >= STREAK_MIN_PATH_FRACTION || aliveSec >= STREAK_MIN_ALIVE_SECONDS;
         if (validForStreak) s.killStreak += 1;
+        if (s.sessionStats) {
+          if (e.type === 'boss' || e.type === 'mega') s.sessionStats.bossKills++;
+          if (s.killStreak > (s.sessionStats.maxStreak || 0)) s.sessionStats.maxStreak = s.killStreak;
+        }
         playSound('kill', 0.05);
         const perKill = killGoldFor(e.type, s.wave);
         const reward = Math.max(1, Math.round(perKill * goldMul * streakMult(s.killStreak)));
@@ -8535,7 +8646,7 @@ function step(dt, s, onEnd) {
 
     if (s.wave >= s.totalWaves) {
       playSound('victory');
-      onEnd(true, s.score, s.wave);
+      onEnd(true, s.score, s.wave, s.sessionStats);
       return;
     }
     // Return to build phase for the NEXT wave
@@ -8545,7 +8656,7 @@ function step(dt, s, onEnd) {
     s.playerLevel = levelForWave(s.wave + 1);
   }
 
-  if (s.lives <= 0) { playSound('defeat'); onEnd(false, s.score, s.wave); }
+  if (s.lives <= 0) { playSound('defeat'); onEnd(false, s.score, s.wave, s.sessionStats); }
 }
 
 function fireAt(tower, inRange, stats, color, s) {
