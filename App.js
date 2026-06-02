@@ -1147,66 +1147,67 @@ const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 // must be public; private repos return 404 to Expo, and RemoteSprite falls back
 // to SVG. For App Store offline builds, this can later move back to bundled
 // require() assets.
-const RAW_ASSET_BASE =
-  'https://github.com/usmanmomid/Test/raw/refs/heads/claude/mobile-game-development-PjMjg/';
-const remoteAsset = (path) => ({ uri: encodeURI(RAW_ASSET_BASE + path) });
+// Sprites bundled via require() — Metro packs them into the app build so they
+// load instantly (no 404, no network, no repo-visibility dependency). Snack
+// copy-paste mode breaks unless the snack also has these files in its tree;
+// use the gitUrl import (snack.expo.dev/?gitUrl=...) or local Expo build to
+// see the real art.
 const ASSET_MAP = {
   towers: {
-    MoonsteelPrism:        remoteAsset('assets/runtime/towers/special_01.png'),
-    VerdantArcstone:       remoteAsset('assets/runtime/towers/special_02.png'),
-    EmberstarObelisk:      remoteAsset('assets/runtime/towers/special_03.png'),
-    RoseglassFocus:        remoteAsset('assets/runtime/towers/special_04.png'),
-    JadeVeilLens:          remoteAsset('assets/runtime/towers/special_05.png'),
-    StormsplitReactor:     remoteAsset('assets/runtime/towers/special_06.png'),
-    GildedHexcore:         remoteAsset('assets/runtime/towers/special_07.png'),
-    MoonsteelWarden:       remoteAsset('assets/runtime/towers/special_08.png'),
-    VerdantCascade:        remoteAsset('assets/runtime/towers/special_09.png'),
-    ObsidianBreaker:       remoteAsset('assets/runtime/towers/special_10.png'),
-    SkyquartzSentinel:     remoteAsset('assets/runtime/towers/special_11.png'),
-    RoyalRoseglass:        remoteAsset('assets/runtime/towers/special_12.png'),
-    CrimsonThunderheart:   remoteAsset('assets/runtime/towers/special_13.png'),
-    CoralResonance:        remoteAsset('assets/runtime/towers/special_14.png'),
-    FrostsunEye:           remoteAsset('assets/runtime/towers/special_15.png'),
-    SovereignDiamondLens:  remoteAsset('assets/runtime/towers/special_16.png'),
-    PrismaticWorldcore:    remoteAsset('assets/runtime/towers/special_17.png'),
-    AbyssbreakerMonolith:  remoteAsset('assets/runtime/towers/special_18.png'),
+    MoonsteelPrism:        require('./assets/runtime/towers/special_01.png'),
+    VerdantArcstone:       require('./assets/runtime/towers/special_02.png'),
+    EmberstarObelisk:      require('./assets/runtime/towers/special_03.png'),
+    RoseglassFocus:        require('./assets/runtime/towers/special_04.png'),
+    JadeVeilLens:          require('./assets/runtime/towers/special_05.png'),
+    StormsplitReactor:     require('./assets/runtime/towers/special_06.png'),
+    GildedHexcore:         require('./assets/runtime/towers/special_07.png'),
+    MoonsteelWarden:       require('./assets/runtime/towers/special_08.png'),
+    VerdantCascade:        require('./assets/runtime/towers/special_09.png'),
+    ObsidianBreaker:       require('./assets/runtime/towers/special_10.png'),
+    SkyquartzSentinel:     require('./assets/runtime/towers/special_11.png'),
+    RoyalRoseglass:        require('./assets/runtime/towers/special_12.png'),
+    CrimsonThunderheart:   require('./assets/runtime/towers/special_13.png'),
+    CoralResonance:        require('./assets/runtime/towers/special_14.png'),
+    FrostsunEye:           require('./assets/runtime/towers/special_15.png'),
+    SovereignDiamondLens:  require('./assets/runtime/towers/special_16.png'),
+    PrismaticWorldcore:    require('./assets/runtime/towers/special_17.png'),
+    AbyssbreakerMonolith:  require('./assets/runtime/towers/special_18.png'),
   },
   bosses: {
-    demon:            remoteAsset('assets/runtime/bosses/boss_01_pirate_king.png'),
-    void:             remoteAsset('assets/runtime/bosses/boss_02_void_monarch.png'),
-    destroyer:        remoteAsset('assets/runtime/bosses/boss_03_hellforge_brute.png'),
-    ender:            remoteAsset('assets/runtime/bosses/boss_04_frost_lich.png'),
-    blood:            remoteAsset('assets/runtime/bosses/boss_12_medusa.png'),
-    colossus:         remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
-    'ender-mega':     remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
-    wraith_captain:   remoteAsset('assets/runtime/bosses/boss_01_pirate_king.png'),
-    eye_magus:        remoteAsset('assets/runtime/bosses/boss_02_void_monarch.png'),
-    lava_lord:        remoteAsset('assets/runtime/bosses/boss_03_hellforge_brute.png'),
-    ice_lich:         remoteAsset('assets/runtime/bosses/boss_04_frost_lich.png'),
-    crystal_dragon:   remoteAsset('assets/runtime/bosses/boss_05_storm_crawler.png'),
-    lava_scorpion:    remoteAsset('assets/runtime/bosses/boss_06_ogre_king.png'),
-    plague_ogre:      remoteAsset('assets/runtime/bosses/boss_07_roots.png'),
-    forest_treant:    remoteAsset('assets/runtime/bosses/boss_08_ashfang.png'),
-    lava_cerberus:    remoteAsset('assets/runtime/bosses/boss_09_kraken.png'),
-    eldritch_horror:  remoteAsset('assets/runtime/bosses/boss_10_scorpion_king.png'),
-    demon_warlord:    remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
-    crystal_serpent:  remoteAsset('assets/runtime/bosses/boss_12_medusa.png'),
+    demon:            require('./assets/runtime/bosses/boss_01_pirate_king.png'),
+    void:             require('./assets/runtime/bosses/boss_02_void_monarch.png'),
+    destroyer:        require('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ender:            require('./assets/runtime/bosses/boss_04_frost_lich.png'),
+    blood:            require('./assets/runtime/bosses/boss_12_medusa.png'),
+    colossus:         require('./assets/runtime/bosses/boss_11_maze_bull.png'),
+    'ender-mega':     require('./assets/runtime/bosses/boss_11_maze_bull.png'),
+    wraith_captain:   require('./assets/runtime/bosses/boss_01_pirate_king.png'),
+    eye_magus:        require('./assets/runtime/bosses/boss_02_void_monarch.png'),
+    lava_lord:        require('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ice_lich:         require('./assets/runtime/bosses/boss_04_frost_lich.png'),
+    crystal_dragon:   require('./assets/runtime/bosses/boss_05_storm_crawler.png'),
+    lava_scorpion:    require('./assets/runtime/bosses/boss_06_ogre_king.png'),
+    plague_ogre:      require('./assets/runtime/bosses/boss_07_roots.png'),
+    forest_treant:    require('./assets/runtime/bosses/boss_08_ashfang.png'),
+    lava_cerberus:    require('./assets/runtime/bosses/boss_09_kraken.png'),
+    eldritch_horror:  require('./assets/runtime/bosses/boss_10_scorpion_king.png'),
+    demon_warlord:    require('./assets/runtime/bosses/boss_11_maze_bull.png'),
+    crystal_serpent:  require('./assets/runtime/bosses/boss_12_medusa.png'),
   },
   decor: {
-    spawn_portal:     remoteAsset('assets/runtime/decor/spawn_portal.png'),
-    castle_keep:      remoteAsset('assets/runtime/decor/central_crystal.png'),
-    crystal_monument: remoteAsset('assets/runtime/decor/central_crystal.png'),
-    recipe_master:    remoteAsset('assets/runtime/decor/recipe_master.png'),
-    maze_background:  remoteAsset('assets/runtime/decor/maze_background.png'),
+    spawn_portal:     require('./assets/runtime/decor/spawn_portal.png'),
+    castle_keep:      require('./assets/runtime/decor/central_crystal.png'),
+    crystal_monument: require('./assets/runtime/decor/central_crystal.png'),
+    recipe_master:    require('./assets/runtime/decor/recipe_master.png'),
+    maze_background:  require('./assets/runtime/decor/maze_background.png'),
   },
 };
-// Master switch — flip to true when sprite-art quality > current SVG quality.
-// Placeholder mode keeps SVG on so you don't see ring-icons until real PNGs
-// land. Per-category overrides below.
+// Sprites ON across the board. PNG-or-SVG fallback per-category is still in
+// place at each render site, so a missing key falls back to the SVG renderer.
 const USE_SPRITES = {
-  towers: false,   // FALSE while repo is private — raw URLs return 404 on Snack/Expo Go
-  bosses: false,   // and the failed requests freeze Connecting. Flip back to true
-  decor:  false,   // once the repo is public OR sprites are bundled via require().
+  towers: true,
+  bosses: true,
+  decor:  true,
 };
 
 function RemoteSprite({ source, style, children, onLoad, resizeMode = 'contain' }) {
