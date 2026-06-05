@@ -3804,27 +3804,78 @@ function Marker({ pt, label, color }) {
 
 // ───── Spawn portal — arched cave entrance with red glow ────────────────────
 function SpawnPortal({ pt, time }) {
-  const size = TILE * 3.25;
-  const left = pt.c * TILE - TILE * 2.1;
-  const top = pt.r * TILE - TILE * 1.08;
+  // Anchored at feet — sprite is tall and rises from the ground tile.
+  const size = TILE * 4.5;
+  const cx = pt.c * TILE + TILE / 2;
+  const groundY = pt.r * TILE + TILE * 0.95;       // foot of the structure
+  const left = cx - size / 2;
+  const top = groundY - size * 0.92;
+  const breath = 1 + 0.025 * Math.sin(time * 1.7);
+  const glowPulse = 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(time * 2.4));
   if (USE_SPRITES.decor && ASSET_MAP.decor.spawn_portal) {
     return (
-      <RemoteSprite
-        source={ASSET_MAP.decor.spawn_portal}
-        style={{
+      <>
+        {/* Ground glow disk — paints the path tile in front of the gate red */}
+        <View pointerEvents="none" style={{
           position: 'absolute',
-          left,
-          top,
-          width: size,
-          height: size,
-          shadowColor: '#ff4d6d',
-          shadowOpacity: 0.55,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 2 },
-        }}
-      >
-        <SpawnPortalFallback pt={pt} time={time} />
-      </RemoteSprite>
+          left: cx - TILE * 1.8,
+          top: groundY - TILE * 0.4,
+          width: TILE * 3.6,
+          height: TILE * 1.0,
+          borderRadius: TILE * 2,
+          backgroundColor: '#ff4d6d',
+          opacity: 0.20 * glowPulse,
+        }} />
+        {/* Inner brighter ring */}
+        <View pointerEvents="none" style={{
+          position: 'absolute',
+          left: cx - TILE * 1.0,
+          top: groundY - TILE * 0.25,
+          width: TILE * 2.0,
+          height: TILE * 0.55,
+          borderRadius: TILE,
+          backgroundColor: '#ff8a44',
+          opacity: 0.35 * glowPulse,
+        }} />
+        {/* Rising ember particles — 6 streams, looping vertically */}
+        {[0,1,2,3,4,5].map((i) => {
+          const phase = ((time * 0.7 + i * 0.18) % 1);
+          const sway = Math.sin(time * 2.5 + i * 1.3) * 12;
+          return (
+            <View key={`emb${pt.c}-${pt.r}-${i}`} pointerEvents="none" style={{
+              position: 'absolute',
+              left: cx - 2 + (i - 2.5) * 14 + sway,
+              top: groundY - phase * TILE * 2.8,
+              width: 4, height: 4, borderRadius: 4,
+              backgroundColor: i % 2 === 0 ? '#ff7044' : '#ffb04a',
+              opacity: (1 - phase) * 0.85,
+            }} />
+          );
+        })}
+        {/* The actual gate — bigger sprite, breath-scaled, slight perspective */}
+        <RemoteSprite
+          source={ASSET_MAP.decor.spawn_portal}
+          resizeMode="contain"
+          style={{
+            position: 'absolute',
+            left,
+            top,
+            width: size,
+            height: size,
+            shadowColor: '#ff4d6d',
+            shadowOpacity: 0.7 * glowPulse,
+            shadowRadius: 22,
+            shadowOffset: { width: 0, height: 8 },
+            transform: [
+              { perspective: 800 },
+              { rotateX: '6deg' },
+              { scale: breath },
+            ],
+          }}
+        >
+          <SpawnPortalFallback pt={pt} time={time} />
+        </RemoteSprite>
+      </>
     );
   }
   return <SpawnPortalFallback pt={pt} time={time} />;
@@ -4078,27 +4129,81 @@ function SpawnPortalFallback({ pt, time }) {
 
 // ───── Castle keep — fortress with towers, battlements, banner ─────────────
 function CastleKeep({ pt, time }) {
-  const size = TILE * 3.2;
-  const left = pt.c * TILE - TILE * 2.1;
-  const top = pt.r * TILE - TILE * 1.08;
+  const size = TILE * 4.4;
+  const cx = pt.c * TILE + TILE / 2;
+  const groundY = pt.r * TILE + TILE * 0.95;
+  const left = cx - size / 2;
+  const top = groundY - size * 0.92;
+  const breath = 1 + 0.018 * Math.sin(time * 1.4);
+  const crystalPulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(time * 1.9));
   if (USE_SPRITES.decor && ASSET_MAP.decor.castle_keep) {
     return (
-      <RemoteSprite
-        source={ASSET_MAP.decor.castle_keep}
-        style={{
+      <>
+        {/* Soft cyan ground halo */}
+        <View pointerEvents="none" style={{
           position: 'absolute',
-          left,
-          top,
-          width: size,
-          height: size,
-          shadowColor: '#7be5d1',
-          shadowOpacity: 0.5,
-          shadowRadius: 14,
-          shadowOffset: { width: 0, height: 3 },
-        }}
-      >
-        <CastleKeepFallback pt={pt} time={time} />
-      </RemoteSprite>
+          left: cx - TILE * 1.7,
+          top: groundY - TILE * 0.35,
+          width: TILE * 3.4,
+          height: TILE * 0.9,
+          borderRadius: TILE * 2,
+          backgroundColor: '#7be5d1',
+          opacity: 0.22 * crystalPulse,
+        }} />
+        {/* Inner brighter aura */}
+        <View pointerEvents="none" style={{
+          position: 'absolute',
+          left: cx - TILE * 0.9,
+          top: groundY - TILE * 0.18,
+          width: TILE * 1.8,
+          height: TILE * 0.5,
+          borderRadius: TILE,
+          backgroundColor: '#a8f8e8',
+          opacity: 0.35 * crystalPulse,
+        }} />
+        {/* Floating crystal sparkles around the keep */}
+        {[0,1,2,3,4,5,6].map((i) => {
+          const phase = ((time * 0.4 + i * 0.14) % 1);
+          const angle = i * (Math.PI * 2 / 7) + time * 0.5;
+          const radius = TILE * 1.4;
+          return (
+            <View key={`spk${pt.c}-${pt.r}-${i}`} pointerEvents="none" style={{
+              position: 'absolute',
+              left: cx + Math.cos(angle) * radius - 2,
+              top: groundY - TILE * 1.5 + Math.sin(angle) * radius * 0.4 - phase * 8,
+              width: 4, height: 4, borderRadius: 4,
+              backgroundColor: i % 2 === 0 ? '#fff' : '#7be5d1',
+              opacity: (1 - phase) * 0.85,
+              shadowColor: '#7be5d1',
+              shadowOpacity: 0.9,
+              shadowRadius: 4,
+            }} />
+          );
+        })}
+        {/* The keep — bigger, breath-scaled, slight perspective tilt */}
+        <RemoteSprite
+          source={ASSET_MAP.decor.castle_keep}
+          resizeMode="contain"
+          style={{
+            position: 'absolute',
+            left,
+            top,
+            width: size,
+            height: size,
+            shadowColor: '#7be5d1',
+            shadowOpacity: 0.6 * crystalPulse,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 6 },
+            transform: [
+              { perspective: 800 },
+              { rotateX: '6deg' },
+              { scale: breath },
+            ],
+          }}
+        >
+          <CastleKeepFallback pt={pt} time={time} />
+        </RemoteSprite>
+      </>
     );
   }
   return <CastleKeepFallback pt={pt} time={time} />;
@@ -5846,6 +5951,7 @@ const BOB_PARAMS = {
 function EnemyView({ e, time }) {
   const def = ENEMIES[e.type];
   const size = TILE * def.size;
+  const isBoss = e.type === 'boss' || e.type === 'mega';
   const slowed = e.effects.some((ef) => ef.type === 'slow');
   const burning = e.effects.some((ef) => ef.type === 'poison');
   const badges = enemyBadges(e, def);
@@ -5856,6 +5962,19 @@ function EnemyView({ e, time }) {
   // Wing flap drives a different cycle for flyer
   const flying = e.flying || def.flying;
   const flap = flying ? Math.sin(time * 11 + phase) : 0;
+  // Walk-cycle squash & stretch: faster for runners, slower & heavier for
+  // bosses. Cycle drives non-uniform scaleY/X so single-frame sprites feel
+  // like they're WALKING.
+  const walkHz = b.yHz * 1.2;
+  const walkPhase = Math.sin(time * walkHz + phase);
+  const walkSquashY = 1 + (isBoss ? 0.07 : 0.05) * walkPhase;
+  const walkSquashX = 1 - (isBoss ? 0.04 : 0.03) * walkPhase;
+  // Walk hop: small upward bounce per cycle peak (footplant feel).
+  const hopY = -Math.max(0, walkPhase) * (isBoss ? 3 : 2);
+  // Direction lean: rotate sprite toward movement vector. Mostly horizontal
+  // so we read dirC. Capped at ±8°.
+  const dirC = e._dirC || 0;
+  const leanDeg = Math.max(-8, Math.min(8, dirC * 8));
   // Hit-flash: 0.13s white pulse after damage.
   const hitFlash = e._lastHitT ? Math.max(0, 1 - (time - e._lastHitT) / 0.13) : 0;
   // Death anim: scale-down + fade over 0.22s once hp hits 0.
@@ -5869,6 +5988,8 @@ function EnemyView({ e, time }) {
   const spawnProgress = spawning ? spawnAge / 0.32 : 1;
   const spawnScale = spawning ? 0.4 + 0.6 * spawnProgress : 1;
   const spawnOpacity = spawning ? spawnProgress : 1;
+  // Boss aura — slow pulsing glow ring under the sprite.
+  const auraPulse = isBoss ? 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(time * 2.2 + phase)) : 0;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
@@ -5877,21 +5998,46 @@ function EnemyView({ e, time }) {
       width: size, height: size,
       opacity: deathOpacity * spawnOpacity,
     }}>
+      {/* Big ground shadow — grows/shrinks with hop for "stomp" feel */}
       <View
         pointerEvents="none"
         style={{
           position: 'absolute',
-          left: size * 0.16,
-          top: size * 0.78,
-          width: size * 0.72,
-          height: Math.max(3, size * 0.13),
+          left: -size * (isBoss ? 0.25 : 0.05),
+          top: size * 0.82,
+          width: size * (isBoss ? 1.5 : 0.9),
+          height: Math.max(4, size * (isBoss ? 0.20 : 0.14)),
           borderRadius: size,
           backgroundColor: '#000',
-          opacity: flying ? 0.18 : 0.42,
-          transform: [{ scaleX: flying ? 0.7 : 1.2 }],
+          opacity: flying ? 0.22 : (isBoss ? 0.55 : 0.42),
+          transform: [
+            { scaleX: flying ? 0.7 : 1.2 },
+            { scaleY: Math.max(0.7, 1 - Math.max(0, walkPhase) * 0.25) },
+          ],
         }}
       />
-      <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }, { scale: deathScale * spawnScale }] }}>
+      {isBoss && auraPulse > 0 && (
+        <View pointerEvents="none" style={{
+          position: 'absolute',
+          left: -size * 0.35,
+          top: size * 0.55,
+          width: size * 1.7,
+          height: size * 0.55,
+          borderRadius: size,
+          borderWidth: 2,
+          borderColor: e.type === 'mega' ? '#ff2244' : '#ff4d6d',
+          opacity: 0.5 * auraPulse,
+        }} />
+      )}
+      <View style={{
+        transform: [
+          { translateX: bobX },
+          { translateY: bobY + hopY },
+          { rotate: `${leanDeg}deg` },
+          { scaleX: walkSquashX * deathScale * spawnScale },
+          { scaleY: walkSquashY * deathScale * spawnScale },
+        ],
+      }}>
         <CreatureSvg
           type={e.type}
           size={size}
@@ -6012,19 +6158,28 @@ function EnemyView({ e, time }) {
 function CreatureSvg({ type, size, burning, flap, tier, bossVariant, rosterId }) {
   const spriteKey = rosterId || bossVariant;
   if ((type === 'boss' || type === 'mega') && USE_SPRITES.bosses && spriteKey && ASSET_MAP.bosses[spriteKey]) {
-    const spriteSize = size * (type === 'mega' ? 1.25 : 1.15);
+    // KR-style: boss sprite renders much LARGER than the tile footprint,
+    // anchored at the bottom so feet rest on the ground tile. Sprite
+    // overflows upward into the tile above for that "monster towering
+    // over the path" feel.
+    const spriteSize = size * (type === 'mega' ? 2.4 : 2.0);
     return (
+      <View style={{
+        width: size, height: size,
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+      }}>
       <RemoteSprite
         source={ASSET_MAP.bosses[spriteKey]}
+        resizeMode="contain"
         style={{
           width: spriteSize,
           height: spriteSize,
-          marginLeft: (size - spriteSize) / 2,
-          marginTop: (size - spriteSize) / 2,
+          marginBottom: -size * 0.12,
           shadowColor: '#000',
-          shadowOpacity: 0.55,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.7,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
         }}
       >
         <CreatureFallbackSvg
@@ -6037,6 +6192,7 @@ function CreatureSvg({ type, size, burning, flap, tier, bossVariant, rosterId })
           rosterId={rosterId}
         />
       </RemoteSprite>
+      </View>
     );
   }
   return (
@@ -9039,6 +9195,10 @@ function step(dt, s, onEnd) {
     const dr = target.r - e.r;
     const dc = target.c - e.c;
     const dist = Math.hypot(dr, dc);
+    if (dist > 0.001) {
+      e._dirR = dr / dist;
+      e._dirC = dc / dist;
+    }
     const diffSpeed = (s.difficulty || DIFFICULTIES[DEFAULT_DIFFICULTY]).speedMul;
     // Phase E: Freeze fully stops; SpeedShield pauses; CandyLure tags first
     // few spawned enemies with a manual slow (applied at spawn — see below).
