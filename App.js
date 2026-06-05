@@ -2718,6 +2718,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
       playSound('boss_spawn');
       buzz('heavy');
       s.shakeUntil = s.time + 0.6;       // screen-shake on boss banner
+      s.bossFlashUntil = s.time + 0.55;  // red vignette pulse
     }
     force();
   };
@@ -3026,6 +3027,15 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
           {/* animated torches on top of everything (so they cast over walls) */}
           <TorchLayer time={s.time} />
         </View>
+
+        {(s.bossFlashUntil || 0) > s.time && (
+          <View pointerEvents="none" style={{
+            position: 'absolute', left: 0, top: 0,
+            width: VIEWPORT_W, height: VIEWPORT_H,
+            backgroundColor: '#ff1a3c',
+            opacity: 0.42 * Math.max(0, (s.bossFlashUntil - s.time) / 0.55),
+          }} />
+        )}
 
         <TouchableOpacity onPress={recenter} style={styles.recenterBtn}>
           <Text style={styles.recenterText}>⤢</Text>
@@ -3412,7 +3422,7 @@ const BoardChrome = React.memo(function BoardChrome() {
             top: 0,
             width: BOARD_W,
             height: BOARD_H,
-            opacity: 0.26,
+            opacity: 0.78,
           }}
         />
       )}
@@ -5571,6 +5581,11 @@ function TowerView({ t, time, selected = false }) {
   if (t.kind === 'rock') {
     return <RockView t={t} />;
   }
+  // Idle breathing + fire pulse — sin-driven scale, plus a brief 12% pop on shot.
+  const _t = time || 0;
+  const _idle = 1 + 0.018 * Math.sin(_t * 2 + ((t.id || 0) * 0.7));
+  const _firePulseT = t._lastFireT ? Math.max(0, 1 - (_t - t._lastFireT) / 0.18) : 0;
+  const _scale = _idle + 0.12 * _firePulseT;
   if (t.kind === 'special') {
     const recipe = SPECIAL_BY_ID[t.specialId];
     if (!recipe) return null;
@@ -5581,7 +5596,9 @@ function TowerView({ t, time, selected = false }) {
       }}>
         <GroundShadow width={TILE * 1.25} height={TILE * 0.22} opacity={0.38} />
         {selected && <SelectionRing color={recipe.accent || '#ffd166'} />}
-        <SpecialSvg recipe={recipe} time={time || 0} id={t.id} />
+        <View style={{ transform: [{ scale: _scale }] }}>
+          <SpecialSvg recipe={recipe} time={time || 0} id={t.id} />
+        </View>
         {/* Full special tower name written below the tile */}
         <View style={{
           position: 'absolute',
@@ -5616,7 +5633,9 @@ function TowerView({ t, time, selected = false }) {
     }}>
       <GroundShadow width={TILE * 0.86} height={TILE * 0.16} opacity={0.32} />
       {selected && <SelectionRing color={GEMS[t.gemType].color} />}
-      <GemSvg gemType={t.gemType} tier={t.tier} />
+      <View style={{ transform: [{ scale: _scale }] }}>
+        <GemSvg gemType={t.gemType} tier={t.tier} />
+      </View>
     </View>
   );
 }
@@ -5683,12 +5702,20 @@ function EnemyView({ e, time }) {
   // Wing flap drives a different cycle for flyer
   const flying = e.flying || def.flying;
   const flap = flying ? Math.sin(time * 11 + phase) : 0;
+  // Hit-flash: 0.13s white pulse after damage.
+  const hitFlash = e._lastHitT ? Math.max(0, 1 - (time - e._lastHitT) / 0.13) : 0;
+  // Death anim: scale-down + fade over 0.22s once hp hits 0.
+  const dying = e.hp <= 0 && e._deathAt != null;
+  const deathProgress = dying ? Math.min(1, (time - e._deathAt) / 0.22) : 0;
+  const deathScale = dying ? 1 - 0.55 * deathProgress : 1;
+  const deathOpacity = dying ? Math.max(0, 1 - deathProgress) : 1;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
       left: e.c * TILE + (TILE - size) / 2,
       top: e.r * TILE + (TILE - size) / 2,
       width: size, height: size,
+      opacity: deathOpacity,
     }}>
       <View
         pointerEvents="none"
@@ -5704,7 +5731,7 @@ function EnemyView({ e, time }) {
           transform: [{ scaleX: flying ? 0.7 : 1.2 }],
         }}
       />
-      <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }] }}>
+      <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }, { scale: deathScale }] }}>
         <CreatureSvg
           type={e.type}
           size={size}
@@ -5714,6 +5741,16 @@ function EnemyView({ e, time }) {
           bossVariant={e.bossVariant}
           rosterId={e.rosterId}
         />
+        {hitFlash > 0 && (
+          <View pointerEvents="none" style={{
+            position: 'absolute',
+            left: 0, top: 0,
+            width: size, height: size,
+            borderRadius: size,
+            backgroundColor: '#fff',
+            opacity: hitFlash * 0.55,
+          }} />
+        )}
       </View>
       {slowed && (
         <View style={{
@@ -8071,40 +8108,49 @@ function ProjectileView({ p }) {
     <View pointerEvents="none" style={{
       position: 'absolute',
       left: midX - len / 2,
-      top: midY - 3,
+      top: midY - 5,
       width: len,
-      height: 6,
+      height: 10,
       transform: [{ rotate: `${angle}rad` }],
     }}>
+      {/* Outer halo — softest, widest. */}
       <View style={{
         position: 'absolute',
-        left: 0,
-        top: 1,
-        width: len,
-        height: 4,
-        borderRadius: 4,
+        left: 0, top: 2, width: len, height: 6,
+        borderRadius: 6,
         backgroundColor: p.color,
         opacity: 0.18,
       }} />
+      {/* Mid glow */}
       <View style={{
         position: 'absolute',
-        left: 0,
-        top: 2,
-        width: len,
-        height: 2,
-        borderRadius: 2,
+        left: 0, top: 3, width: len, height: 4,
+        borderRadius: 4,
         backgroundColor: p.color,
+        opacity: 0.55,
+      }} />
+      {/* Bright core */}
+      <View style={{
+        position: 'absolute',
+        left: 0, top: 4, width: len, height: 2,
+        borderRadius: 2,
+        backgroundColor: '#fff',
         opacity: 0.95,
+      }} />
+      {/* Head — bright white nucleus with colored halo */}
+      <View style={{
+        position: 'absolute',
+        right: -4, top: -1, width: 12, height: 12,
+        borderRadius: 12,
+        backgroundColor: p.color,
+        opacity: 0.55,
       }} />
       <View style={{
         position: 'absolute',
-        right: -2,
-        top: 0,
-        width: 6,
-        height: 6,
-        borderRadius: 6,
+        right: -1, top: 2, width: 7, height: 7,
+        borderRadius: 7,
         backgroundColor: '#fff',
-        opacity: 0.8,
+        opacity: 0.95,
       }} />
     </View>
   );
@@ -8915,6 +8961,13 @@ function step(dt, s, onEnd) {
   const alive = [];
   for (const e of s.enemies) {
     if (e.hp <= 0) {
+      // Linger ~0.22s so EnemyView can play the scale-fade death anim.
+      if (e._deathProcessed) {
+        if (s.time - (e._deathAt || s.time) < 0.22) alive.push(e);
+        continue;
+      }
+      e._deathProcessed = true;
+      e._deathAt = s.time;
       if (e.subPath && e.pathIdx < e.subPath.length) {
         // Anti-farm gate for streak only (doc §54.3): a too-quick-too-shallow
         // kill still pays gold, just doesn't extend the killstreak ladder.
@@ -8945,7 +8998,7 @@ function step(dt, s, onEnd) {
           }
         }
         // Death burst: 8 particles radiating outward
-        const def = ENEMIES[e.type];
+        const def = ENEMIES[e.type] || {};
         const burstCount = e.type === 'boss' || e.type === 'mega' ? 16 : 8;
         for (let i = 0; i < burstCount; i++) {
           const angle = (i / burstCount) * Math.PI * 2 + Math.random() * 0.4;
@@ -8963,6 +9016,8 @@ function step(dt, s, onEnd) {
           });
         }
       }
+      // Keep the corpse on-screen for the scale-fade death anim.
+      alive.push(e);
     } else {
       alive.push(e);
     }
@@ -9001,6 +9056,7 @@ function step(dt, s, onEnd) {
 
 function fireAt(tower, inRange, stats, color, s) {
   playSound('shot', 0.08);   // throttle so swarm fire doesn't spam audio
+  tower._lastFireT = s.time;
   // Muzzle flash at tower
   s.fx.push({
     id: s.nextFxId++,
@@ -9089,6 +9145,7 @@ function fireAt(tower, inRange, stats, color, s) {
       }
     }
     enemy.hp -= reduced;
+    if (reduced > 0) enemy._lastHitT = s.time;          // hit-flash visual
     // MVP per-family damage roll-up (doc §19) — gem towers tracked by family.
     if (tower.kind === 'gem' && s.sessionStats && s.sessionStats.gemDamage) {
       s.sessionStats.gemDamage[tower.gemType] = (s.sessionStats.gemDamage[tower.gemType] || 0) + reduced;
