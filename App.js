@@ -1153,63 +1153,63 @@ const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 // must be public; private repos return 404 to Expo, and RemoteSprite falls back
 // to SVG. For App Store offline builds, this can later move back to bundled
 // require() assets.
-// Sprites bundled via require() — Metro packs them into the app build so they
-// load instantly (no 404, no network, no repo-visibility dependency). Snack
-// copy-paste mode breaks unless the snack also has these files in its tree;
-// use the gitUrl import (snack.expo.dev/?gitUrl=...) or local Expo build to
-// see the real art.
+// Sprites loaded over HTTPS from the now-public repo. remoteAsset() builds
+// the GitHub raw URL; React Native <Image> + expo-av Audio.Sound.createAsync
+// both accept the {uri} shape. Works in Snack paste-mode, gitUrl-import, and
+// local Expo builds equally — no asset bundling required.
+const RAW_ASSET_BASE =
+  'https://github.com/usmanmomid/Test/raw/refs/heads/claude/mobile-game-development-PjMjg/';
+const remoteAsset = (path) => ({ uri: encodeURI(RAW_ASSET_BASE + path) });
 const ASSET_MAP = {
   towers: {
-    MoonsteelPrism:        _r('./assets/runtime/towers/special_01.png'),
-    VerdantArcstone:       _r('./assets/runtime/towers/special_02.png'),
-    EmberstarObelisk:      _r('./assets/runtime/towers/special_03.png'),
-    RoseglassFocus:        _r('./assets/runtime/towers/special_04.png'),
-    JadeVeilLens:          _r('./assets/runtime/towers/special_05.png'),
-    StormsplitReactor:     _r('./assets/runtime/towers/special_06.png'),
-    GildedHexcore:         _r('./assets/runtime/towers/special_07.png'),
-    MoonsteelWarden:       _r('./assets/runtime/towers/special_08.png'),
-    VerdantCascade:        _r('./assets/runtime/towers/special_09.png'),
-    ObsidianBreaker:       _r('./assets/runtime/towers/special_10.png'),
-    SkyquartzSentinel:     _r('./assets/runtime/towers/special_11.png'),
-    RoyalRoseglass:        _r('./assets/runtime/towers/special_12.png'),
-    CrimsonThunderheart:   _r('./assets/runtime/towers/special_13.png'),
-    CoralResonance:        _r('./assets/runtime/towers/special_14.png'),
-    FrostsunEye:           _r('./assets/runtime/towers/special_15.png'),
-    SovereignDiamondLens:  _r('./assets/runtime/towers/special_16.png'),
-    PrismaticWorldcore:    _r('./assets/runtime/towers/special_17.png'),
-    AbyssbreakerMonolith:  _r('./assets/runtime/towers/special_18.png'),
+    MoonsteelPrism:        remoteAsset('assets/runtime/towers/special_01.png'),
+    VerdantArcstone:       remoteAsset('assets/runtime/towers/special_02.png'),
+    EmberstarObelisk:      remoteAsset('assets/runtime/towers/special_03.png'),
+    RoseglassFocus:        remoteAsset('assets/runtime/towers/special_04.png'),
+    JadeVeilLens:          remoteAsset('assets/runtime/towers/special_05.png'),
+    StormsplitReactor:     remoteAsset('assets/runtime/towers/special_06.png'),
+    GildedHexcore:         remoteAsset('assets/runtime/towers/special_07.png'),
+    MoonsteelWarden:       remoteAsset('assets/runtime/towers/special_08.png'),
+    VerdantCascade:        remoteAsset('assets/runtime/towers/special_09.png'),
+    ObsidianBreaker:       remoteAsset('assets/runtime/towers/special_10.png'),
+    SkyquartzSentinel:     remoteAsset('assets/runtime/towers/special_11.png'),
+    RoyalRoseglass:        remoteAsset('assets/runtime/towers/special_12.png'),
+    CrimsonThunderheart:   remoteAsset('assets/runtime/towers/special_13.png'),
+    CoralResonance:        remoteAsset('assets/runtime/towers/special_14.png'),
+    FrostsunEye:           remoteAsset('assets/runtime/towers/special_15.png'),
+    SovereignDiamondLens:  remoteAsset('assets/runtime/towers/special_16.png'),
+    PrismaticWorldcore:    remoteAsset('assets/runtime/towers/special_17.png'),
+    AbyssbreakerMonolith:  remoteAsset('assets/runtime/towers/special_18.png'),
   },
   bosses: {
-    demon:            _r('./assets/runtime/bosses/boss_01_pirate_king.png'),
-    void:             _r('./assets/runtime/bosses/boss_02_void_monarch.png'),
-    destroyer:        _r('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
-    ender:            _r('./assets/runtime/bosses/boss_04_frost_lich.png'),
-    blood:            _r('./assets/runtime/bosses/boss_12_medusa.png'),
-    colossus:         _r('./assets/runtime/bosses/boss_11_maze_bull.png'),
-    'ender-mega':     _r('./assets/runtime/bosses/boss_11_maze_bull.png'),
-    wraith_captain:   _r('./assets/runtime/bosses/boss_01_pirate_king.png'),
-    eye_magus:        _r('./assets/runtime/bosses/boss_02_void_monarch.png'),
-    lava_lord:        _r('./assets/runtime/bosses/boss_03_hellforge_brute.png'),
-    ice_lich:         _r('./assets/runtime/bosses/boss_04_frost_lich.png'),
-    crystal_dragon:   _r('./assets/runtime/bosses/boss_05_storm_crawler.png'),
-    lava_scorpion:    _r('./assets/runtime/bosses/boss_06_ogre_king.png'),
-    plague_ogre:      _r('./assets/runtime/bosses/boss_07_roots.png'),
-    forest_treant:    _r('./assets/runtime/bosses/boss_08_ashfang.png'),
-    lava_cerberus:    _r('./assets/runtime/bosses/boss_09_kraken.png'),
-    eldritch_horror:  _r('./assets/runtime/bosses/boss_10_scorpion_king.png'),
-    demon_warlord:    _r('./assets/runtime/bosses/boss_11_maze_bull.png'),
-    crystal_serpent:  _r('./assets/runtime/bosses/boss_12_medusa.png'),
+    demon:            remoteAsset('assets/runtime/bosses/boss_01_pirate_king.png'),
+    void:             remoteAsset('assets/runtime/bosses/boss_02_void_monarch.png'),
+    destroyer:        remoteAsset('assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ender:            remoteAsset('assets/runtime/bosses/boss_04_frost_lich.png'),
+    blood:            remoteAsset('assets/runtime/bosses/boss_12_medusa.png'),
+    colossus:         remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
+    'ender-mega':     remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
+    wraith_captain:   remoteAsset('assets/runtime/bosses/boss_01_pirate_king.png'),
+    eye_magus:        remoteAsset('assets/runtime/bosses/boss_02_void_monarch.png'),
+    lava_lord:        remoteAsset('assets/runtime/bosses/boss_03_hellforge_brute.png'),
+    ice_lich:         remoteAsset('assets/runtime/bosses/boss_04_frost_lich.png'),
+    crystal_dragon:   remoteAsset('assets/runtime/bosses/boss_05_storm_crawler.png'),
+    lava_scorpion:    remoteAsset('assets/runtime/bosses/boss_06_ogre_king.png'),
+    plague_ogre:      remoteAsset('assets/runtime/bosses/boss_07_roots.png'),
+    forest_treant:    remoteAsset('assets/runtime/bosses/boss_08_ashfang.png'),
+    lava_cerberus:    remoteAsset('assets/runtime/bosses/boss_09_kraken.png'),
+    eldritch_horror:  remoteAsset('assets/runtime/bosses/boss_10_scorpion_king.png'),
+    demon_warlord:    remoteAsset('assets/runtime/bosses/boss_11_maze_bull.png'),
+    crystal_serpent:  remoteAsset('assets/runtime/bosses/boss_12_medusa.png'),
   },
   decor: {
-    spawn_portal:     _r('./assets/runtime/decor/spawn_portal.png'),
-    castle_keep:      _r('./assets/runtime/decor/central_crystal.png'),
-    crystal_monument: _r('./assets/runtime/decor/central_crystal.png'),
-    recipe_master:    _r('./assets/runtime/decor/recipe_master.png'),
-    maze_background:  _r('./assets/runtime/decor/maze_background.png'),
+    spawn_portal:     remoteAsset('assets/runtime/decor/spawn_portal.png'),
+    castle_keep:      remoteAsset('assets/runtime/decor/central_crystal.png'),
+    crystal_monument: remoteAsset('assets/runtime/decor/central_crystal.png'),
+    recipe_master:    remoteAsset('assets/runtime/decor/recipe_master.png'),
+    maze_background:  remoteAsset('assets/runtime/decor/maze_background.png'),
   },
 };
-// Sprites ON across the board. PNG-or-SVG fallback per-category is still in
-// place at each render site, so a missing key falls back to the SVG renderer.
 const USE_SPRITES = {
   towers: true,
   bosses: true,
