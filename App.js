@@ -1,9 +1,46 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Svg, {
-  Path, Circle, Ellipse, Rect, G, LinearGradient, RadialGradient,
-  Stop, Defs, Polygon, Line, Pattern,
-} from 'react-native-svg';
+// Snack paste-mode safety: if Snack hasn't auto-registered react-native-svg
+// as a dependency, the static `import` would crash module-load with a red
+// error screen the user can't read past. Wrapping in try/catch lets the app
+// at least boot — SVG visuals just become noop placeholders until the dep
+// is added in Snack's "Modules" / "Dependencies" sidebar.
+let Svg, Path, Circle, Ellipse, Rect, G, LinearGradient, RadialGradient,
+    Stop, Defs, Polygon, Line, Pattern;
+let _svgLoaded = true;
+try {
+  const _rnsvg = require('react-native-svg');
+  Svg = _rnsvg.default || _rnsvg.Svg;
+  Path = _rnsvg.Path;
+  Circle = _rnsvg.Circle;
+  Ellipse = _rnsvg.Ellipse;
+  Rect = _rnsvg.Rect;
+  G = _rnsvg.G;
+  LinearGradient = _rnsvg.LinearGradient;
+  RadialGradient = _rnsvg.RadialGradient;
+  Stop = _rnsvg.Stop;
+  Defs = _rnsvg.Defs;
+  Polygon = _rnsvg.Polygon;
+  Line = _rnsvg.Line;
+  Pattern = _rnsvg.Pattern;
+  if (!Svg) throw new Error('react-native-svg did not export Svg');
+} catch (_e) {
+  _svgLoaded = false;
+  const _Noop = () => null;
+  Svg = _Noop;
+  Path = _Noop;
+  Circle = _Noop;
+  Ellipse = _Noop;
+  Rect = _Noop;
+  G = _Noop;
+  LinearGradient = _Noop;
+  RadialGradient = _Noop;
+  Stop = _Noop;
+  Defs = _Noop;
+  Polygon = _Noop;
+  Line = _Noop;
+  Pattern = _Noop;
+}
 import {
   StyleSheet,
   Text,
@@ -1661,6 +1698,71 @@ function bfsCheckpoints(grid, start) {
 
 const emptyGrid = () => Array.from({ length: ROWS }, () => Array(COLS).fill(false));
 
+// Fallback screen shown when react-native-svg failed to load in Snack
+// paste-mode. Gives the user a clear, in-app instruction instead of a
+// red error screen — saves them from staring at "Unable to resolve module".
+function SvgMissingBanner() {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#0a0815' }}>
+      <View style={{ flex: 1, padding: 24, justifyContent: 'center' }}>
+        <View style={{
+          backgroundColor: '#1a1228',
+          borderWidth: 2,
+          borderColor: '#ffd166',
+          borderRadius: 12,
+          padding: 20,
+        }}>
+          <Text style={{ color: '#ffd166', fontSize: 20, fontWeight: '900', marginBottom: 12, textAlign: 'center' }}>
+            Lägg till SVG-modulen
+          </Text>
+          <Text style={{ color: '#fff', fontSize: 14, lineHeight: 22, marginBottom: 10 }}>
+            Spelet behöver paketet{' '}
+            <Text style={{ color: '#7be5d1', fontWeight: '900' }}>react-native-svg</Text>{' '}
+            men Snack har inte registrerat det än.
+          </Text>
+          <Text style={{ color: '#fff', fontSize: 14, lineHeight: 22, marginBottom: 6, fontWeight: '700' }}>
+            Hur du fixar det i Snack:
+          </Text>
+          <Text style={{ color: '#cfd5e6', fontSize: 13, lineHeight: 20, marginBottom: 4 }}>
+            1. Öppna snack.expo.dev i en{' '}
+            <Text style={{ color: '#ffd166', fontWeight: '900' }}>desktop-browser</Text>
+          </Text>
+          <Text style={{ color: '#cfd5e6', fontSize: 13, lineHeight: 20, marginBottom: 4 }}>
+            2. Vänster sidofält — leta efter sektionen{' '}
+            <Text style={{ color: '#ffd166', fontWeight: '900' }}>"Modules"</Text> eller{' '}
+            <Text style={{ color: '#ffd166', fontWeight: '900' }}>"Dependencies"</Text>
+          </Text>
+          <Text style={{ color: '#cfd5e6', fontSize: 13, lineHeight: 20, marginBottom: 4 }}>
+            3. Klicka{' '}
+            <Text style={{ color: '#7be5d1', fontWeight: '900' }}>+ Add dependency</Text>
+          </Text>
+          <Text style={{ color: '#cfd5e6', fontSize: 13, lineHeight: 20, marginBottom: 4 }}>
+            4. Skriv exakt:{' '}
+            <Text style={{ color: '#7be5d1', fontWeight: '900', fontFamily: 'monospace' }}>react-native-svg</Text>{' '}
+            (utan .js)
+          </Text>
+          <Text style={{ color: '#cfd5e6', fontSize: 13, lineHeight: 20, marginBottom: 14 }}>
+            5. Välj version{' '}
+            <Text style={{ color: '#7be5d1', fontWeight: '900' }}>15.2.0</Text>{' '}
+            (matchar Expo SDK 51)
+          </Text>
+          <View style={{
+            backgroundColor: '#0a0815',
+            padding: 10,
+            borderRadius: 6,
+            borderLeftWidth: 3,
+            borderLeftColor: '#ff4d6d',
+          }}>
+            <Text style={{ color: '#ff9aa6', fontSize: 12, lineHeight: 18 }}>
+              Genväg som ofta funkar:{'\n'}öppna snack.expo.dev/?gitUrl=https://github.com/usmanmomid/Test{'\n'}— då läser Snack package.json från repot automatiskt.
+            </Text>
+          </View>
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 // ─── App shell ───────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState('lobby');
@@ -1757,6 +1859,7 @@ export default function App() {
     setScreen('game');
   };
 
+  if (!_svgLoaded) return <SvgMissingBanner />;
   if (screen === 'lobby') return <LobbyScreen stats={stats} mode={mode} onModeChange={setMode} onStartSolo={startSolo} />;
   if (screen === 'win' || screen === 'lose') return (
     <EndScreen
