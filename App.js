@@ -2502,6 +2502,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     delete anchor.isCandidate;
     anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
+    placeBurst(s, anchor, GEMS[anchor.gemType]?.color || '#ffd166');
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
   };
@@ -2555,6 +2556,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     anchor.tier += plusLevel;
     anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
+    placeBurst(s, anchor, GEMS[anchor.gemType]?.color || '#ffd166');
     // All other candidates not consumed and not anchor → rocks
     const keep = new Set([anchor.id]);
     // candidates used in merge also disappear (they were "consumed"), turning to rocks
@@ -2584,6 +2586,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     anchor.tier += 2;
     anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
+    placeBurst(s, anchor, GEMS[anchor.gemType]?.color || '#ffd166');
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
   };
@@ -2618,6 +2621,7 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     anchor.cooldown = 0;
     anchor.targetMode = anchor.targetMode || DEFAULT_TARGET_MODE;
     s.towers.push(anchor);
+    forgeBurst(s, anchor, recipe.accent || '#ffd166');
     candidatesToRocks(new Set([anchor.id]));
     finishChooseAction();
     playSound('recipe_forge');
@@ -2765,6 +2769,12 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
     }
     s.grid[anchor.r][anchor.c] = true;
     s.towers.push(result);
+    if (result.kind === 'special') {
+      const recipe = SPECIAL_BY_ID[result.specialId];
+      forgeBurst(s, result, recipe?.accent || '#ffd166');
+    } else if (result.kind === 'gem') {
+      placeBurst(s, result, GEMS[result.gemType]?.color || '#ffd166');
+    }
     s.selectedTower = null;
     s.boardActionReadyAt = s.time + 0.75;
     s.path = bfsCheckpoints(s.grid, SPAWN) || s.path;
@@ -3006,11 +3016,44 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
           <PathLayer path={s.path} time={s.time} />
 
           {/* spawn portal, checkpoint torches, castle keep */}
-          <SpawnPortal pt={SPAWN} time={s.time} />
+          <View style={(s.spawnPulseUntil || 0) > s.time ? {
+            transform: [{ scale: 1 + 0.08 * Math.max(0, (s.spawnPulseUntil - s.time) / 0.32) }],
+          } : null}>
+            <SpawnPortal pt={SPAWN} time={s.time} />
+            {(s.spawnPulseUntil || 0) > s.time && (
+              <View pointerEvents="none" style={{
+                position: 'absolute',
+                left: SPAWN.c * TILE + TILE / 2 - TILE * 1.6,
+                top: SPAWN.r * TILE + TILE / 2 - TILE * 1.6,
+                width: TILE * 3.2, height: TILE * 3.2,
+                borderRadius: TILE * 3,
+                borderWidth: 3, borderColor: '#ff4d6d',
+                opacity: 0.7 * Math.max(0, (s.spawnPulseUntil - s.time) / 0.32),
+              }} />
+            )}
+          </View>
           {CHECKPOINTS.map((cp, i) => (
             <CheckpointTorch key={`cp${i}`} pt={cp} time={s.time} i={i} />
           ))}
-          <CastleKeep pt={GOAL} time={s.time} />
+          <View style={(s.goalHitUntil || 0) > s.time ? {
+            transform: [
+              { translateX: (Math.random() - 0.5) * 5 },
+              { translateY: (Math.random() - 0.5) * 5 },
+            ],
+          } : null}>
+            <CastleKeep pt={GOAL} time={s.time} />
+            {(s.goalHitUntil || 0) > s.time && (
+              <View pointerEvents="none" style={{
+                position: 'absolute',
+                left: GOAL.c * TILE + TILE / 2 - TILE * 1.8,
+                top: GOAL.r * TILE + TILE / 2 - TILE * 1.8,
+                width: TILE * 3.6, height: TILE * 3.6,
+                borderRadius: TILE * 3.6,
+                backgroundColor: '#ff1a3c',
+                opacity: 0.42 * Math.max(0, (s.goalHitUntil - s.time) / 0.55),
+              }} />
+            )}
+          </View>
 
           {/* tap layer */}
           <Pressable onPress={onBoardPress} style={{ position: 'absolute', left: 0, top: 0, width: BOARD_W, height: BOARD_H }} />
@@ -3034,6 +3077,14 @@ function Game({ onEnd, difficulty, mode = DEFAULT_MODE, bonusGold = 0, showTutor
             width: VIEWPORT_W, height: VIEWPORT_H,
             backgroundColor: '#ff1a3c',
             opacity: 0.42 * Math.max(0, (s.bossFlashUntil - s.time) / 0.55),
+          }} />
+        )}
+        {(s.forgeFlashUntil || 0) > s.time && (
+          <View pointerEvents="none" style={{
+            position: 'absolute', left: 0, top: 0,
+            width: VIEWPORT_W, height: VIEWPORT_H,
+            backgroundColor: '#ffd166',
+            opacity: 0.32 * Math.max(0, (s.forgeFlashUntil - s.time) / 0.32),
           }} />
         )}
 
@@ -5709,13 +5760,19 @@ function EnemyView({ e, time }) {
   const deathProgress = dying ? Math.min(1, (time - e._deathAt) / 0.22) : 0;
   const deathScale = dying ? 1 - 0.55 * deathProgress : 1;
   const deathOpacity = dying ? Math.max(0, 1 - deathProgress) : 1;
+  // Spawn entrance: 0.32s scale-up + fade-in.
+  const spawnAge = e._spawnAt != null ? time - e._spawnAt : 1;
+  const spawning = spawnAge >= 0 && spawnAge < 0.32 && !dying;
+  const spawnProgress = spawning ? spawnAge / 0.32 : 1;
+  const spawnScale = spawning ? 0.4 + 0.6 * spawnProgress : 1;
+  const spawnOpacity = spawning ? spawnProgress : 1;
   return (
     <View pointerEvents="none" style={{
       position: 'absolute',
       left: e.c * TILE + (TILE - size) / 2,
       top: e.r * TILE + (TILE - size) / 2,
       width: size, height: size,
-      opacity: deathOpacity,
+      opacity: deathOpacity * spawnOpacity,
     }}>
       <View
         pointerEvents="none"
@@ -5731,7 +5788,7 @@ function EnemyView({ e, time }) {
           transform: [{ scaleX: flying ? 0.7 : 1.2 }],
         }}
       />
-      <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }, { scale: deathScale }] }}>
+      <View style={{ transform: [{ translateX: bobX }, { translateY: bobY }, { scale: deathScale * spawnScale }] }}>
         <CreatureSvg
           type={e.type}
           size={size}
@@ -8788,7 +8845,9 @@ function step(dt, s, onEnd) {
       _lastDmgT: s.time,                  // RegenWaves idle tracker
     };
     applySpawnAbilities(enemy, sp, s);
+    enemy._spawnAt = s.time;             // entrance fade-in / scale-up
     s.enemies.push(enemy);
+    s.spawnPulseUntil = s.time + 0.32;   // portal pulse over the spawn cell
     // Apply milestone evolution at spawn (doc §57.2) for W100+.
     const ms = milestoneMults(s.wave);
     if (ms.speed !== 1 || ms.armor !== 1) {
@@ -8893,10 +8952,28 @@ function step(dt, s, onEnd) {
         s.killStreak = 0;   // leak breaks the streak (P9)
         playSound('life_lost');
         buzz('warning');
+        s.goalHitUntil = s.time + 0.55;
+        s.shakeUntil = Math.max(s.shakeUntil || 0, s.time + 0.25);
       }
     } else {
       e.r += (dr / dist) * move;
       e.c += (dc / dist) * move;
+    }
+    // Footstep sparkle: leave a tiny color trail every ~0.18s of life.
+    if (e.hp > 0 && (s.time - (e._lastStepFx || 0)) > 0.18) {
+      e._lastStepFx = s.time;
+      const def = ENEMIES[e.type] || {};
+      s.fx.push({
+        id: s.nextFxId++,
+        type: 'death',
+        x: e.c * TILE + TILE / 2 + (Math.random() - 0.5) * 4,
+        y: e.r * TILE + TILE * 0.85,
+        vx: (Math.random() - 0.5) * 8,
+        vy: -4 - Math.random() * 8,
+        color: def.color || '#ffd166',
+        start: s.time,
+        until: s.time + 0.32,
+      });
     }
   }
 
@@ -8974,7 +9051,23 @@ function step(dt, s, onEnd) {
         const pathFrac = e.subPath.length > 0 ? e.pathIdx / e.subPath.length : 1;
         const aliveSec = s.time - (e.spawnedAt || s.time);
         const validForStreak = pathFrac >= STREAK_MIN_PATH_FRACTION || aliveSec >= STREAK_MIN_ALIVE_SECONDS;
-        if (validForStreak) s.killStreak += 1;
+        if (validForStreak) {
+          s.killStreak += 1;
+          // Streak milestone floater
+          if (s.killStreak === 10 || s.killStreak === 25 || s.killStreak === 50 || s.killStreak === 100) {
+            s.fx.push({
+              id: s.nextFxId++,
+              type: 'text',
+              x: e.c * TILE + TILE / 2,
+              y: e.r * TILE + TILE / 2 - 24,
+              text: `${s.killStreak} STREAK!`,
+              color: s.killStreak >= 50 ? '#ff4d6d' : '#ffd166',
+              big: true,
+              start: s.time,
+              until: s.time + 1.2,
+            });
+          }
+        }
         if (s.sessionStats) {
           if (e.type === 'boss' || e.type === 'mega') s.sessionStats.bossKills++;
           if (s.killStreak > (s.sessionStats.maxStreak || 0)) s.sessionStats.maxStreak = s.killStreak;
@@ -9052,6 +9145,57 @@ function step(dt, s, onEnd) {
   }
 
   if (s.lives <= 0) { playSound('defeat'); buzz('error'); onEnd(false, s.score, s.wave, _withMVP(s.sessionStats)); }
+}
+
+// Small ring + sparks at a tower's center when it lands on the board.
+function placeBurst(s, tower, color) {
+  const x = tower.c * TILE + TILE / 2;
+  const y = tower.r * TILE + TILE / 2;
+  s.fx.push({
+    id: s.nextFxId++, type: 'impact',
+    x, y, color: color || '#ffd166',
+    start: s.time, until: s.time + 0.45,
+  });
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const speed = 36 + Math.random() * 24;
+    s.fx.push({
+      id: s.nextFxId++, type: 'death',
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color: color || '#ffd166',
+      start: s.time, until: s.time + 0.45,
+    });
+  }
+}
+
+// Bigger triple-ring + confetti + screen flash for recipe forge results.
+function forgeBurst(s, tower, color) {
+  const x = tower.c * TILE + TILE / 2;
+  const y = tower.r * TILE + TILE / 2;
+  for (let r = 0; r < 3; r++) {
+    s.fx.push({
+      id: s.nextFxId++, type: 'impact',
+      x, y, color: color || '#ffd166',
+      start: s.time + r * 0.08, until: s.time + 0.55 + r * 0.08,
+    });
+  }
+  const palette = ['#ffd166', '#ff4d6d', '#7be5d1', '#4cc9ff', '#ffffff'];
+  for (let i = 0; i < 22; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 50 + Math.random() * 90;
+    s.fx.push({
+      id: s.nextFxId++, type: 'death',
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 20,
+      color: palette[i % palette.length],
+      start: s.time, until: s.time + 0.85,
+    });
+  }
+  s.forgeFlashUntil = s.time + 0.32;
+  s.shakeUntil = Math.max(s.shakeUntil || 0, s.time + 0.18);
 }
 
 function fireAt(tower, inRange, stats, color, s) {
