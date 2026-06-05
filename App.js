@@ -1195,7 +1195,7 @@ const SPECIAL_BY_ID = Object.fromEntries(SPECIAL_RECIPES.map((r) => [r.id, r]));
 // both accept the {uri} shape. Works in Snack paste-mode, gitUrl-import, and
 // local Expo builds equally — no asset bundling required.
 const RAW_ASSET_BASE =
-  'https://github.com/usmanmomid/Test/raw/refs/heads/claude/mobile-game-development-PjMjg/';
+  'https://github.com/usmanmomid/Test/raw/refs/heads/assets-snapshot-PjMjg/';
 const remoteAsset = (path) => ({ uri: encodeURI(RAW_ASSET_BASE + path) });
 const ASSET_MAP = {
   towers: {
